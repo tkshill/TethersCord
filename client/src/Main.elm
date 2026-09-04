@@ -147,18 +147,18 @@ type Msg
     | GotGameState (Result Http.Error GameState)
     | NewMessageChanged String
     | SendMessage
-    | MessagePosted (Result Http.Error GameState)
+    | MessagePosted (Result Http.Error ())
     | FromDiscordRaw Decode.Value
     | AddWhiteStone
     | RollStones
     | RerollStones
     | AcceptRoll
-    | StonesUpdated (Result Http.Error GameState)
+    | StonesUpdated (Result Http.Error ())
     | CharacterFieldInput Int CharacterField String
     | CharacterFieldBlur Int
     | FateIncrement Int
     | FateDecrement Int
-    | CharacterUpdated (Result Http.Error GameState)
+    | CharacterUpdated (Result Http.Error ())
     | WsGameStateRaw Decode.Value
     | AuthFailed String
     | NoOp
@@ -349,8 +349,16 @@ update msg model =
         GotBackendAuth (Err _) ->
             ( { model | status = "Failed to authorize with backend." }, Cmd.none )
 
+        -- Seeds the board only. The socket is opened before this request is even
+        -- issued, so its snapshot can already have arrived; taking this one on
+        -- top of it would replace live state with an older read.
         GotGameState (Ok gs) ->
-            ( { model | gameState = Just (applyServerState model gs), status = "Connected." }, Cmd.none )
+            case model.gameState of
+                Just _ ->
+                    ( { model | status = "Connected." }, Cmd.none )
+
+                Nothing ->
+                    ( { model | gameState = Just (applyServerState model gs), status = "Connected." }, Cmd.none )
 
         GotGameState (Err _) ->
             ( { model | status = "Failed to load game state." }, Cmd.none )
@@ -374,8 +382,9 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
-        MessagePosted (Ok gs) ->
-            ( { model | gameState = Just (applyServerState model gs) }, Cmd.none )
+        -- Mutations acknowledge only; the resulting state arrives on the socket.
+        MessagePosted (Ok ()) ->
+            ( model, Cmd.none )
 
         MessagePosted (Err _) ->
             ( { model | status = "Failed to post message." }, Cmd.none )
@@ -392,8 +401,8 @@ update msg model =
         AcceptRoll ->
             ( model, postStonesCmd model.flags model.auth "/stones/accept" )
 
-        StonesUpdated (Ok gs) ->
-            ( { model | gameState = Just (applyServerState model gs) }, Cmd.none )
+        StonesUpdated (Ok ()) ->
+            ( model, Cmd.none )
 
         StonesUpdated (Err _) ->
             ( { model | status = "Failed to update stones." }, Cmd.none )
@@ -429,8 +438,8 @@ update msg model =
         FateDecrement slot ->
             ( model, postFateCmd model.flags model.auth slot -1 )
 
-        CharacterUpdated (Ok gs) ->
-            ( { model | gameState = Just (applyServerState model gs) }, Cmd.none )
+        CharacterUpdated (Ok ()) ->
+            ( model, Cmd.none )
 
         CharacterUpdated (Err _) ->
             ( { model | status = "Failed to update character sheet." }, Cmd.none )
@@ -542,7 +551,7 @@ postMessageCmd flags auth content =
             ]
         , url = url
         , body = Http.jsonBody body
-        , expect = Http.expectJson MessagePosted decodeGameState
+        , expect = Http.expectWhatever MessagePosted
         , timeout = Nothing
         , tracker = Nothing
         }
@@ -568,7 +577,7 @@ postStonesCmd flags maybeAuth path =
                     [ Http.header "Authorization" ("Bearer " ++ auth.sessionToken) ]
                 , url = url
                 , body = Http.emptyBody
-                , expect = Http.expectJson StonesUpdated decodeGameState
+                , expect = Http.expectWhatever StonesUpdated
                 , timeout = Nothing
                 , tracker = Nothing
                 }
@@ -604,7 +613,7 @@ postCharacterUpdateCmd flags auth slot character =
             ]
         , url = url
         , body = Http.jsonBody body
-        , expect = Http.expectJson CharacterUpdated decodeGameState
+        , expect = Http.expectWhatever CharacterUpdated
         , timeout = Nothing
         , tracker = Nothing
         }
@@ -637,7 +646,7 @@ postFateCmd flags maybeAuth slot delta =
                     ]
                 , url = url
                 , body = Http.jsonBody body
-                , expect = Http.expectJson CharacterUpdated decodeGameState
+                , expect = Http.expectWhatever CharacterUpdated
                 , timeout = Nothing
                 , tracker = Nothing
                 }

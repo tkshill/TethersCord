@@ -48,8 +48,14 @@ export class GameTable implements DurableObject {
    * Single-flighted initialization. A plain `if (!this.gameState)` check lets two
    * concurrent cold requests both run the character bootstrap and collide on the
    * `(session_id, slot)` unique index, so the promise is memoized instead.
+   *
+   * It resolves the session id this object is bound to, and installs the loaded
+   * snapshot into `this.gameState` as a side effect. It deliberately does NOT
+   * resolve the `GameState`: being memoized, it would resolve the cold-start
+   * snapshot forever, and assigning that back to `this.gameState` on each
+   * request would discard every mutation made since startup.
    */
-  private initPromise: Promise<GameState> | null = null;
+  private initPromise: Promise<string> | null = null;
 
   /**
    * Durable Objects interleave concurrent requests at `await` points, so two
@@ -85,7 +91,14 @@ export class GameTable implements DurableObject {
       return new Response("Missing table id", { status: 400 });
     }
 
-    this.gameState = await this.ensureInitialized(sessionId);
+    // Only ever *load* here. Assigning `this.gameState` from the memoized
+    // promise would restore the cold-start snapshot on every request and throw
+    // away everything written since — and it would do so ahead of `withLock`,
+    // where no handler can defend against it.
+    const boundSessionId = await this.ensureLoaded(sessionId);
+    if (boundSessionId !== sessionId) {
+      return new Response("Table id mismatch", { status: 400 });
+    }
 
     if (url.pathname === "/connect") {
       if (request.headers.get("Upgrade") !== "websocket") {
@@ -156,6 +169,11 @@ export class GameTable implements DurableObject {
     // Hibernatable: the DO can evict from memory between messages and still
     // resume delivering broadcasts to this socket later.
     this.state.acceptWebSocket(server);
+
+    // Never `await` between accepting the socket and sending this snapshot.
+    // Registering first means a concurrent mutation's broadcast can only arrive
+    // *after* the snapshot; an await here would invert that and leave the new
+    // client holding state older than a push it already received.
     server.send(JSON.stringify(this.gameState));
 
     return new Response(null, {
@@ -195,7 +213,7 @@ export class GameTable implements DurableObject {
     }
   }
 
-  private ensureInitialized(sessionId: string): Promise<GameState> {
+  private ensureLoaded(sessionId: string): Promise<string> {
     if (!this.initPromise) {
       this.initPromise = this.loadInitialState(sessionId).catch((error) => {
         // Let the next request retry rather than caching a rejected promise.
@@ -206,7 +224,8 @@ export class GameTable implements DurableObject {
     return this.initPromise;
   }
 
-  private async loadInitialState(sessionId: string): Promise<GameState> {
+  /** Populates `this.gameState` and returns the session id this object is bound to. */
+  private async loadInitialState(sessionId: string): Promise<string> {
     // The first request to reach a fresh Durable Object fixes its session id.
     // Later requests carrying a different one are a routing bug, not a rename.
     const storedSessionId =
@@ -225,7 +244,7 @@ export class GameTable implements DurableObject {
              author_name AS authorName, role, content, created_at AS createdAt
       FROM messages
       WHERE session_id = ?
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT 200
     `,
     )
@@ -236,13 +255,17 @@ export class GameTable implements DurableObject {
     const characters = await this.loadOrCreateCharacters(sessionId);
     const stones = await this.loadStoneState();
 
-    return {
+    this.gameState = {
       sessionId,
       messages,
       stonePool: stones.stonePool,
       pendingRoll: stones.pendingRoll,
       characters,
     };
+
+    // Equal to `storedSessionId` by the guard above; every later request in this
+    // object's lifetime compares against it instead of re-reading storage.
+    return sessionId;
   }
 
   /**
@@ -338,7 +361,7 @@ export class GameTable implements DurableObject {
     });
 
     this.broadcast(this.gameState!);
-    return jsonResponse(this.gameState);
+    return ackResponse();
   }
 
   private async handleAddWhiteStone(): Promise<Response> {
@@ -351,7 +374,7 @@ export class GameTable implements DurableObject {
     await this.saveStoneState(this.gameState);
 
     this.broadcast(this.gameState);
-    return jsonResponse(this.gameState);
+    return ackResponse();
   }
 
   private async handleRoll(
@@ -371,7 +394,7 @@ export class GameTable implements DurableObject {
     });
 
     this.broadcast(this.gameState!);
-    return jsonResponse(this.gameState);
+    return ackResponse();
   }
 
   private async handleAcceptRoll(): Promise<Response> {
@@ -383,7 +406,7 @@ export class GameTable implements DurableObject {
     await this.saveStoneState(this.gameState);
 
     this.broadcast(this.gameState);
-    return jsonResponse(this.gameState);
+    return ackResponse();
   }
 
   private async handleUpdateCharacter(
@@ -442,7 +465,7 @@ export class GameTable implements DurableObject {
     };
 
     this.broadcast(this.gameState);
-    return jsonResponse(this.gameState);
+    return ackResponse();
   }
 
   private async handleUpdateFate(
@@ -476,7 +499,7 @@ export class GameTable implements DurableObject {
     };
 
     this.broadcast(this.gameState);
-    return jsonResponse(this.gameState);
+    return ackResponse();
   }
 
   /** Persists the message, then folds it into the current in-memory state. */
@@ -683,4 +706,15 @@ function jsonResponse(data: unknown, init?: ResponseInit): Response {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
+}
+
+/**
+ * Mutations acknowledge only. Returning a snapshot here too would race the
+ * `broadcast` that already went out over the WebSocket: the two travel on
+ * independent transports with no ordering between them, so a slow HTTP response
+ * could land after — and overwrite — a newer push. The socket is the single
+ * source of truth for state.
+ */
+function ackResponse(): Response {
+  return new Response(null, { status: 204 });
 }
