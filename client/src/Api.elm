@@ -2,6 +2,7 @@ module Api exposing
     ( decodeGameState
     , getGameState
     , postCharacterUpdate
+    , postCommitBoon
     , postFate
     , postMessage
     , postStones
@@ -21,7 +22,7 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 import Roll exposing (Stone(..))
 import Time
-import Types exposing (Auth, CharacterSheet, Flags, GameState, PendingRoll, decodeRole)
+import Types exposing (Auth, CharacterSheet, CommittedBoon, Flags, GameState, PendingRoll, decodeRole)
 
 
 
@@ -114,6 +115,28 @@ postFate flags auth slot delta toMsg =
         }
 
 
+{-| Pledge (positive `delta`) or withdraw (negative) a character's boons from
+the next roll. The Worker clamps the pledge to what the character holds.
+-}
+postCommitBoon : Flags -> Auth -> Int -> Int -> (Result Http.Error () -> msg) -> Cmd msg
+postCommitBoon flags auth slot delta toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth ++ [ jsonContentType ]
+        , url = tableUrl flags "/stones/commit"
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "slot", Encode.int slot )
+                    , ( "delta", Encode.int delta )
+                    ]
+                )
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
 jsonContentType : Http.Header
 jsonContentType =
     Http.header "Content-Type" "application/json"
@@ -140,11 +163,11 @@ decodeStoneList =
         |> Decode.map
             (List.map
                 (\s ->
-                    if s == "WhiteStone" then
-                        WhiteStone
+                    if s == "Boon" then
+                        Boon
 
                     else
-                        BlackStone
+                        Bane
                 )
             )
 
@@ -154,6 +177,13 @@ decodePendingRoll =
     Decode.map2 PendingRoll
         (Decode.field "chosen" decodeStoneList)
         (Decode.field "rest" decodeStoneList)
+
+
+decodeCommittedBoon : Decode.Decoder CommittedBoon
+decodeCommittedBoon =
+    Decode.map2 CommittedBoon
+        (Decode.field "slot" Decode.int)
+        (Decode.field "count" Decode.int)
 
 
 decodeCharacterSheet : Decode.Decoder CharacterSheet
@@ -191,9 +221,10 @@ decodeCharacterSheet =
 
 decodeGameState : Decode.Decoder GameState
 decodeGameState =
-    Decode.map5 GameState
+    Decode.map6 GameState
         (Decode.field "sessionId" Decode.string)
         (Decode.field "messages" (Decode.list decodeMessage))
         (Decode.field "stonePool" decodeStoneList)
         (Decode.field "pendingRoll" (Decode.nullable decodePendingRoll))
+        (Decode.field "committedBoons" (Decode.list decodeCommittedBoon))
         (Decode.field "characters" (Decode.list decodeCharacterSheet))

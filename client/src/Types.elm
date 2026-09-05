@@ -2,6 +2,7 @@ module Types exposing
     ( Auth
     , CharacterField(..)
     , CharacterSheet
+    , CommittedBoon
     , Flags
     , GameState
     , Message
@@ -9,6 +10,7 @@ module Types exposing
     , Msg(..)
     , PendingRoll
     , Role(..)
+    , committedBoonsForSlot
     , decodeRole
     , roleLabel
     , setCharacterField
@@ -81,6 +83,24 @@ type alias PendingRoll =
     }
 
 
+{-| Boons a character has pledged into the next roll. Spent from their `fate`
+stock when the roll is accepted; only slots with a non-zero pledge appear.
+-}
+type alias CommittedBoon =
+    { slot : Int
+    , count : Int
+    }
+
+
+committedBoonsForSlot : Int -> List CommittedBoon -> Int
+committedBoonsForSlot slot committed =
+    committed
+        |> List.filter (\c -> c.slot == slot)
+        |> List.head
+        |> Maybe.map .count
+        |> Maybe.withDefault 0
+
+
 type alias CharacterSheet =
     { id : String
     , slot : Int
@@ -135,6 +155,7 @@ type alias GameState =
     , messages : List Message
     , stonePool : List Stone
     , pendingRoll : Maybe PendingRoll
+    , committedBoons : List CommittedBoon
     , characters : List CharacterSheet
     }
 
@@ -171,7 +192,9 @@ type Msg
     | SendMessage
     | MessagePosted (Result Http.Error ())
     | FromDiscordRaw Decode.Value
-    | AddWhiteStone
+    | AddBoon
+    | CommitBoonIncrement Int
+    | CommitBoonDecrement Int
     | RollStones
     | RerollStones
     | AcceptRoll

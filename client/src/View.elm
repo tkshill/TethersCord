@@ -86,14 +86,18 @@ rollPanel maybeGs =
                 placeholder "Loading stone pool…"
 
             Just gs ->
+                let
+                    committed =
+                        List.foldl (\c acc -> acc + c.count) 0 gs.committedBoons
+                in
                 Element.column [ spacing Ui.md, width fill ]
                     [ Element.wrappedRow [ spacing Ui.xs ] (List.map stoneChip gs.stonePool)
                     , el [ Font.size 12, Font.color Ui.inkSoft ]
-                        (text ("Pool of " ++ String.fromInt (List.length gs.stonePool)))
+                        (text (poolSummary (List.length gs.stonePool) committed))
                     , case gs.pendingRoll of
                         Nothing ->
                             Element.wrappedRow [ spacing Ui.sm ]
-                                [ Ui.ghostButton { onPress = Just AddWhiteStone, label = "Add white stone" }
+                                [ Ui.ghostButton { onPress = Just AddBoon, label = "Add boon" }
                                 , Ui.primaryButton { onPress = Just RollStones, label = "Roll" }
                                 ]
 
@@ -112,14 +116,27 @@ rollPanel maybeGs =
         ]
 
 
+poolSummary : Int -> Int -> String
+poolSummary poolCount committed =
+    let
+        base =
+            "Bag of " ++ String.fromInt (poolCount + committed)
+    in
+    if committed > 0 then
+        base ++ " (" ++ String.fromInt committed ++ " boon pledged)"
+
+    else
+        base
+
+
 stoneChip : Stone -> Element msg
 stoneChip stone =
     case stone of
-        WhiteStone ->
-            Ui.stoneChip (rgb255 249 248 246) "White"
+        Boon ->
+            Ui.stoneChip (rgb255 249 248 246) "Boon"
 
-        BlackStone ->
-            Ui.stoneChip (rgb255 42 42 46) "Black"
+        Bane ->
+            Ui.stoneChip (rgb255 42 42 46) "Bane"
 
 
 
@@ -136,12 +153,12 @@ characterSheets maybeGs =
 
             Just gs ->
                 Element.wrappedRow [ spacing Ui.md, width fill ]
-                    (List.map characterSheet gs.characters)
+                    (List.map (characterSheet gs.committedBoons) gs.characters)
         ]
 
 
-characterSheet : CharacterSheet -> Element Msg
-characterSheet ch =
+characterSheet : List CommittedBoon -> CharacterSheet -> Element Msg
+characterSheet committedBoons ch =
     Element.column
         [ spacing Ui.sm
         , padding Ui.md
@@ -158,6 +175,7 @@ characterSheet ch =
         , field ch ConditionField "Condition" ch.condition
         , notesField ch
         , fateRow ch
+        , commitRow ch (committedBoonsForSlot ch.slot committedBoons)
         ]
 
 
@@ -187,10 +205,22 @@ notesField ch =
 fateRow : CharacterSheet -> Element Msg
 fateRow ch =
     Element.row [ spacing Ui.sm, Element.centerY ]
-        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Fate")
+        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Boons")
         , el [ Font.semiBold, width (px 20), Font.center ] (text (String.fromInt ch.fate))
         , Ui.ghostButton { onPress = Just (FateDecrement ch.slot), label = "−" }
         , Ui.ghostButton { onPress = Just (FateIncrement ch.slot), label = "+" }
+        ]
+
+
+{-| Boons this character has pledged into the next roll. Spent on Accept.
+-}
+commitRow : CharacterSheet -> Int -> Element Msg
+commitRow ch pledged =
+    Element.row [ spacing Ui.sm, Element.centerY ]
+        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Pledged")
+        , el [ Font.semiBold, width (px 20), Font.center ] (text (String.fromInt pledged))
+        , Ui.ghostButton { onPress = Just (CommitBoonDecrement ch.slot), label = "−" }
+        , Ui.ghostButton { onPress = Just (CommitBoonIncrement ch.slot), label = "+" }
         ]
 
 

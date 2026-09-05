@@ -5,6 +5,8 @@ import type {
   DurableObjectState,
 } from "@cloudflare/workers-types";
 import type {
+  CommitBoonInput,
+  CommittedBoon,
   Env,
   GameState,
   Message,
@@ -17,12 +19,9 @@ import type {
   UpdateFateInput,
 } from "./types";
 
-const INITIAL_STONE_POOL: readonly StoneKind[] = [
-  "WhiteStone",
-  "BlackStone",
-  "WhiteStone",
-  "BlackStone",
-];
+// Every roll starts from this base — two Boon, two Bane — before any boons a
+// character pledges into it. Accepting a roll resets the pool to this.
+const INITIAL_STONE_POOL: readonly StoneKind[] = ["Boon", "Bane", "Boon", "Bane"];
 
 const CHARACTER_SLOT_COUNT = 3;
 
@@ -37,7 +36,25 @@ const KEY_STONES = "stones";
 type StoneState = {
   stonePool: StoneKind[];
   pendingRoll: PendingRoll | null;
+  committedBoons: CommittedBoon[];
 };
+
+/** Shape of `KEY_STONES` as written by builds that still used colour names. */
+type LegacyStoneKind = StoneKind | "WhiteStone" | "BlackStone";
+type LegacyStoneState = {
+  stonePool: LegacyStoneKind[];
+  pendingRoll: {
+    chosen: LegacyStoneKind[];
+    rest: LegacyStoneKind[];
+  } | null;
+  committedBoons?: CommittedBoon[];
+};
+
+function migrateStoneKind(kind: LegacyStoneKind): StoneKind {
+  if (kind === "WhiteStone") return "Boon";
+  if (kind === "BlackStone") return "Bane";
+  return kind;
+}
 
 export class GameTable implements DurableObject {
   private state: DurableObjectState;
@@ -121,8 +138,12 @@ export class GameTable implements DurableObject {
       return this.withLock(() => this.handlePostMessage(request, authInfo));
     }
 
-    if (url.pathname === "/stones/add-white" && request.method === "POST") {
-      return this.withLock(() => this.handleAddWhiteStone());
+    if (url.pathname === "/stones/add-boon" && request.method === "POST") {
+      return this.withLock(() => this.handleAddBoon());
+    }
+
+    if (url.pathname === "/stones/commit" && request.method === "POST") {
+      return this.withLock(() => this.handleCommitBoon(request));
     }
 
     if (url.pathname === "/stones/roll" && request.method === "POST") {
@@ -260,6 +281,7 @@ export class GameTable implements DurableObject {
       messages,
       stonePool: stones.stonePool,
       pendingRoll: stones.pendingRoll,
+      committedBoons: stones.committedBoons,
       characters,
     };
 
@@ -275,14 +297,25 @@ export class GameTable implements DurableObject {
    * after a table goes quiet.
    */
   private async loadStoneState(): Promise<StoneState> {
-    const stored = await this.state.storage.get<StoneState>(KEY_STONES);
+    const stored = await this.state.storage.get<LegacyStoneState>(KEY_STONES);
     if (stored) {
-      return stored;
+      // Fold the colour-named stones of earlier builds into Boon / Bane.
+      return {
+        stonePool: stored.stonePool.map(migrateStoneKind),
+        pendingRoll: stored.pendingRoll
+          ? {
+              chosen: stored.pendingRoll.chosen.map(migrateStoneKind),
+              rest: stored.pendingRoll.rest.map(migrateStoneKind),
+            }
+          : null,
+        committedBoons: stored.committedBoons ?? [],
+      };
     }
 
     const initial: StoneState = {
       stonePool: [...INITIAL_STONE_POOL],
       pendingRoll: null,
+      committedBoons: [],
     };
     await this.state.storage.put(KEY_STONES, initial);
     return initial;
@@ -292,6 +325,7 @@ export class GameTable implements DurableObject {
     await this.state.storage.put(KEY_STONES, {
       stonePool: state.stonePool,
       pendingRoll: state.pendingRoll,
+      committedBoons: state.committedBoons,
     } satisfies StoneState);
   }
 
@@ -364,13 +398,55 @@ export class GameTable implements DurableObject {
     return ackResponse();
   }
 
-  private async handleAddWhiteStone(): Promise<Response> {
+  private async handleAddBoon(): Promise<Response> {
     // Read `this.gameState` fresh rather than from a snapshot taken before an
     // await, so concurrent requests cannot clobber each other's writes.
     this.gameState = {
       ...this.gameState!,
-      stonePool: [...this.gameState!.stonePool, "WhiteStone"],
+      stonePool: [...this.gameState!.stonePool, "Boon"],
     };
+    await this.saveStoneState(this.gameState);
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  /**
+   * Pledge (or withdraw) a character's boons into the next roll. The pledge is
+   * clamped to what the character actually holds in `fate`; it is only spent
+   * when the roll is accepted.
+   */
+  private async handleCommitBoon(request: Request): Promise<Response> {
+    const input = (await readJson(request)) as CommitBoonInput | null;
+    const slot = input?.slot;
+    const delta = input?.delta;
+    if (
+      typeof slot !== "number" ||
+      !Number.isInteger(slot) ||
+      typeof delta !== "number" ||
+      !Number.isInteger(delta)
+    ) {
+      return new Response("slot and delta must be integers", { status: 400 });
+    }
+
+    const character = this.gameState!.characters.find((c) => c.slot === slot);
+    if (!character) {
+      return new Response("Not found", { status: 404 });
+    }
+
+    const current =
+      this.gameState!.committedBoons.find((c) => c.slot === slot)?.count ?? 0;
+    const next = Math.max(0, Math.min(character.fate, current + delta));
+
+    const committedBoons = this.gameState!.committedBoons.filter(
+      (c) => c.slot !== slot,
+    );
+    if (next > 0) {
+      committedBoons.push({ slot, count: next });
+    }
+    committedBoons.sort((a, b) => a.slot - b.slot);
+
+    this.gameState = { ...this.gameState!, committedBoons };
     await this.saveStoneState(this.gameState);
 
     this.broadcast(this.gameState);
@@ -381,16 +457,22 @@ export class GameTable implements DurableObject {
     authInfo: AuthInfo,
     verb: "Rolled" | "Rerolled",
   ): Promise<Response> {
-    const pendingRoll = pickTwoRandom(this.gameState!.stonePool);
+    const committed = totalCommittedBoons(this.gameState!.committedBoons);
+    const bag: StoneKind[] = [
+      ...this.gameState!.stonePool,
+      ...Array<StoneKind>(committed).fill("Boon"),
+    ];
+    const pendingRoll = pickTwoRandom(bag);
 
     this.gameState = { ...this.gameState!, pendingRoll };
     await this.saveStoneState(this.gameState);
 
+    const note = committed > 0 ? ` — ${committed} boon committed` : "";
     await this.appendMessage({
       authorId: authInfo.discordUserId,
       authorName: authInfo.username,
       role: authInfo.role,
-      content: `${verb}: ${describeStones(pendingRoll.chosen)}`,
+      content: `${verb}: ${describeStones(pendingRoll.chosen)}${note}`,
     });
 
     this.broadcast(this.gameState!);
@@ -398,10 +480,30 @@ export class GameTable implements DurableObject {
   }
 
   private async handleAcceptRoll(): Promise<Response> {
+    // Spend the pledged boons from each character's stock, then clear the pool
+    // and pledges back to the base state.
+    const now = Date.now();
+    let characters = this.gameState!.characters;
+
+    for (const { slot, count } of this.gameState!.committedBoons) {
+      const character = characters.find((c) => c.slot === slot);
+      if (!character || count <= 0) continue;
+
+      const fate = Math.max(0, character.fate - count);
+      await this.env.DB.prepare(
+        `UPDATE characters SET fate = ?, updated_at = ? WHERE id = ?`,
+      )
+        .bind(fate, now, character.id)
+        .run();
+      characters = characters.map((c) => (c.slot === slot ? { ...c, fate } : c));
+    }
+
     this.gameState = {
       ...this.gameState!,
+      characters,
       stonePool: [...INITIAL_STONE_POOL],
       pendingRoll: null,
+      committedBoons: [],
     };
     await this.saveStoneState(this.gameState);
 
@@ -610,7 +712,11 @@ function randomInt(maxExclusive: number): number {
 }
 
 function describeStones(stones: StoneKind[]): string {
-  return stones.map((s) => (s === "WhiteStone" ? "White" : "Black")).join(", ");
+  return stones.join(", ");
+}
+
+function totalCommittedBoons(committed: CommittedBoon[]): number {
+  return committed.reduce((sum, c) => sum + c.count, 0);
 }
 
 type CharacterRow = {

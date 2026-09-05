@@ -1,25 +1,29 @@
 module Roll exposing (..)
 
+{-| A stone names its outcome: `Boon` is favourable, `Bane` is not. (Earlier
+builds called these `WhiteStone` / `BlackStone`.)
+-}
+
 
 type Stone
-    = WhiteStone
-    | BlackStone
+    = Boon
+    | Bane
 
 
 initialStones : List Stone
 initialStones =
-    [ WhiteStone
-    , BlackStone
-    , WhiteStone
-    , BlackStone
+    [ Boon
+    , Bane
+    , Boon
+    , Bane
     ]
 
 
 stoneLabel : Stone -> String
 stoneLabel stone =
     case stone of
-        WhiteStone ->
-            "White"
+        Boon ->
+            "Boon"
 
-        BlackStone ->
-            "Black"
+        Bane ->
+            "Bane"

@@ -17,11 +17,26 @@ export type Message = {
   createdAt: number;
 };
 
-export type StoneKind = "WhiteStone" | "BlackStone";
+/**
+ * A stone names its outcome, not a colour: `Boon` is favourable, `Bane` is not.
+ * (Earlier builds called these `WhiteStone` / `BlackStone`; `GameTable` migrates
+ * the legacy names out of Durable Object storage on load.)
+ */
+export type StoneKind = "Boon" | "Bane";
 
 export type PendingRoll = {
   chosen: StoneKind[];
   rest: StoneKind[];
+};
+
+/**
+ * Boon stones a character has pledged into the next roll, spent from their
+ * `fate` stock when the roll is accepted. One entry per character with a
+ * non-zero pledge, keyed by slot.
+ */
+export type CommittedBoon = {
+  slot: number;
+  count: number;
 };
 
 export type CharacterSheet = {
@@ -44,6 +59,7 @@ export type GameState = {
   messages: Message[];
   stonePool: StoneKind[];
   pendingRoll: PendingRoll | null;
+  committedBoons: CommittedBoon[];
   characters: CharacterSheet[];
 };
 
@@ -54,6 +70,11 @@ export type PostMessageInput = {
 export type UpdateCharacterInput = Partial<CharacterSheetFields>;
 
 export type UpdateFateInput = {
+  delta: number;
+};
+
+export type CommitBoonInput = {
+  slot: number;
   delta: number;
 };
 

@@ -237,28 +237,24 @@ ghostButton config =
         { onPress = config.onPress, label = text config.label }
 
 
-{-| A stone rendered as a bordered pill; `swatch` is the fill.
+{-| A stone: a filled circle with its name captioned beneath. `swatch` is the
+fill.
 -}
 stoneChip : Color -> String -> Element msg
 stoneChip swatch label =
-    Element.row
-        [ spacing xs
-        , paddingXY_ sm xs
-        , Border.color line
-        , Border.width 1
-        , Border.rounded 999
-        , Font.size 12
-        ]
+    Element.column
+        [ spacing xs, Font.size 10, Font.color inkSoft ]
         [ el
-            [ width (Element.px 10)
-            , Element.height (Element.px 10)
+            [ width (Element.px 22)
+            , Element.height (Element.px 22)
             , Background.color swatch
             , Border.color line
             , Border.width 1
             , Border.rounded 999
+            , Element.centerX
             ]
             Element.none
-        , text label
+        , el [ Element.centerX ] (text label)
         ]
 
 

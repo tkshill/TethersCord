@@ -120,8 +120,14 @@ update msg model =
         MessagePosted (Err _) ->
             ( { model | status = "Failed to post message." }, Cmd.none )
 
-        AddWhiteStone ->
-            ( model, stonesCmd model "/stones/add-white" )
+        AddBoon ->
+            ( model, stonesCmd model "/stones/add-boon" )
+
+        CommitBoonIncrement slot ->
+            ( model, commitCmd model slot 1 )
+
+        CommitBoonDecrement slot ->
+            ( model, commitCmd model slot -1 )
 
         RollStones ->
             ( model, stonesCmd model "/stones/roll" )
@@ -216,6 +222,16 @@ fateCmd model slot delta =
     case model.auth of
         Just auth ->
             Api.postFate model.flags auth slot delta CharacterUpdated
+
+        Nothing ->
+            Cmd.none
+
+
+commitCmd : Model -> Int -> Int -> Cmd Msg
+commitCmd model slot delta =
+    case model.auth of
+        Just auth ->
+            Api.postCommitBoon model.flags auth slot delta StonesUpdated
 
         Nothing ->
             Cmd.none

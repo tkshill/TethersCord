@@ -10,6 +10,11 @@ version yet, so headings are dates.
 
 ### Added
 
+- Characters can pledge their boons into a roll: a "Pledged" control on each
+  sheet (`POST /api/table/:id/stones/commit`), tracked in
+  `GameState.committedBoons`. A roll draws two stones at random from the shared
+  pool plus every pledged boon, so pledging shifts the odds toward Boon;
+  accepting the roll spends the pledged boons from each character's stock.
 - Message log entries now show a timestamp (`YYYY-MM-DD HH:MM`, in the viewer's
   local time zone). The date is included because a table's log persists across
   real-world days.
@@ -23,6 +28,12 @@ version yet, so headings are dates.
 
 ### Changed
 
+- Stones now name their outcome instead of a colour: `Boon` (favourable) and
+  `Bane` replace `WhiteStone` / `BlackStone` across the client, the worker, and
+  the `"Boon" | "Bane"` wire format. Durable Object stone storage is migrated
+  from the old names as it loads. `Ui.stoneChip` renders a filled circle with a
+  caption rather than a colour-swatch pill, and a character's `fate` count is
+  now labelled "Boons". The `add-white` stone route is renamed `add-boon`.
 - Split the client into focused modules. `client/src/Main.elm` went from a
   single ~900-line file to wiring only (`init` / `update` / `subscriptions` /
   `main`); domain types and `Model` / `Msg` moved to `Types.elm`, HTTP and

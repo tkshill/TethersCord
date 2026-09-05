@@ -55,7 +55,80 @@ with [`mdgriffith/elm-ui`](https://package.elm-lang.org/packages/mdgriffith/elm-
 - [ ] The log's scroll-to-bottom is unconditional on every snapshot. Skip it
       when the viewer has scrolled up to read history.
 
-## 3. Message log hygiene
+## 3. Stone model — favourable vs. negative outcomes — done
+
+A stone now names its outcome: `Boon` is favourable, `Bane` is not. The rename
+runs end to end — `Roll.Stone` and its `Api.elm` decoder, `StoneKind` and its
+`"Boon" | "Bane"` wire strings, `INITIAL_STONE_POOL`, `describeStones`. The
+`StoneState` in Durable Object storage under `KEY_STONES` is migrated as it
+loads: `GameTable.loadStoneState` folds legacy `WhiteStone` / `BlackStone`
+values (and a missing `committedBoons`) into the new shape, idempotently.
+Historical log rows ("Rolled: White, Black") are left as plain text.
+
+`Ui.stoneChip` is now a filled circle with the word captioned beneath it rather
+than a colour-swatch pill.
+
+## 4. Fate as a personal positive-stone pool — done
+
+The game is loosely Fate-based, but runs on **boon stones a character holds and
+spends** rather than one fate point. `CharacterSheet.fate` is kept as the
+persisted integer (the D1 column is unchanged) but is now surfaced as "Boons"
+and treated as that character's stock of favourable stones.
+
+How a roll resolves, as built:
+
+- The bag starts from `INITIAL_STONE_POOL` — two Boon, two Bane — every roll.
+- `POST /stones/add-boon` (was `add-white`) adds a Boon to the shared table
+  pool; it persists until a roll is accepted.
+- A character pledges boons into the next roll with `POST /stones/commit`
+  (`{ slot, delta }`), clamped to what they hold. Pledges are tracked in
+  `GameState.committedBoons` (`{ slot, count }[]`, persisted in `StoneState`)
+  and shown per sheet as "Pledged".
+- `RollStones` / `RerollStones` draw two stones at random from
+  `stonePool + (pledged Boons)`. More pledged boons means better odds; a reroll
+  keeps the pledges.
+- `AcceptRoll` spends each character's pledged boons from `fate` in D1, then
+  resets the pool to the base four and clears all pledges.
+
+Follow-ups:
+
+- [ ] Facilitator-set difficulty: let the facilitator add Bane stones to a roll
+      from the fiction instead of the fixed two (waits on section 5's role-gated
+      interface).
+- [ ] Bind a character sheet to a Discord user so "pledge my boons" needs no
+      slot picker.
+- [ ] Decide where boons are earned — right now anyone can bump the count with
+      the sheet's +/- buttons.
+
+## 5. Facilitator identity and a role-gated interface
+
+Role is decided at auth time: `facilitator` if the Discord user id is in the
+`facilitators` table, otherwise `player` (`inferRoleFromDb` in
+`oauth-discord.ts`, mirrored in `GameTable.ts`). That table is
+`(discord_user_id, created_at)` and is seeded by inserting rows by hand. Every
+client currently renders the same `View`.
+
+- [ ] **For the first campaign, use the existing allowlist.** Insert the
+      facilitator's Discord user id into `facilitators` and leave it there — it
+      already survives re-launches, is table-independent, and the facilitator is
+      a known single person. Nothing new is needed to get unblocked.
+- [ ] **Self-serve claiming is the eventual replacement**, for running games
+      without hand-seeding rows: the first authenticated user at a given
+      `tableId` with no facilitator yet claims it, stored as a
+      `facilitator_user_id` on a per-table row (new migration). Needs a
+      hand-off/reassign path and has an obvious failure mode (a player launching
+      before the facilitator). Defer until it is actually needed.
+- [ ] **Split the interface by role.** `Role` is already on `Auth`, so `View`
+      can branch on `model.auth`. Facilitator-only controls likely include: the
+      `messages/clear` route (section 6), stone / roll administration, granting
+      positive stones to players (section 4), and session start/end markers
+      (section 7). Players get a reduced view without those.
+- [ ] The Worker must **enforce** the role on those routes, not just hide the
+      buttons. Several stone routes (`handleAddBoon`, `handleCommitBoon`,
+      `handleAcceptRoll`) currently take no auth info at all, and `handleRoll`
+      ignores the `authInfo` it is given.
+
+## 6. Message log hygiene
 
 - [ ] Facilitator-only `POST /api/table/:id/messages/clear` route in the Worker
       that deletes the session's rows from D1 **and** resets the Durable
@@ -68,20 +141,20 @@ with [`mdgriffith/elm-ui`](https://package.elm-lang.org/packages/mdgriffith/elm-
 - [ ] Day dividers in the log now that timestamps carry the date and a table
       spans multiple real-world days.
 
-## 4. Session / campaign structure
+## 7. Session / campaign structure
 
 - [ ] "Start session" / "end session" markers a facilitator can drop, so the
       log reads as distinct game days.
 - [ ] Trim or paginate history — the DO currently loads the last 200 messages
       and the client keeps 200. Fine for now; revisit if a campaign outgrows it.
 
-## 5. Connection polish
+## 8. Connection polish
 
 - [ ] Surface WebSocket disconnect/reconnect state in the UI.
 - [ ] Retry `getGameState` on transient failure instead of parking on
       "Failed to load game state."
 
-## 6. Effect pattern + tests
+## 9. Effect pattern + tests
 
 `update` currently returns `( Model, Cmd Msg )` and calls `Api` / `Ports` /
 `Browser.Dom` directly. The [Effect pattern](https://elm-radio.com/episode/single-out-effects/)
