@@ -143,8 +143,28 @@ client currently renders the same `View`.
 
 ## 7. Session / campaign structure
 
-- [ ] "Start session" / "end session" markers a facilitator can drop, so the
-      log reads as distinct game days.
+A **session** is one game day with a goal the players work toward, and it carries
+its own stone pool that fills up from the rolls made during it. This needs
+first-class model support, not just log markers.
+
+- [ ] **Session goal.** Every session records what the players are trying to
+      accomplish. Set by the facilitator at the start (section 5) and shown to
+      the whole table for the session's duration. Likely a `sessions` table row
+      (`id`, `session_id`, `goal`, `started_at`, `ended_at`, `outcome`) rather
+      than another column on `characters`.
+- [ ] **Start / end session** actions the facilitator triggers, replacing the
+      log-marker idea. Starting opens a goal and a fresh session pool; ending
+      runs the session roll below. The log gets a system line for each.
+- [ ] **Session stone pool.** Separate from the per-roll bag in section 4. It
+      starts at two Boon + two Bane and persists for the life of the session
+      (Durable Object storage, like the per-roll pool). After each *accepted*
+      roll in the session, one of that roll's two result stones — chosen at
+      random — is added to the session pool, so the pool drifts toward however
+      the session has been going.
+- [ ] **Session roll.** At end of session the facilitator rolls against the
+      session pool to decide whether the players met the goal. Resolved the same
+      way as a normal roll (draw from the bag); the result and the goal outcome
+      are written to the `sessions` row and logged as a distinct system line.
 - [ ] Trim or paginate history — the DO currently loads the last 200 messages
       and the client keeps 200. Fine for now; revisit if a campaign outgrows it.
 
@@ -177,6 +197,28 @@ work rather than a standalone reorganisation.
       the cursor), the empty-message send guard, and the auth → load-state
       sequence.
 - [ ] Wire `pnpm run test:client` into `pnpm run build`.
+
+## 10. Character sheet layout and stone visualisation
+
+The three sheets in a `wrappedRow` and the roll panel's text-and-number
+summaries are getting dense. This pass is about seeing the current roll at a
+glance.
+
+- [ ] **Tabbed character sheets.** Show one sheet at a time behind a tab strip
+      (or selector) so each field has room, instead of three cramped columns
+      that collapse to a stack when narrow.
+- [ ] **Boons at the top of the sheet.** Move the "Boons" and "Pledged" rows
+      above the text fields, so a player sees their spendable stones in the
+      context of the current roll.
+- [ ] **Render a player's boons as circles**, not a bare count with `+` / `−`,
+      reusing the `Ui.stoneChip` shape.
+- [ ] **Mark the pledged ones.** Show which of a player's boon circles are
+      pledged into the current roll with a visual change to those circles — a
+      fill texture, an extra ring, or a centre mark — rather than the separate
+      "Pledged" number.
+- [ ] **Pledged boons as shapes in the pool.** In the roll panel, draw pledged
+      boons as extra stone shapes in the bag rather than the
+      "(N boon pledged)" caption.
 
 ---
 
