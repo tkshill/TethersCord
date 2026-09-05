@@ -81,6 +81,30 @@ with [`mdgriffith/elm-ui`](https://package.elm-lang.org/packages/mdgriffith/elm-
 - [ ] Retry `getGameState` on transient failure instead of parking on
       "Failed to load game state."
 
+## 6. Effect pattern + tests
+
+`update` currently returns `( Model, Cmd Msg )` and calls `Api` / `Ports` /
+`Browser.Dom` directly. The [Effect pattern](https://elm-radio.com/episode/single-out-effects/)
+replaces the `Cmd` with a custom `Effect Msg` type that only *describes* side
+effects, turning `update` into a pure function that returns data.
+
+Worth doing, but the main payoff — a `update` that can be asserted on without
+mocking `Cmd` — only lands with a test suite, so treat these as one unit of
+work rather than a standalone reorganisation.
+
+- [ ] `Effect.elm` — an `Effect msg` type with one constructor per side effect
+      the app performs (`GetGameState`, `PostMessage`, `PostStones`,
+      `PostCharacterUpdate`, `PostFate`, `Authorize`, `GetTimeZone`,
+      `ScrollLogToBottom`, `None`, `Batch`). `Api` and `Ports` keep the "how";
+      `Effect` names the "what".
+- [ ] `Effect.perform : Effect Msg -> Cmd Msg`, called once at the `Main`
+      boundary. `update : Msg -> Model -> ( Model, Effect Msg )`.
+- [ ] Add `elm-explorations/test` and `avh4/elm-program-test`; cover the
+      snapshot-merge logic in `Main.applyServerState` (keeping the sheet under
+      the cursor), the empty-message send guard, and the auth → load-state
+      sequence.
+- [ ] Wire `pnpm run test:client` into `pnpm run build`.
+
 ---
 
 ## Flushing test messages before the campaign
