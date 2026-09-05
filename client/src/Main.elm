@@ -1,13 +1,14 @@
 port module Main exposing (main)
 
 import Browser
-import Html exposing (Html, button, div, h1, input, li, text, ul)
+import Html exposing (Html, button, div, h1, input, li, span, text, ul)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onBlur, onClick, onInput)
 import Http
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Roll exposing (Stone(..))
+import Task
 import Time
 
 
@@ -122,6 +123,10 @@ type alias Model =
     -- Slot the user is currently typing into, if any. Server pushes must not
     -- overwrite a sheet while it is being edited.
     , editingSlot : Maybe Int
+
+    -- Viewer's local time zone, used to render message timestamps. Starts at
+    -- UTC and is replaced once Time.here resolves.
+    , timeZone : Time.Zone
     }
 
 
@@ -133,8 +138,12 @@ init flags =
       , newMessage = ""
       , status = "Authorizing with Discord..."
       , editingSlot = Nothing
+      , timeZone = Time.utc
       }
-    , authorizeCmd [ "identify" ]
+    , Cmd.batch
+        [ authorizeCmd [ "identify" ]
+        , Task.perform GotTimeZone Time.here
+        ]
     )
 
 
@@ -161,6 +170,7 @@ type Msg
     | CharacterUpdated (Result Http.Error ())
     | WsGameStateRaw Decode.Value
     | AuthFailed String
+    | GotTimeZone Time.Zone
     | NoOp
 
 
@@ -454,6 +464,9 @@ update msg model =
 
         AuthFailed message ->
             ( { model | status = "Discord authorization failed: " ++ message }, Cmd.none )
+
+        GotTimeZone zone ->
+            ( { model | timeZone = zone }, Cmd.none )
 
         NoOp ->
             ( model, Cmd.none )
@@ -758,11 +771,11 @@ viewMessages model =
 
         Just gs ->
             ul [ class "message-list" ]
-                (List.map viewMessage gs.messages)
+                (List.map (viewMessage model.timeZone) gs.messages)
 
 
-viewMessage : Message -> Html Msg
-viewMessage msg =
+viewMessage : Time.Zone -> Message -> Html Msg
+viewMessage zone msg =
     let
         roleLabel =
             case msg.role of
@@ -773,7 +786,20 @@ viewMessage msg =
                     ""
     in
     li []
-        [ text (roleLabel ++ msg.authorName ++ ": " ++ msg.content) ]
+        [ span [ class "message-timestamp" ] [ text (formatTimestamp zone msg.createdAt ++ " ") ]
+        , text (roleLabel ++ msg.authorName ++ ": " ++ msg.content)
+        ]
+
+
+{-| Render a message's creation time as `HH:MM` in the viewer's local zone.
+-}
+formatTimestamp : Time.Zone -> Time.Posix -> String
+formatTimestamp zone posix =
+    let
+        pad n =
+            String.padLeft 2 '0' (String.fromInt n)
+    in
+    pad (Time.toHour zone posix) ++ ":" ++ pad (Time.toMinute zone posix)
 
 
 viewComposer : Model -> Html Msg
