@@ -43,4 +43,11 @@ await build({
 
 await cp(resolve(clientDir, "index.html"), resolve(distDir, "index.html"));
 
+// Everything under client/public is copied verbatim to the asset root (fonts,
+// and anything else static the SPA references by absolute path).
+const publicDir = resolve(clientDir, "public");
+if (existsSync(publicDir)) {
+  await cp(publicDir, distDir, { recursive: true });
+}
+
 console.log("Client built in client/dist");

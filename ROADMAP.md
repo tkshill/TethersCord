@@ -49,11 +49,15 @@ with [`mdgriffith/elm-ui`](https://package.elm-lang.org/packages/mdgriffith/elm-
 
 ### Follow-ups deferred from this pass
 
-- [ ] Load a real UI typeface (Inter) — `Ui.sans` names it but nothing is
-      linked, so it falls back to the system stack. Add a `@font-face` or a
-      Google Fonts `<link>` in `client/index.html`.
-- [ ] The log's scroll-to-bottom is unconditional on every snapshot. Skip it
-      when the viewer has scrolled up to read history.
+- [x] Load a real UI typeface (Inter). The latin subset ships as a single
+      variable `.woff2` under `client/public/fonts/`, copied to the asset root
+      by `client/scripts/build.mjs` and declared with `@font-face` in
+      `client/index.html`. Self-hosted rather than pulled from Google Fonts so
+      it loads under Discord's Activity CSP; `Ui.sans` keeps the system
+      fallback, so a failed load degrades quietly.
+- [x] The log only auto-scrolls to the bottom while the viewer is already
+      there. `Model.logAtBottom` tracks it, fed by `Ui.onScrolledToBottom` on
+      the log container (`LogScrolled`); posting a message snaps back down.
 
 ## 3. Stone model — favourable vs. negative outcomes — done
 

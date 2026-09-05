@@ -262,6 +262,7 @@ messageLog zone maybeGs =
                         , spacing Ui.sm
                         , Element.scrollbarY
                         , Element.htmlAttribute (Html.Attributes.id logDomId)
+                        , Ui.onScrolledToBottom 32 LogScrolled
                         ]
                         (List.map (messageRow zone) gs.messages)
         ]

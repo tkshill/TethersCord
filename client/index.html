@@ -4,7 +4,18 @@
     <meta charset="UTF-8" />
     <title>TTRPG Discord Activity</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- You can load fonts/styles here -->
+    <style>
+      /* Self-hosted so it loads under Discord's Activity CSP; the latin subset
+         of Inter as a single variable file. Ui.sans lists "Inter" first with a
+         system fallback, so a failed load degrades quietly. */
+      @font-face {
+        font-family: "Inter";
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: swap;
+        src: url("/fonts/inter-latin-wght-normal.woff2") format("woff2");
+      }
+    </style>
     <script>
       // Inject environment-style values for the client
       window.DISCORD_CLIENT_ID = "1540421919982231692";

@@ -34,6 +34,7 @@ init flags =
       , newMessage = ""
       , status = "Authorizing with Discord…"
       , editingSlot = Nothing
+      , logAtBottom = True
       , timeZone = Time.utc
       }
     , Cmd.batch
@@ -99,6 +100,11 @@ update msg model =
         NewMessageChanged s ->
             ( { model | newMessage = s }, Cmd.none )
 
+        -- The log reports its scroll position as the viewer moves it; new
+        -- messages only auto-scroll while this stays True.
+        LogScrolled atBottom ->
+            ( { model | logAtBottom = atBottom }, Cmd.none )
+
         SendMessage ->
             case ( model.auth, model.gameState ) of
                 ( Just auth, Just _ ) ->
@@ -106,7 +112,9 @@ update msg model =
                         ( model, Cmd.none )
 
                     else
-                        ( { model | newMessage = "" }
+                        -- Posting a message is an intent to see it: snap back to
+                        -- the bottom even if reading history a moment ago.
+                        ( { model | newMessage = "", logAtBottom = True }
                         , Api.postMessage model.flags auth model.newMessage MessagePosted
                         )
 
@@ -187,7 +195,11 @@ update msg model =
             case Decode.decodeValue Api.decodeGameState value of
                 Ok gs ->
                     ( { model | gameState = Just (applyServerState model gs) }
-                    , scrollLogToBottom
+                    , if model.logAtBottom then
+                        scrollLogToBottom
+
+                      else
+                        Cmd.none
                     )
 
                 Err _ ->

@@ -13,6 +13,7 @@ module Ui exposing
     , mono
     , onBlur
     , onEnter
+    , onScrolledToBottom
     , page
     , primaryButton
     , sans
@@ -291,3 +292,22 @@ onEnter msg =
 onBlur : msg -> Attribute msg
 onBlur msg =
     Element.htmlAttribute (Html.Events.onBlur msg)
+
+
+{-| On every scroll of the element, report whether it is now within `slack`
+pixels of its bottom. Lets a scrollable region tell the app when the viewer has
+left the bottom to read back, and when they have returned.
+-}
+onScrolledToBottom : Float -> (Bool -> msg) -> Attribute msg
+onScrolledToBottom slack toMsg =
+    Element.htmlAttribute
+        (Html.Events.on "scroll"
+            (Decode.map3
+                (\scrollTop scrollHeight clientHeight ->
+                    toMsg (scrollHeight - scrollTop - clientHeight <= slack)
+                )
+                (Decode.at [ "target", "scrollTop" ] Decode.float)
+                (Decode.at [ "target", "scrollHeight" ] Decode.float)
+                (Decode.at [ "target", "clientHeight" ] Decode.float)
+            )
+        )

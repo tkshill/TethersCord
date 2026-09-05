@@ -175,6 +175,11 @@ type alias Model =
     -- overwrite a sheet while it is being edited.
     , editingSlot : Maybe Int
 
+    -- Whether the message log is scrolled to (or near) its bottom. New messages
+    -- only pull the log down when this holds, so a viewer reading back history
+    -- is left where they are.
+    , logAtBottom : Bool
+
     -- Viewer's local time zone, used to render message timestamps. Starts at
     -- UTC and is replaced once Time.here resolves.
     , timeZone : Time.Zone
@@ -190,6 +195,7 @@ type Msg
     | GotGameState (Result Http.Error GameState)
     | NewMessageChanged String
     | SendMessage
+    | LogScrolled Bool
     | MessagePosted (Result Http.Error ())
     | FromDiscordRaw Decode.Value
     | AddBoon
