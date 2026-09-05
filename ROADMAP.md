@@ -3,53 +3,57 @@
 The backend (single Worker + Durable Object + D1) is stable. Everything below is
 incremental work on top of it, roughly in priority order.
 
-## 1. Module structure
+## 1. Module structure — done
 
-`client/src/Main.elm` has grown to a single ~900-line file holding flags, model,
-messages, ports, every decoder/encoder, all HTTP commands, and the whole view.
-Elm is comfortable with large files, but this one is past the point where the
-sections earn their own modules. Do this split **before** the elm-ui pass so the
-rewrite lands in a dedicated view module rather than back in `Main`.
+`client/src/Main.elm` had grown to a single ~900-line file holding flags, model,
+messages, ports, every decoder, all HTTP commands, and the whole view. It is now
+split into focused modules:
 
-- [ ] `Types.elm` — the shared data types with no dependencies: `Role`, `Auth`,
-      `Message`, `GameState`, `PendingRoll`, `CharacterSheet`, `CharacterField`
-      and its setter. Everything else imports this; it imports nothing local.
-- [ ] `Api.elm` — `backendBaseUrl` and every `Http.request` command
-      (`getGameStateCmd`, `postMessageCmd`, `postStonesCmd`, `postCharacterUpdateCmd`,
-      `postFateCmd`), plus the JSON decoders/encoders they use. Split decoders
-      into `Api/Decode.elm` if `Api` itself gets long.
-- [ ] `Ports.elm` (`port module`) — the `toDiscord` / `fromDiscord` /
-      `wsGameState` ports, `authorizeCmd`, and `decodeFromDiscord`. Port modules
-      can live outside `Main`, so only the interop lands here.
-- [ ] `Format.elm` (or `Util/Time.elm`) — `formatTimestamp` and `monthNumber`,
-      and any other small pure helpers that accumulate.
-- [ ] `View.elm` — the view functions, moved out ahead of the elm-ui rewrite.
-      Consider `View/Messages.elm`, `View/CharacterSheet.elm`, `View/Roll.elm`
-      if it stays large after the rewrite.
-- [ ] `Main.elm` keeps only the wiring: `Flags`, `Model`, `Msg`, `init`,
-      `update`, `subscriptions`, `main`.
-- [ ] Watch for import cycles — the dependency direction is
-      `Types` ← everything, and `Main` → `Api` / `Ports` / `View` / `Format`.
+- [x] `Types.elm` — shared data types plus `Model` and `Msg`. `Model` / `Msg`
+      live here rather than in `Main` (which the first draft of this plan
+      assumed) because `View` needs them and `Main` imports `View`, so `View`
+      cannot import `Main`. Depends only on `Roll` / `Http` / `Time` / `Json`.
+- [x] `Api.elm` — every `Http.request` command and the JSON decoders they use.
+      Commands take their result message constructor as an argument, so this
+      module has no dependency on `Types.Msg`.
+- [x] `Ports.elm` (`port module`) — the `toDiscord` / `fromDiscord` /
+      `wsGameState` ports, `authorize`, and a typed `DiscordInbound` +
+      `decodeInbound` in place of the old `decodeFromDiscord`. Ports declared
+      here still surface on `app.ports`, so `main.ts` is unchanged.
+- [x] `Format.elm` — `timestamp` (and a private `monthNumber`).
+- [x] `Ui.elm` — the elm-ui visual system (see below).
+- [x] `View.elm` — the whole view. Split into `View/Messages.elm` etc. only if
+      it grows further after future UI work.
+- [x] `Main.elm` — wiring only: `init`, `update`, `subscriptions`, `main`.
 
-## 2. UI pass — `elm-ui`
+## 2. UI pass — `elm-ui` — done
 
-The current view is bare `elm/html` with class names but no stylesheet. Rebuild
-it with [`mdgriffith/elm-ui`](https://package.elm-lang.org/packages/mdgriffith/elm-ui/latest/)
-for a spare, legible layout that works inside the narrow Discord Activity iframe.
+The view was bare `elm/html` with class names but no stylesheet. It is rebuilt
+with [`mdgriffith/elm-ui`](https://package.elm-lang.org/packages/mdgriffith/elm-ui/latest/)
+`1.1.8` as a spare, paper-surfaced layout with a single slate accent.
 
-- [ ] Add `mdgriffith/elm-ui` to `client/elm.json`; introduce a `Ui` module
-      holding the palette, spacing scale, and type scale (one accent colour,
-      restrained neutrals).
-- [ ] Convert `view` to `Element.layout`. Three regions: roll panel, character
-      sheets, and the message log + composer.
-- [ ] Message log: monospace timestamp column, role emphasis (facilitator vs
-      player), comfortable line spacing, its own scroll region that sticks to
-      the bottom on new messages.
-- [ ] Character sheets as cards in a row that wraps to a column when narrow.
-- [ ] Roll panel: show the stone pool and pending roll as chips rather than a
-      bullet list.
-- [ ] Loading and error states (`model.status`) rendered as a quiet banner, not
-      raw text at the top.
+- [x] `mdgriffith/elm-ui` added to `client/elm.json`; `Ui.elm` holds the
+      palette, a `xs`/`sm`/`md`/`lg`/`xl` spacing scale, the type sizes, and the
+      building blocks (`page`, `card`, `sectionTitle`, `primaryButton`,
+      `ghostButton`, `stoneChip`, `banner`, `onEnter`, `onBlur`).
+- [x] `view` is an `Element.layout` centred on a readable column: header, status
+      banner, stones, characters, log, composer.
+- [x] Message log: monospace timestamp column, facilitator lines tinted, wrapped
+      paragraphs, its own `scrollbarY` region (`id "message-log"`) that `Main`
+      pins to the bottom via `Browser.Dom.setViewportOf` on new messages.
+- [x] Character sheets are bordered cards in a `wrappedRow` that collapses to a
+      column when narrow; notes use a multiline input.
+- [x] Stone pool and pending roll render as chips.
+- [x] `model.status` renders as a quiet banner that tints red on failures.
+- [x] Composer submits on Enter as well as the Send button.
+
+### Follow-ups deferred from this pass
+
+- [ ] Load a real UI typeface (Inter) — `Ui.sans` names it but nothing is
+      linked, so it falls back to the system stack. Add a `@font-face` or a
+      Google Fonts `<link>` in `client/index.html`.
+- [ ] The log's scroll-to-bottom is unconditional on every snapshot. Skip it
+      when the viewer has scrolled up to read history.
 
 ## 3. Message log hygiene
 

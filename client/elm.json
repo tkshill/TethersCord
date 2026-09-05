@@ -3,7 +3,7 @@
     "source-directories": [
         "src"
     ],
-    "elm-version": "0.19.2",
+    "elm-version": "0.19.1",
     "dependencies": {
         "direct": {
             "elm/browser": "1.0.2",
@@ -13,7 +13,8 @@
             "elm/json": "1.1.4",
             "elm/random": "1.0.0",
             "elm/time": "1.0.0",
-            "elm-community/random-extra": "3.2.0"
+            "elm-community/random-extra": "3.2.0",
+            "mdgriffith/elm-ui": "1.1.8"
         },
         "indirect": {
             "elm/bytes": "1.0.8",
