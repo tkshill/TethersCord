@@ -224,6 +224,62 @@ glance.
       boons as extra stone shapes in the bag rather than the
       "(N boon pledged)" caption.
 
+## 11. The overcome action and player moves
+
+The rules layer over the roll mechanic. An **overcome** is the attempt to do
+something risky; everything else here is how the other players feed into it.
+
+### The overcome
+
+- [ ] Only the facilitator can start an overcome (section 5), and it names one
+      target player.
+- [ ] Any player may still add a boon to the pool (`add-boon`) while an overcome
+      is open, but only the **target** player can Roll or Reroll to resolve it.
+      This narrows section 4's "anyone can roll" behaviour to the target for the
+      duration of an overcome.
+- [ ] A Reroll costs the target player **2 boons**, deducted when they reroll
+      (section 4's Reroll is free today).
+- [ ] Overcome state — target slot, open/resolved, the result — lives with the
+      pending roll in Durable Object storage and is broadcast in `GameState`.
+
+### Special abilities — once per session each
+
+Per character, reset when a session starts (section 7). Each needs facilitator
+approval, so this depends on an approve/deny request flow in the facilitator
+interface (section 5).
+
+- [ ] **Help Out** — the player says how they help someone who failed a roll.
+      Approved → the overcome is rerolled. (Shared consequences come later.)
+- [ ] **Add a Detail** — the player adds a detail or piece of context to the
+      scene. Approved → a **floating boon** enters the pool, usable by anyone on
+      a later roll (a boon owned by no character; a new pool concept alongside
+      per-character pledges).
+- [ ] **Gain Insight** — as Add a Detail (a floating boon), but the player asks
+      the facilitator a question and the facilitator supplies the context.
+- [ ] **Suggest Compel** — the player offers a complication to another player.
+      If that player accepts *and* the facilitator approves → the suggester
+      gains 1 boon and the accepting player gains 2.
+
+### Moves — no per-session limit
+
+- [ ] **Accept Compel** — the player takes on a complication (self-proposed or
+      facilitator-offered). Approved → 2 boons.
+- [ ] **Highlight an Aspect** — pledge a boon to the current overcome roll. This
+      is section 4's pledge / `committedBoons` mechanic under its player-facing
+      name.
+- [ ] **Press Fate** — reroll your own failed roll for 2 boons. Same cost and
+      effect as the target-player Reroll above; this is the move that names it.
+
+### What this needs in the model
+
+- [ ] Per-character, per-session ability-usage tracking (four flags), cleared on
+      session start.
+- [ ] Floating boons in the pool, distinct from `committedBoons`.
+- [ ] A request → approve/deny channel between a player and the facilitator,
+      reused by every ability and the compel moves.
+- [ ] A compel handshake: suggest → target accepts → facilitator approves, then
+      the boon payouts.
+
 ---
 
 ## Flushing test messages before the campaign
