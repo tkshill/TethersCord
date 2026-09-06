@@ -202,8 +202,9 @@ its own stone pool that fills up from the rolls made during it.
       a placeholder pending playtesting.) **Section 19 revises this:** the tiers
       go away, success is a Boons-vs-Banes comparison of the whole pool, and the
       pool's Banes carry between sessions until a failure flushes them.
-- [ ] Trim or paginate history — the DO currently loads the last 200 messages
-      and the client keeps 200. Fine for now; revisit if a campaign outgrows it.
+- [x] Trim or paginate history — **done in section 15.** The DO now loads,
+      holds, and broadcasts only the last `MESSAGE_WINDOW` (50) messages; older
+      rows are fetched on demand through `GET /messages/history`.
 - [x] Surface past `game_sessions` rows somewhere. The worker reads the last
       twenty completed sessions into `GameState.sessionHistory` (seeded on
       Durable Object start, refreshed on `/session/end`); the client shows them
@@ -571,18 +572,27 @@ facilitator-broadcast model; the payload size and the render cost are not.
       with a tagged patch — `{ t: "message", message }`, `{ t: "stones", … }`,
       `{ t: "proposals", proposals }`, and so on — that the client folds into its
       local state. Keep `{ t: "snapshot", state }` for connect and an explicit
-      resync. Shrinks a chat line from a 200-message blob to a single row and
-      cuts the client-side decode.
-- [ ] **`Element.Lazy` the message log.** `speakerColors` and `logRows` refold
-      the entire list on every render, so an unrelated stone roll re-lays 200
-      rows. Wrap the log column in `Element.Lazy.lazy` keyed on `messages`.
-- [ ] **Instant local affordances.** No optimistic apply of shared effects, but
-      the button that raises a proposal or move should flip to its "(pending)"
-      state on click rather than after the round-trip.
-- [ ] **Hold and send fewer messages.** Load and broadcast the last ~50
-      messages, not 200; older history moves behind a "load more" HTTP fetch.
-      Smaller connect snapshot, smaller re-renders. Supersedes the deferred
-      pagination note in section 7.
+      resync. Cuts the client-side decode. **Deferred** to a dedicated branch —
+      the largest and riskiest item here (rewrites the wire protocol, every
+      broadcast call site, and the client fold), and it does not reduce request
+      count. The 50-message window below already shrinks the payload.
+- [x] **`Element.Lazy` the message log.** `View.lazyLogBody` (the `speakerColors`
+      fold plus the day-divided `logRows`) is wrapped in `Element.Lazy.lazy2` on
+      `zone` / `messages`, so a re-render that does not touch `messages`
+      (composer typing, confirm arming, tab switch) skips refolding the list. A
+      socket broadcast decodes a fresh list, so it does not help there.
+- [x] **Instant local affordances.** Delivered by section 14's in-flight
+      de-duplication: `View.press` renders a raising control disabled while its
+      action key is in `model.inflight`, so it flips on click. Wired for the roll
+      panel and the proposal queue; the moves card relies on the `update`-layer
+      guard for now.
+- [x] **Hold and send fewer messages.** `MESSAGE_WINDOW` (50) caps what the
+      Durable Object loads, holds (`capMessages`), and broadcasts;
+      `GET /messages/history?before=<createdAt>` (read-only, no lock, no
+      broadcast) returns the previous page, prepended client-side behind a
+      "Load earlier messages" affordance (`LoadEarlierMessages` /
+      `GotEarlierMessages`). Supersedes the deferred pagination note in
+      section 7.
 
 ## 16. Storage and write economy
 

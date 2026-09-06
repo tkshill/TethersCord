@@ -21,6 +21,7 @@ import Dict exposing (Dict)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
+import Element.Lazy
 import Format
 import Html exposing (Html)
 import Html.Attributes
@@ -59,7 +60,7 @@ view model =
         , characterSheets facilitator myId model.selectedSlot model.gameState
         , entityCard Npc facilitator model.gameState
         , entityCard Location facilitator model.gameState
-        , messageLog facilitator model.confirming model.timeZone model.gameState
+        , messageLog facilitator model.confirming model.loadingHistory model.noMoreHistory model.timeZone model.gameState
         , composer model
         ]
 
@@ -1216,8 +1217,8 @@ entityRow kind facilitator entity =
 -- LOG
 
 
-messageLog : Bool -> Maybe String -> Time.Zone -> Maybe GameState -> Element Msg
-messageLog facilitator confirming zone maybeGs =
+messageLog : Bool -> Maybe String -> Bool -> Bool -> Time.Zone -> Maybe GameState -> Element Msg
+messageLog facilitator confirming loadingHistory noMoreHistory zone maybeGs =
     Ui.card
         [ logHeader facilitator confirming maybeGs
         , case maybeGs of
@@ -1237,8 +1238,45 @@ messageLog facilitator confirming zone maybeGs =
                         , Element.htmlAttribute (Html.Attributes.id logDomId)
                         , Ui.onScrolledToBottom 32 LogScrolled
                         ]
-                        (logRows zone (speakerColors gs.messages) gs.messages)
+                        [ loadEarlierRow loadingHistory noMoreHistory gs.messages
+                        , Element.Lazy.lazy2 lazyLogBody zone gs.messages
+                        ]
         ]
+
+
+{-| The expensive part of the log — the speaker-colour fold and the day-divided
+rows — behind `Element.Lazy` so re-renders that do not touch `messages` (typing
+in the composer, arming a confirm, switching a tab) skip refolding the whole
+list. A socket broadcast still decodes a fresh list, so it does not help there.
+-}
+lazyLogBody : Time.Zone -> List Message -> Element Msg
+lazyLogBody zone messages =
+    Element.column [ width fill, spacing Ui.sm ]
+        (logRows zone (speakerColors messages) messages)
+
+
+{-| A "load earlier messages" affordance at the top of the log, shown only while
+there may be more to fetch. -}
+loadEarlierRow : Bool -> Bool -> List Message -> Element Msg
+loadEarlierRow loadingHistory noMoreHistory messages =
+    if noMoreHistory || List.length messages < logWindow then
+        none
+
+    else
+        el [ Element.centerX ]
+            (if loadingHistory then
+                el [ Font.size 11, Font.color Ui.inkSoft ] (text "Loading earlier messages…")
+
+             else
+                Ui.ghostButton { onPress = Just LoadEarlierMessages, label = "Load earlier messages" }
+            )
+
+
+{-| Matches the Worker's `MESSAGE_WINDOW`: below this many rows loaded, there is
+nothing earlier to ask for. -}
+logWindow : Int
+logWindow =
+    50
 
 
 logHeader : Bool -> Maybe String -> Maybe GameState -> Element Msg

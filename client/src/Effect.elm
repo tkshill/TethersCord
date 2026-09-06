@@ -37,6 +37,7 @@ type Effect
     | DebouncePledge Int Float
       -- Reads
     | GetGameState Auth
+    | GetMessageHistory Auth Int
       -- Mutations (204-only; the result arrives on the socket)
     | PostMessage Auth String
     | PostClearMessages Auth
@@ -97,6 +98,9 @@ perform flags effect =
 
         GetGameState auth ->
             Api.getGameState flags auth GotGameState
+
+        GetMessageHistory auth before ->
+            Api.getMessageHistory flags auth before GotEarlierMessages
 
         PostMessage auth content ->
             Api.postMessage flags auth content MessagePosted

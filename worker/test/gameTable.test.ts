@@ -62,6 +62,47 @@ describe("GameTable state machine", () => {
     });
   });
 
+  describe("the message window", () => {
+    it("keeps the snapshot to the last 50 and serves older rows from /messages/history", async () => {
+      const table = "gt-msg-window";
+      const { token } = await seedAuth(undefined, { facilitator: true });
+
+      // 60 messages, created_at 1000, 2000, … 60000.
+      const stmt = env.DB.prepare(
+        `INSERT INTO messages (id, session_id, author_id, author_name, role, content, created_at)
+         VALUES (?, ?, 'u', 'U', 'player', ?, ?)`,
+      );
+      await env.DB.batch(
+        Array.from({ length: 60 }, (_, i) =>
+          stmt.bind(`m${i + 1}`, table, `msg ${i + 1}`, (i + 1) * 1000),
+        ),
+      );
+
+      const state = await readState(table, token);
+      expect(state.messages).toHaveLength(50);
+      // Oldest carried is #11 (created_at 11000); newest is #60.
+      expect(state.messages[0].content).toBe("msg 11");
+      expect(state.messages[49].content).toBe("msg 60");
+
+      const res = await call(table, "/messages/history?before=11000", {
+        token,
+        method: "GET",
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { messages: { content: string }[] };
+      expect(body.messages).toHaveLength(10);
+      expect(body.messages[0].content).toBe("msg 1");
+      expect(body.messages[9].content).toBe("msg 10");
+    });
+
+    it("400s /messages/history without a numeric before", async () => {
+      const table = "gt-msg-history-bad";
+      const { token } = await seedAuth(undefined, { facilitator: true });
+      const res = await call(table, "/messages/history", { token, method: "GET" });
+      expect(res.status).toBe(400);
+    });
+  });
+
   describe("the auth lookup cache", () => {
     it("serves a token from DO memory for a minute, sparing the D1 join per request", async () => {
       const table = "gt-authcache";

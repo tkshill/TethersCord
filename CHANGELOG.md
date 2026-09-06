@@ -31,6 +31,20 @@ version yet, so headings are dates.
 
 ### Changed
 
+- Snappier realtime updates (roadmap section 15):
+  - **The connect snapshot and every broadcast now carry only the last 50
+    messages** (`MESSAGE_WINDOW`), not 200 — a smaller payload and a smaller
+    re-render on every table action. A new read-only
+    `GET /api/table/:id/messages/history?before=<createdAt>` returns the
+    preceding page, behind a "Load earlier messages" affordance at the top of
+    the log. Supersedes the section 7 pagination note.
+  - **The message log renders behind `Element.Lazy`**, so a re-render that does
+    not change `messages` (typing in the composer, arming a confirm, switching a
+    character tab) no longer refolds the speaker-colour map and the day-divided
+    rows over the whole list.
+  - **Buttons that raise a proposal or move flip to a disabled/pending state on
+    click** rather than after the round-trip (delivered by the section 14
+    in-flight de-duplication; wired for the roll panel and the proposal queue).
 - Fewer counted requests per action, to stay well inside the Cloudflare Free
   budget (roadmap section 14):
   - **Cold launch.** The client no longer spends an HTTP `getGameState` on the
