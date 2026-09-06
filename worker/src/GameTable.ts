@@ -1490,9 +1490,10 @@ export class GameTable implements DurableObject {
       const boons = drawn.filter((s) => s === "Boon").length;
       const untetheredTarget =
         this.gameState!.untether?.slot === overcome.targetSlot;
+      const routed = routeOvercomeDraw(drawn, untetheredTarget);
+      poolAdds.push(...routed.poolAdds);
 
-      if (boons === 1 && !untetheredTarget) {
-        poolAdds.push("Boon");
+      if (routed.marksAspect) {
         const aspect = ASPECT_NAMES[randomInt(ASPECT_NAMES.length)];
         const target = characters.find((c) => c.slot === overcome.targetSlot);
         if (target) {
@@ -1516,7 +1517,6 @@ export class GameTable implements DurableObject {
           routeNote = `Boon to the pool, Bane onto ${aspect}`;
         }
       } else {
-        poolAdds.push(...drawn);
         routeNote =
           boons === 2
             ? "both Boons to the pool"
@@ -1718,14 +1718,7 @@ export class GameTable implements DurableObject {
     let untetherNote = "";
 
     if (!success && untether === null && !wasConsecutiveFailure) {
-      const bag: { slot: number; aspect: AspectName }[] = [];
-      for (const c of characters) {
-        for (const aspect of ASPECT_NAMES) {
-          for (let i = 0; i < c.aspectBanes[aspect]; i++) {
-            bag.push({ slot: c.slot, aspect });
-          }
-        }
-      }
+      const bag = aspectBaneBag(characters);
 
       if (bag.length > 0) {
         const pick = bag[randomInt(bag.length)];
@@ -2260,6 +2253,41 @@ function pickTwoRandom(pool: StoneKind[]): PendingRoll {
   });
 
   return { chosen, rest };
+}
+
+/**
+ * Section 19 stone routing for an accepted overcome roll, kept pure so it can be
+ * unit-tested exhaustively. `marksAspect` is true only for a mixed draw against
+ * a not-untethered target — the caller then picks which aspect at random and
+ * writes it; otherwise every drawn stone is returned in `poolAdds`.
+ */
+export function routeOvercomeDraw(
+  drawn: StoneKind[],
+  untetheredTarget: boolean,
+): { poolAdds: StoneKind[]; marksAspect: boolean } {
+  const boons = drawn.filter((s) => s === "Boon").length;
+  if (drawn.length === 2 && boons === 1 && !untetheredTarget) {
+    return { poolAdds: ["Boon"], marksAspect: true };
+  }
+  return { poolAdds: [...drawn], marksAspect: false };
+}
+
+/**
+ * The weighted draw bag for untethering: one `{ slot, aspect }` entry per Bane
+ * on every aspect of every character. Pure; the caller draws from it at random.
+ */
+export function aspectBaneBag(
+  characters: readonly Pick<CharacterSheet, "slot" | "aspectBanes">[],
+): { slot: number; aspect: AspectName }[] {
+  const bag: { slot: number; aspect: AspectName }[] = [];
+  for (const c of characters) {
+    for (const aspect of ASPECT_NAMES) {
+      for (let i = 0; i < c.aspectBanes[aspect]; i++) {
+        bag.push({ slot: c.slot, aspect });
+      }
+    }
+  }
+  return bag;
 }
 
 /** Rejection sampling, so the low indices are not favoured by modulo bias. */
