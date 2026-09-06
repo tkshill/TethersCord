@@ -303,30 +303,126 @@ session. Raised from the **Moves** card once a player holds a sheet.
       agreeing is handled at the table, so no suggest → accept → approve
       handshake was needed.
 
-## 11. Effect pattern + tests
+## 11. Effect pattern + a test suite across client and worker
 
-`update` currently returns `( Model, Cmd Msg )` and calls `Api` / `Ports` /
-`Browser.Dom` directly. The [Effect pattern](https://elm-radio.com/episode/single-out-effects/)
-replaces the `Cmd` with a custom `Effect Msg` type that only *describes* side
-effects, turning `update` into a pure function that returns data.
+There is no automated test anywhere in the project. `pnpm run build` — an
+optimised Elm compile plus `tsc --noEmit` on both sides — is the whole safety
+net, and it only catches type errors. Every gameplay rule (the proposal queue,
+the overcome, the session lifecycle, once-per-session abilities, fate costs) is
+checked by hand in a running Activity. This section builds a suite worth running
+before each new feature: pure Elm tests on the client, and `workerd`-hosted
+tests on the Worker and Durable Object.
 
-Worth doing, but the main payoff — a `update` that can be asserted on without
-mocking `Cmd` — only lands with a test suite, so treat these as one unit of
-work rather than a standalone reorganisation. Sequenced after the gameplay
-sections above so the shape of `update` has settled first.
+Sequenced after the gameplay sections above so the shape of `update` and of
+`GameTable` has settled first. The client refactor and the first Elm tests are
+one unit of work — the payoff of a pure `update` only lands once something
+asserts on it.
+
+### Client: the Effect pattern
+
+`update` currently returns `( Model, Cmd Msg )` and reaches straight into `Api`,
+`Ports`, and `Browser.Dom`. The [Effect pattern](https://elm-radio.com/episode/single-out-effects/)
+swaps the `Cmd` for a custom `Effect Msg` that only *describes* a side effect,
+leaving `update` a pure function that returns data a test can inspect.
 
 - [ ] `Effect.elm` — an `Effect msg` type with one constructor per side effect
-      the app performs (`GetGameState`, `PostMessage`, `PostStones`,
-      `PostCharacterUpdate`, `PostFate`, `Authorize`, `GetTimeZone`,
-      `ScrollLogToBottom`, `None`, `Batch`). `Api` and `Ports` keep the "how";
-      `Effect` names the "what".
-- [ ] `Effect.perform : Effect Msg -> Cmd Msg`, called once at the `Main`
-      boundary. `update : Msg -> Model -> ( Model, Effect Msg )`.
-- [ ] Add `elm-explorations/test` and `avh4/elm-program-test`; cover the
-      snapshot-merge logic in `Main.applyServerState` (keeping the sheet under
-      the cursor), the empty-message send guard, and the auth → load-state
-      sequence.
-- [ ] Wire `pnpm run test:client` into `pnpm run build`.
+      the app performs: `GetGameState`, `PostMessage`, `PostStones`,
+      `PostCharacterUpdate`, `PostFate`, `PostCommitBoon`, `PostProposalDecision`,
+      `PostAbility`, `PostSession`, `PostOvercome`, `Authorize`, `GetTimeZone`,
+      `ScrollLogToBottom`, `None`, `Batch (List (Effect msg))`. `Api` and `Ports`
+      keep the "how"; `Effect` names the "what".
+- [ ] `Effect.perform : Flags -> Effect Msg -> Cmd Msg` at the `Main` boundary,
+      called once from `init` and once from the `update` wrapper.
+      `update : Msg -> Model -> ( Model, Effect Msg )`.
+- [ ] No behaviour change — `build:client` is the check. The diff is mechanical:
+      each `Api.postX ... Ctor` becomes an `Effect` value.
+
+### Client: Elm tests
+
+- [ ] Add `elm-explorations/test` to `client/elm.json` `test-dependencies`, and
+      `avh4/elm-program-test` for the flows that span several messages.
+- [ ] Unit tests, no program harness:
+  - `Api` decoders round-trip against captured `GameState` / message /
+    character JSON, including the awkward cases: an open overcome, a pending
+    roll, floating boons, a proposal of each `kind`.
+  - `Main.applyServerState` keeps the sheet under the cursor when a server
+    snapshot lands mid-edit, and takes the server copy otherwise.
+  - the empty-message send guard in `update` (`SendMessage` with a blank
+    `newMessage` yields `Effect.None`).
+  - `Format.timestamp` and the `Roll` stone helpers.
+- [ ] `elm-program-test` flows:
+  - auth → `GetGameState` → `GotGameState` seeds the board; a later socket
+    snapshot wins over a slower `GET /messages` (`GotGameState` guards on
+    `model.gameState`).
+  - raising a move queues it and shows the "(pending)" hint without touching
+    shared state.
+- [ ] `client/tests/`, run with the `elm-test` CLI (or `elm-test-rs`), invoked
+      through the pinned `node_modules/elm` binary the way `build.mjs` does.
+
+### Worker and Durable Object: Vitest in `workerd`
+
+`@cloudflare/vitest-pool-workers` runs Vitest specs *inside* `workerd` with real
+`env` bindings — a live `GameTable` Durable Object and a real D1 instance with
+`worker/migrations/` applied — so tests exercise the actual storage and
+hibernation paths, not a mock. It runs entirely locally, touches no Cloudflare
+account, and costs nothing against the Free tier.
+
+- [ ] `worker/vitest.config.ts` using `defineWorkersConfig`, pointed at
+      `wrangler.jsonc` for bindings and declaring the D1 migrations so each test
+      file starts from a migrated, empty database.
+- [ ] Discord is the only external call; stub `fetch` to `discord.com` in a
+      setup file so the suite is fully offline. `handleDiscordExchange` gets a
+      canned token + `users/@me` response.
+
+### What the worker tests cover
+
+- [ ] **`GameTable` state machine**, driven through `stub.fetch` against the DO:
+  - proposal lifecycle — `add-boon` / `commit` / `abilities/use` /
+    `moves/accept-compel` / `stones/use-floating` append a `Proposal`;
+    `/proposals/:id/accept` applies it (and pays `ACCEPT_COMPEL_BOONS`,
+    `SUGGEST_COMPEL_SUGGESTER_BOONS` / `SUGGEST_COMPEL_TARGET_BOONS` where
+    relevant); `/reject` drops it with no effect.
+  - the overcome — `/overcome/start` frames a target; `/stones/roll` and
+    `/stones/reroll` are allowed to the target player while it is open and
+    rejected otherwise; a reroll deducts `REROLL_COST` from the target's
+    `fate`; `/stones/accept` clears the overcome.
+  - session lifecycle — `/session/start` and `/session/end` clear
+    `floatingBoons`, `usedAbilities`, `overcome`, `pendingRoll`,
+    `committedBoons`, and unresolved `proposals` (the section 12 invariant,
+    pinned by a test).
+  - once-per-session abilities — a second `help-out` from the same slot after
+    an accepted one is refused; `usedAbilities` resets on session start/end.
+  - cold-start load — seed `messages` / `characters` rows in D1, spin up the
+    DO, assert the first snapshot matches.
+- [ ] **Auth gates** — every route rejects a missing / malformed / expired
+      bearer token; `facilitatorOnly` routes 403 for a player; `rollGate` routes
+      allow the facilitator always and the overcome target conditionally.
+- [ ] **`withLock` serialisation** — fire two mutations concurrently at one DO
+      and assert neither lost-updates the other (two `add-boon` accepts leave
+      the pool at +2).
+- [ ] **The `index.ts` proxy** — `tableId` from the path overwrites any
+      `?tableId=` in the query; `TABLE_ID_PATTERN` rejects an out-of-range id
+      with 400; the path is rewritten before it reaches the stub.
+- [ ] **`oauth-discord.ts`** — `inferRole` returns `facilitator` for
+      `BOOTSTRAP_FACILITATOR_ID` and for a seeded `facilitators` row, `player`
+      otherwise; `pruneExpiredSessions` deletes only rows past `expires_at`.
+
+### Shared fixtures
+
+- [ ] A small builder module (`worker/test/fixtures.ts`) for `GameState`,
+      `Character`, `Proposal`, and `BackendAuthResult` values, so a test states
+      only the fields it cares about. Types come from `worker/src/types.ts` —
+      the same file the client imports — so a fixture that stops compiling flags
+      a contract change.
+
+### Scripts and CI
+
+- [ ] `pnpm run test:client` (elm-test) and `pnpm run test:worker` (vitest),
+      plus `pnpm run test` running both.
+- [ ] Fold `test` into `pnpm run build` after `typecheck`, so the pre-deploy
+      gate runs the suite.
+- [ ] `.github/workflows/ci.yml` — `pnpm install` then `pnpm run build` (client
+      bundle + typecheck + tests) on push and PR. The first CI the project has.
 
 ## 12. Correctness, session lifecycle, and UX cleanup
 
