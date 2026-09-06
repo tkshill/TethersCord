@@ -97,53 +97,77 @@ How a roll resolves, as built:
 Follow-ups:
 
 - [ ] Facilitator-set difficulty: let the facilitator add Bane stones to a roll
-      from the fiction instead of the fixed two (waits on section 5's role-gated
-      interface).
+      from the fiction instead of the fixed two. Deferred — the fixed two Bane
+      stay for now.
 - [ ] Bind a character sheet to a Discord user so "pledge my boons" needs no
       slot picker.
-- [ ] Decide where boons are earned — right now anyone can bump the count with
-      the sheet's +/- buttons.
+- [x] Where boons are earned: the sheet's boon `+` / `−` is now facilitator-only
+      (section 5), so the facilitator grants boons. Player-initiated gains will
+      come through the proposal flow (moves like Accept Compel).
 
-## 5. Facilitator identity and a role-gated interface
+## 5. Facilitator identity and the proposal model
 
-Role is decided at auth time: `facilitator` if the Discord user id is in the
-`facilitators` table, otherwise `player` (`inferRoleFromDb` in
-`oauth-discord.ts`, mirrored in `GameTable.ts`). That table is
-`(discord_user_id, created_at)` and is seeded by inserting rows by hand. Every
-client currently renders the same `View`.
+Role is decided at auth time: `facilitator` if the Discord user id matches
+`BOOTSTRAP_FACILITATOR_ID` **or** appears in the `facilitators` table, otherwise
+`player` (`inferRole` in `oauth-discord.ts`, mirrored in
+`GameTable.getAuthFromToken`).
 
-- [ ] **For the first campaign, use the existing allowlist.** Insert the
-      facilitator's Discord user id into `facilitators` and leave it there — it
-      already survives re-launches, is table-independent, and the facilitator is
-      a known single person. Nothing new is needed to get unblocked.
-- [ ] **Self-serve claiming is the eventual replacement**, for running games
-      without hand-seeding rows: the first authenticated user at a given
-      `tableId` with no facilitator yet claims it, stored as a
-      `facilitator_user_id` on a per-table row (new migration). Needs a
-      hand-off/reassign path and has an obvious failure mode (a player launching
-      before the facilitator). Defer until it is actually needed.
-- [ ] **Split the interface by role.** `Role` is already on `Auth`, so `View`
-      can branch on `model.auth`. Facilitator-only controls likely include: the
-      `messages/clear` route (section 6), stone / roll administration, granting
-      positive stones to players (section 4), and session start/end markers
-      (section 7). Players get a reduced view without those.
-- [ ] The Worker must **enforce** the role on those routes, not just hide the
-      buttons. Several stone routes (`handleAddBoon`, `handleCommitBoon`,
-      `handleAcceptRoll`) currently take no auth info at all, and `handleRoll`
-      ignores the `authInfo` it is given.
+The interface is **facilitator-driven**: the facilitator acts on shared game
+state directly; a player who wants to change shared state makes a *proposal*
+that the facilitator accepts or rejects, and only an accepted proposal updates
+the broadcast `GameState`. Players still edit their own character sheets
+directly — sheets are not shared state in that sense.
+
+### Done
+
+- [x] `BOOTSTRAP_FACILITATOR_ID` (a `wrangler.jsonc` var, overridable in
+      `.dev.vars`) names the facilitator without a DB write. **Set it to your
+      Discord user id — with it empty and no `facilitators` rows, everyone is a
+      player and nobody can roll, grant boons, or clear the log.**
+- [x] Facilitator-only routes, enforced in the Worker with a `facilitatorOnly`
+      gate returning 403: `stones/roll`, `stones/reroll`, `stones/accept`,
+      `characters/:slot/fate`, and `messages/clear`. Players keep `message`,
+      `characters/:slot/update`, `stones/add-boon`, and `stones/commit` (pledge).
+- [x] Role-gated `View`: `isFacilitator model` hides the Roll / Reroll / Accept
+      buttons, the boon `+` / `−`, and Clear log from players. The pool, the
+      pending roll, and a player's own pledge control stay visible.
+
+### The proposal flow — still to build
+
+- [ ] A pending-proposals list in the Durable Object: a player action on shared
+      state (pledging a boon, and later every section 11 move) writes a proposal
+      instead of mutating; it is broadcast in `GameState`.
+- [ ] Facilitator accept / reject. Accept applies the effect and clears the
+      proposal; reject just clears it. Both broadcast.
+- [ ] Client: players see their proposal as pending; the facilitator sees a
+      queue with accept / reject. Decide what the proposer sees in the meantime
+      (optimistic vs. plain "waiting").
+- [ ] Fold `stones/commit` into this once it exists — pledging becomes a
+      proposal rather than a direct player route.
+
+### Deferred
+
+- [ ] **Self-serve claiming** — first authenticated user at a `tableId` with no
+      facilitator claims it, stored per-table (new migration). Needs a hand-off
+      path; obvious failure mode is a player launching first. Not needed while
+      `BOOTSTRAP_FACILITATOR_ID` covers a single known facilitator.
 
 ## 6. Message log hygiene
 
-- [ ] Facilitator-only `POST /api/table/:id/messages/clear` route in the Worker
-      that deletes the session's rows from D1 **and** resets the Durable
-      Object's in-memory `gameState.messages`, then broadcasts. This is the
-      supported way to wipe a log; see "Flushing test messages" below for the
-      one-off manual path.
-- [ ] Visually separate system/log lines (rolls) from player chat. Consider a
-      `kind` column on `messages` (`chat` | `system`) so the client does not
-      have to pattern-match on content.
-- [ ] Day dividers in the log now that timestamps carry the date and a table
-      spans multiple real-world days.
+- [x] Facilitator-only `POST /api/table/:id/messages/clear` route
+      (`handleClearMessages`): deletes the session's rows from D1, drops the
+      Durable Object's in-memory `gameState.messages`, broadcasts. Surfaced as a
+      "Clear log" button in the log card for the facilitator. This is the
+      supported way to wipe a log; "Flushing test messages" below is the manual
+      fallback.
+- [x] Tell speakers apart by colour, not by a system/chat split. The play group
+      is voice-first, so the log is almost all move and event lines rather than
+      chat; a `kind` column was not worth it. `Ui.speakerColor` gives the
+      facilitator and each player (in first-speak order) a stable name colour
+      via `View.speakerColors`.
+- [x] Day dividers: `Ui.divider` between messages whenever the calendar date
+      changes (`View.logRows`); rows now show only `HH:MM` (`Format.clock`)
+      since the divider carries the date.
 
 ## 7. Session / campaign structure
 
@@ -275,8 +299,8 @@ interface (section 5).
 - [ ] Per-character, per-session ability-usage tracking (four flags), cleared on
       session start.
 - [ ] Floating boons in the pool, distinct from `committedBoons`.
-- [ ] A request → approve/deny channel between a player and the facilitator,
-      reused by every ability and the compel moves.
+- [ ] The section 5 proposal flow (player proposes → facilitator accepts /
+      rejects), reused by every ability and the compel moves.
 - [ ] A compel handshake: suggest → target accepts → facilitator approves, then
       the boon payouts.
 
