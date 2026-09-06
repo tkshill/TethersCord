@@ -930,28 +930,38 @@ the Worker.
 
 ### Step 6 — split `GameTable.ts`
 
+**Part 1 done** — the low-risk items that need no module reshaping:
+
+- [x] **`private get game(): GameState`** — the ~85 `this.gameState!` reads are
+      now `this.game`; the one non-null assertion lives in the getter.
+- [x] **`commit()` helper** — `commit(next, logLine?)` folds the
+      `gameState = …; saveStoneState; appendMessage?; broadcast; ackResponse()`
+      trailer. Every mutating handler now ends in one `return this.commit(…)`,
+      so its diff is just the `next` it builds.
+- [x] **`Promise.all` the independent cold-start reads** in `loadInitialState`
+      (the messages query, `loadOrCreateCharacters`, `loadStoneState`,
+      `loadSessionHistory`, the two `loadEntities`).
+- [x] **`const UUID = "[0-9a-fA-F-]{36}"`** shared by the two id route regexes.
+
+**Part 2 not started** — the module reshaping, deferred as its own effort so it
+gets the dedicated test-coverage pass the roadmap's "no behaviour change" gate
+needs (the existing suite does not touch every handler path):
+
 - [ ] **Route table.** Replace the `fetch` if-ladder with a declarative
       `ROUTES` array — `{ method, path: string | RegExp, gate?: "facilitator" |
-      "roll", handler }` — matched in a loop. Extract
-      `const UUID = "[0-9a-fA-F-]{36}"` (inlined in two regexes) and a
-      `parseSlot(raw): number | null` for the repeated slot-range check.
-- [ ] **`commit()` helper** — fold the
-      `gameState = { … }; await saveStoneState(…); await appendMessage?(…);
-      broadcast(…); return ackResponse()` trailer (in ~24 handlers) into one
-      call, so each handler's diff is just the state change.
-- [ ] **`private get game(): GameState`** — drops the ~85 `this.gameState!`
-      non-null assertions.
+      "roll", handler }` — matched in a loop, plus a `parseSlot` helper.
 - [ ] **Handler modules** under `worker/src/handlers/`: `stones`, `session`,
       `characters`, `entities`, `proposals`. Each takes a `HandlerContext`
-      (`{ game, env, commit, appendMessage, broadcast }`). The DO class keeps
-      routing, lifecycle (`ensureLoaded` / `loadInitialState` / `handleConnect` /
-      the `webSocket*` hooks), `withLock`, auth, and the context object.
-- [ ] **`Promise.all` the independent cold-start reads** in `loadInitialState`
-      (messages, `loadSessionHistory`, the two `loadEntities`) — meaningful on
-      the Free-tier cold path.
+      (`{ game, env, commit, appendMessage, broadcast }`, plus a way to write
+      back the `carriedBanes` / `lastSessionFailed` instance fields). The DO
+      class keeps routing, lifecycle, `withLock`, auth, and the context. This
+      also absorbs step 5's `handleProposalDecision` per-kind resolver
+      extraction, whose arms lean on `drawFromBag` / `bumpFate` / `readJson`.
 - [ ] Update the `GameTable` description in `CLAUDE.md` and the test-coverage
-      notes in section 11 / `CLAUDE.md` for the new module layout.
-- Target: no file in `worker/src/` over ~500 lines.
+      notes for the new module layout.
+- Target: no file in `worker/src/` over ~500 lines. (GameTable.ts is ~2200
+      after part 1 — the `!` and trailer noise is gone but the reshaping is
+      what shrinks it.)
 
 ### Step 7 — smaller TS cleanup
 

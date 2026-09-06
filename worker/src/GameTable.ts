@@ -89,6 +89,10 @@ const ABILITY_KINDS: readonly AbilityKind[] = [
   "suggest-compel",
 ];
 
+/** A crypto.randomUUID() shape, for the `/proposals/:id/…` and
+ * `/{npcs,locations}/:id/…` route patterns. */
+const UUID = "[0-9a-fA-F-]{36}";
+
 /** Sanity bound on a single coalesced pledge delta; `applyPledge` clamps the
  * real effect to what the character holds anyway. */
 const MAX_PLEDGE_DELTA = 50;
@@ -164,6 +168,15 @@ export class GameTable implements DurableObject {
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
+  }
+
+  /**
+   * The loaded game state. Every route runs after `ensureLoaded` in `fetch`, so
+   * by the time a handler reads this it is always populated — this getter is the
+   * one place that assertion lives, instead of ~85 `this.gameState!` sites.
+   */
+  private get game(): GameState {
+    return this.gameState!;
   }
 
   private async resolveAuthToken(token: string): Promise<AuthInfo | null> {
@@ -268,7 +281,7 @@ export class GameTable implements DurableObject {
     }
 
     const proposalMatch = url.pathname.match(
-      /^\/proposals\/([0-9a-fA-F-]{36})\/(accept|reject|withdraw)$/,
+      new RegExp(`^/proposals/(${UUID})/(accept|reject|withdraw)$`),
     );
     if (proposalMatch && request.method === "POST") {
       const [, proposalId, action] = proposalMatch;
@@ -416,7 +429,7 @@ export class GameTable implements DurableObject {
     }
 
     const entityMatch = url.pathname.match(
-      /^\/(npcs|locations)\/([0-9a-fA-F-]{36})\/(update|delete)$/,
+      new RegExp(`^/(npcs|locations)/(${UUID})/(update|delete)$`),
     );
     if (entityMatch && request.method === "POST") {
       const kind = entityMatch[1] as EntityKind;
@@ -493,6 +506,26 @@ export class GameTable implements DurableObject {
     }
   }
 
+  /**
+   * The trailer every mutating handler shares: install the new state, persist
+   * the stone slice (a byte-identical slice is skipped, so this is cheap even on
+   * a character- or entity-only change), append a log line if one was given,
+   * broadcast, and return the 204 ack. A handler's own diff is then just the
+   * `next` it builds.
+   */
+  private async commit(
+    next: GameState,
+    logLine?: AddMessageInput,
+  ): Promise<Response> {
+    this.gameState = next;
+    await this.saveStoneState(next);
+    if (logLine) {
+      await this.appendMessage(logLine);
+    }
+    this.broadcast(this.game);
+    return ackResponse();
+  }
+
   private ensureLoaded(sessionId: string): Promise<string> {
     if (!this.initPromise) {
       this.initPromise = this.loadInitialState(sessionId).catch((error) => {
@@ -518,27 +551,34 @@ export class GameTable implements DurableObject {
       );
     }
 
-    const rows = await this.env.DB.prepare(
-      `
-      SELECT id, session_id AS sessionId, author_id AS authorId,
-             author_name AS authorName, role, content, created_at AS createdAt
-      FROM messages
-      WHERE session_id = ?
-      ORDER BY created_at DESC, id DESC
-      LIMIT ?
-    `,
-    )
-      .bind(sessionId, MESSAGE_WINDOW)
-      .all<Message>();
+    // These six reads are independent — different tables plus the KEY_STONES
+    // blob — so they run concurrently. Meaningful on the Free-tier cold path.
+    const [messageRows, characters, stones, sessionHistory, npcs, locations] =
+      await Promise.all([
+        this.env.DB.prepare(
+          `
+          SELECT id, session_id AS sessionId, author_id AS authorId,
+                 author_name AS authorName, role, content, created_at AS createdAt
+          FROM messages
+          WHERE session_id = ?
+          ORDER BY created_at DESC, id DESC
+          LIMIT ?
+        `,
+        )
+          .bind(sessionId, MESSAGE_WINDOW)
+          .all<Message>(),
+        this.loadOrCreateCharacters(sessionId),
+        this.loadStoneState(),
+        this.loadSessionHistory(sessionId),
+        this.loadEntities(sessionId, "npcs"),
+        this.loadEntities(sessionId, "locations"),
+      ]);
 
-    const messages = rows.results ? [...rows.results].reverse() : [];
-    const characters = await this.loadOrCreateCharacters(sessionId);
-    const stones = await this.loadStoneState();
+    const messages = messageRows.results
+      ? [...messageRows.results].reverse()
+      : [];
     this.carriedBanes = stones.carriedBanes;
     this.lastSessionFailed = stones.lastSessionFailed;
-    const sessionHistory = await this.loadSessionHistory(sessionId);
-    const npcs = await this.loadEntities(sessionId, "npcs");
-    const locations = await this.loadEntities(sessionId, "locations");
 
     this.gameState = {
       sessionId,
@@ -742,15 +782,14 @@ export class GameTable implements DurableObject {
       return new Response("Message content is required", { status: 400 });
     }
 
-    await this.appendMessage({
+    // No state of its own to change — `commit` just persists the message and
+    // broadcasts.
+    return this.commit(this.game, {
       authorId: authInfo.discordUserId,
       authorName: authInfo.username,
       role: authInfo.role,
       content,
     });
-
-    this.broadcast(this.gameState!);
-    return ackResponse();
   }
 
   /**
@@ -792,27 +831,20 @@ export class GameTable implements DurableObject {
    */
   private async handleClearMessages(): Promise<Response> {
     await this.env.DB.prepare(`DELETE FROM messages WHERE session_id = ?`)
-      .bind(this.gameState!.sessionId)
+      .bind(this.game.sessionId)
       .run();
 
-    this.gameState = { ...this.gameState!, messages: [] };
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    return this.commit({ ...this.game, messages: [] });
   }
 
   /** Add one Boon to the shared pool. Direct only for the facilitator. */
   private async applyAddBoon(): Promise<Response> {
-    // Read `this.gameState` fresh rather than from a snapshot taken before an
-    // await, so concurrent requests cannot clobber each other's writes.
-    this.gameState = {
-      ...this.gameState!,
-      stonePool: [...this.gameState!.stonePool, "Boon"],
-    };
-    await this.saveStoneState(this.gameState);
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    // Read `this.game` fresh rather than from a snapshot taken before an await,
+    // so concurrent requests cannot clobber each other's writes.
+    return this.commit({
+      ...this.game,
+      stonePool: [...this.game.stonePool, "Boon"],
+    });
   }
 
   /** A player asking to add a boon to the pool — queued for the facilitator. */
@@ -848,7 +880,7 @@ export class GameTable implements DurableObject {
       return new Response("delta must be a non-zero integer", { status: 400 });
     }
 
-    const character = this.gameState!.characters.find(
+    const character = this.game.characters.find(
       (c) => c.ownerId === authInfo.discordUserId,
     );
     if (!character) {
@@ -879,11 +911,11 @@ export class GameTable implements DurableObject {
     if (!kind || !ABILITY_KINDS.includes(kind)) {
       return new Response("Unknown ability", { status: 400 });
     }
-    if (!this.gameState!.session) {
+    if (!this.game.session) {
       return new Response("Abilities need a running session", { status: 400 });
     }
 
-    const character = this.gameState!.characters.find(
+    const character = this.game.characters.find(
       (c) => c.ownerId === authInfo.discordUserId,
     );
     if (!character) {
@@ -891,7 +923,7 @@ export class GameTable implements DurableObject {
     }
 
     const used =
-      this.gameState!.usedAbilities.find((u) => u.slot === character.slot)
+      this.game.usedAbilities.find((u) => u.slot === character.slot)
         ?.kinds ?? [];
     if (used.includes(kind)) {
       return new Response("Already used this ability this session", {
@@ -899,7 +931,7 @@ export class GameTable implements DurableObject {
       });
     }
     if (
-      this.gameState!.proposals.some(
+      this.game.proposals.some(
         (p) => p.slot === character.slot && p.kind === kind,
       )
     ) {
@@ -907,7 +939,7 @@ export class GameTable implements DurableObject {
     }
     if (
       kind === "help-out" &&
-      (!this.gameState!.overcome || !this.gameState!.pendingRoll)
+      (!this.game.overcome || !this.game.pendingRoll)
     ) {
       return new Response("Help Out needs an overcome roll to help with", {
         status: 400,
@@ -951,14 +983,14 @@ export class GameTable implements DurableObject {
   private async handleAcceptCompelMove(
     authInfo: AuthInfo,
   ): Promise<Response> {
-    const character = this.gameState!.characters.find(
+    const character = this.game.characters.find(
       (c) => c.ownerId === authInfo.discordUserId,
     );
     if (!character) {
       return new Response("Claim a character sheet first", { status: 400 });
     }
     if (
-      this.gameState!.proposals.some(
+      this.game.proposals.some(
         (p) => p.slot === character.slot && p.kind === "accept-compel",
       )
     ) {
@@ -992,17 +1024,17 @@ export class GameTable implements DurableObject {
       return new Response("floatingId is required", { status: 400 });
     }
 
-    const character = this.gameState!.characters.find(
+    const character = this.game.characters.find(
       (c) => c.ownerId === authInfo.discordUserId,
     );
     if (!character) {
       return new Response("Claim a character sheet first", { status: 400 });
     }
-    if (!this.gameState!.floatingBoons.some((f) => f.id === floatingId)) {
+    if (!this.game.floatingBoons.some((f) => f.id === floatingId)) {
       return new Response("No such floating boon", { status: 404 });
     }
     if (
-      this.gameState!.proposals.some(
+      this.game.proposals.some(
         (p) => p.kind === "use-floating" && p.floatingId === floatingId,
       )
     ) {
@@ -1038,14 +1070,10 @@ export class GameTable implements DurableObject {
       id: crypto.randomUUID(),
       createdAt: Date.now(),
     };
-    this.gameState = {
-      ...this.gameState!,
-      proposals: [...this.gameState!.proposals, proposal],
-    };
-    await this.saveStoneState(this.gameState);
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    return this.commit({
+      ...this.game,
+      proposals: [...this.game.proposals, proposal],
+    });
   }
 
   /**
@@ -1061,14 +1089,14 @@ export class GameTable implements DurableObject {
     authInfo: AuthInfo,
     request: Request,
   ): Promise<Response> {
-    const proposal = this.gameState!.proposals.find((p) => p.id === proposalId);
+    const proposal = this.game.proposals.find((p) => p.id === proposalId);
     if (!proposal) {
       return new Response("No such proposal", { status: 404 });
     }
 
     let state: GameState = {
-      ...this.gameState!,
-      proposals: this.gameState!.proposals.filter((p) => p.id !== proposalId),
+      ...this.game,
+      proposals: this.game.proposals.filter((p) => p.id !== proposalId),
     };
     let logLine = "";
 
@@ -1223,20 +1251,17 @@ export class GameTable implements DurableObject {
       }
     }
 
-    this.gameState = state;
-    await this.saveStoneState(this.gameState);
-
-    if (logLine) {
-      await this.appendMessage({
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: logLine,
-      });
-    }
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    return this.commit(
+      state,
+      logLine
+        ? {
+            authorId: authInfo.discordUserId,
+            authorName: authInfo.username,
+            role: authInfo.role,
+            content: logLine,
+          }
+        : undefined,
+    );
   }
 
   /**
@@ -1255,7 +1280,7 @@ export class GameTable implements DurableObject {
     proposalId: string,
     authInfo: AuthInfo,
   ): Promise<Response> {
-    const proposal = this.gameState!.proposals.find((p) => p.id === proposalId);
+    const proposal = this.game.proposals.find((p) => p.id === proposalId);
     if (!proposal) {
       return new Response("No such proposal", { status: 404 });
     }
@@ -1263,27 +1288,24 @@ export class GameTable implements DurableObject {
       return new Response("Not your proposal", { status: 403 });
     }
 
-    this.gameState = {
-      ...this.gameState!,
-      proposals: this.gameState!.proposals.filter((p) => p.id !== proposalId),
-    };
-    await this.saveStoneState(this.gameState);
-
-    await this.appendMessage({
-      authorId: authInfo.discordUserId,
-      authorName: authInfo.username,
-      role: authInfo.role,
-      content: `${proposal.proposerName} withdrew a proposal`,
-    });
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    return this.commit(
+      {
+        ...this.game,
+        proposals: this.game.proposals.filter((p) => p.id !== proposalId),
+      },
+      {
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: `${proposal.proposerName} withdrew a proposal`,
+      },
+    );
   }
 
   private drawFromBag(): PendingRoll {
-    const committed = totalCommittedBoons(this.gameState!.committedBoons);
+    const committed = totalCommittedBoons(this.game.committedBoons);
     const bag: StoneKind[] = [
-      ...this.gameState!.stonePool,
+      ...this.game.stonePool,
       ...Array<StoneKind>(committed).fill("Boon"),
     ];
     return pickTwoRandom(bag);
@@ -1315,9 +1337,9 @@ export class GameTable implements DurableObject {
   private rollGate(authInfo: AuthInfo): Response | undefined {
     if (authInfo.role === "facilitator") return undefined;
 
-    const overcome = this.gameState!.overcome;
+    const overcome = this.game.overcome;
     if (overcome) {
-      const own = this.gameState!.characters.find(
+      const own = this.game.characters.find(
         (c) => c.ownerId === authInfo.discordUserId,
       );
       if (own && own.slot === overcome.targetSlot) return undefined;
@@ -1333,8 +1355,8 @@ export class GameTable implements DurableObject {
     authInfo: AuthInfo,
     verb: "Rolled" | "Rerolled",
   ): Promise<Response> {
-    const overcome = this.gameState!.overcome;
-    let characters = this.gameState!.characters;
+    const overcome = this.game.overcome;
+    let characters = this.game.characters;
     let costNote = "";
 
     // A Reroll during an overcome is bought with the target's boons.
@@ -1358,11 +1380,8 @@ export class GameTable implements DurableObject {
       costNote = ` — reroll cost ${REROLL_COST} boons`;
     }
 
-    const committed = totalCommittedBoons(this.gameState!.committedBoons);
+    const committed = totalCommittedBoons(this.game.committedBoons);
     const pendingRoll = this.drawFromBag();
-
-    this.gameState = { ...this.gameState!, characters, pendingRoll };
-    await this.saveStoneState(this.gameState);
 
     const committedNote =
       committed > 0 ? ` — ${committed} boon committed` : "";
@@ -1371,30 +1390,31 @@ export class GameTable implements DurableObject {
         ? "Overcome reroll"
         : "Overcome roll"
       : verb;
-    await this.appendMessage({
-      authorId: authInfo.discordUserId,
-      authorName: authInfo.username,
-      role: authInfo.role,
-      content: `${label}: ${describeStones(pendingRoll.chosen)}${committedNote}${costNote}`,
-    });
 
-    this.broadcast(this.gameState!);
-    return ackResponse();
+    return this.commit(
+      { ...this.game, characters, pendingRoll },
+      {
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: `${label}: ${describeStones(pendingRoll.chosen)}${committedNote}${costNote}`,
+      },
+    );
   }
 
   private async handleAcceptRoll(authInfo: AuthInfo): Promise<Response> {
     // Nothing to accept without a roll on the table — refuse rather than
     // silently reset the pool and drop the proposal queue.
-    if (!this.gameState!.pendingRoll) {
+    if (!this.game.pendingRoll) {
       return new Response("No roll to accept", { status: 400 });
     }
 
     // Spend the pledged boons from each character's stock, then clear the pool
     // and pledges back to the base state.
     const now = Date.now();
-    let characters = this.gameState!.characters;
+    let characters = this.game.characters;
 
-    for (const { slot, count } of this.gameState!.committedBoons) {
+    for (const { slot, count } of this.game.committedBoons) {
       const character = characters.find((c) => c.slot === slot);
       if (!character || count <= 0) continue;
 
@@ -1409,16 +1429,16 @@ export class GameTable implements DurableObject {
     // aspects at random — unless that character is untethered, in which case the
     // Bane also goes to the pool (no new aspect strain mid-reckoning). A plain
     // non-overcome roll still seeds the pool with one random result stone.
-    const priorSession = this.gameState!.session;
-    const drawn = this.gameState!.pendingRoll?.chosen ?? [];
-    const overcome = this.gameState!.overcome;
+    const priorSession = this.game.session;
+    const drawn = this.game.pendingRoll?.chosen ?? [];
+    const overcome = this.game.overcome;
     const poolAdds: StoneKind[] = [];
     let routeNote = "";
 
     if (overcome && drawn.length === 2) {
       const boons = drawn.filter((s) => s === "Boon").length;
       const untetheredTarget =
-        this.gameState!.untether?.slot === overcome.targetSlot;
+        this.game.untether?.slot === overcome.targetSlot;
       const routed = routeOvercomeDraw(drawn, untetheredTarget);
       poolAdds.push(...routed.poolAdds);
 
@@ -1457,8 +1477,8 @@ export class GameTable implements DurableObject {
         ? { ...priorSession, pool: [...priorSession.pool, ...poolAdds] }
         : priorSession;
 
-    this.gameState = {
-      ...this.gameState!,
+    const next: GameState = {
+      ...this.game,
       characters,
       stonePool: [...INITIAL_STONE_POOL],
       pendingRoll: null,
@@ -1469,29 +1489,28 @@ export class GameTable implements DurableObject {
       proposals: [],
       session,
     };
-    await this.saveStoneState(this.gameState);
 
+    let overcomeLine: AddMessageInput | undefined;
     if (overcome) {
       const target = characters.find((c) => c.slot === overcome.targetSlot);
-      await this.appendMessage({
+      overcomeLine = {
         authorId: authInfo.discordUserId,
         authorName: authInfo.username,
         role: authInfo.role,
         content: `Overcome${target ? ` — ${characterLabel(target)}` : ""}: ${
           routeNote || drawn.join(", ")
         }`,
-      });
+      };
     }
 
-    this.broadcast(this.gameState);
-    return ackResponse();
+    return this.commit(next, overcomeLine);
   }
 
   private async handleStartOvercome(
     request: Request,
     authInfo: AuthInfo,
   ): Promise<Response> {
-    if (this.gameState!.overcome) {
+    if (this.game.overcome) {
       return new Response("An overcome is already open", { status: 409 });
     }
 
@@ -1506,61 +1525,51 @@ export class GameTable implements DurableObject {
       return new Response("slot out of range", { status: 400 });
     }
 
-    const target = this.gameState!.characters.find((c) => c.slot === slot);
+    const target = this.game.characters.find((c) => c.slot === slot);
     if (!target) {
       return new Response("Not found", { status: 404 });
     }
 
     // A fresh attempt: drop any roll still sitting on the table.
-    this.gameState = {
-      ...this.gameState!,
-      overcome: { targetSlot: slot },
-      pendingRoll: null,
-    };
-    await this.saveStoneState(this.gameState);
-
-    await this.appendMessage({
-      authorId: authInfo.discordUserId,
-      authorName: authInfo.username,
-      role: authInfo.role,
-      content: `Overcome — ${characterLabel(target)} attempts something risky`,
-    });
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    return this.commit(
+      { ...this.game, overcome: { targetSlot: slot }, pendingRoll: null },
+      {
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: `Overcome — ${characterLabel(target)} attempts something risky`,
+      },
+    );
   }
 
   private async handleCancelOvercome(authInfo: AuthInfo): Promise<Response> {
-    const overcome = this.gameState!.overcome;
+    const overcome = this.game.overcome;
     if (!overcome) {
       return new Response("No overcome is open", { status: 400 });
     }
 
-    const target = this.gameState!.characters.find(
+    const target = this.game.characters.find(
       (c) => c.slot === overcome.targetSlot,
     );
 
-    this.gameState = { ...this.gameState!, overcome: null };
-    await this.saveStoneState(this.gameState);
-
-    await this.appendMessage({
-      authorId: authInfo.discordUserId,
-      authorName: authInfo.username,
-      role: authInfo.role,
-      content: `Overcome called off${
-        target ? ` — ${characterLabel(target)}` : ""
-      }`,
-    });
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    return this.commit(
+      { ...this.game, overcome: null },
+      {
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: `Overcome called off${
+          target ? ` — ${characterLabel(target)}` : ""
+        }`,
+      },
+    );
   }
 
   private async handleStartSession(
     request: Request,
     authInfo: AuthInfo,
   ): Promise<Response> {
-    if (this.gameState!.session) {
+    if (this.game.session) {
       return new Response("A session is already running", { status: 409 });
     }
 
@@ -1574,7 +1583,7 @@ export class GameTable implements DurableObject {
     await this.env.DB.prepare(
       `INSERT INTO game_sessions (id, session_id, goal, started_at) VALUES (?, ?, ?, ?)`,
     )
-      .bind(id, this.gameState!.sessionId, goal, Date.now())
+      .bind(id, this.game.sessionId, goal, Date.now())
       .run();
 
     // Section 19: the pool starts from the base four plus every Bane carried
@@ -1587,37 +1596,36 @@ export class GameTable implements DurableObject {
       ...Array<StoneKind>(carriedBanes).fill("Bane"),
     ];
 
-    this.gameState = {
-      ...this.gameState!,
-      session: { id, goal, pool, carriedBanes },
-      // A new session starts from a clean slate. Nothing left open at the end
-      // of the previous session (or before this one began) carries in:
-      // abilities, floating boons, an unresolved overcome or roll, pledges, or
-      // a proposal queue.
-      usedAbilities: [],
-      floatingBoons: [],
-      overcome: null,
-      pendingRoll: null,
-      committedBoons: [],
-      proposals: [],
-    };
-    await this.saveStoneState(this.gameState);
-
-    await this.appendMessage({
-      authorId: authInfo.discordUserId,
-      authorName: authInfo.username,
-      role: authInfo.role,
-      content: `Session started — ${goal}${
-        carriedBanes > 0 ? ` (carrying ${carriedBanes} Bane${carriedBanes === 1 ? "" : "s"})` : ""
-      }`,
-    });
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    return this.commit(
+      {
+        ...this.game,
+        session: { id, goal, pool, carriedBanes },
+        // A new session starts from a clean slate. Nothing left open at the end
+        // of the previous session (or before this one began) carries in:
+        // abilities, floating boons, an unresolved overcome or roll, pledges,
+        // or a proposal queue.
+        usedAbilities: [],
+        floatingBoons: [],
+        overcome: null,
+        pendingRoll: null,
+        committedBoons: [],
+        proposals: [],
+      },
+      {
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: `Session started — ${goal}${
+          carriedBanes > 0
+            ? ` (carrying ${carriedBanes} Bane${carriedBanes === 1 ? "" : "s"})`
+            : ""
+        }`,
+      },
+    );
   }
 
   private async handleEndSession(authInfo: AuthInfo): Promise<Response> {
-    const session = this.gameState!.session;
+    const session = this.game.session;
     if (!session) {
       return new Response("No session is running", { status: 400 });
     }
@@ -1637,8 +1645,8 @@ export class GameTable implements DurableObject {
     // Bane. The character is drawn by weighting every aspect Bane on every
     // sheet equally; the drawn aspect is the one they untether on, and all
     // their aspect Banes then clear.
-    let characters = this.gameState!.characters;
-    let untether = this.gameState!.untether;
+    let characters = this.game.characters;
+    let untether = this.game.untether;
     let untetherNote = "";
 
     if (!success && untether === null && !wasConsecutiveFailure) {
@@ -1672,36 +1680,33 @@ export class GameTable implements DurableObject {
     this.lastSessionFailed = !success;
 
     const sessionHistory = await this.loadSessionHistory(
-      this.gameState!.sessionId,
+      this.game.sessionId,
     );
-    this.gameState = {
-      ...this.gameState!,
-      session: null,
-      sessionHistory,
-      characters,
-      untether,
-      // Ending a session discards everything left unresolved: unspent floating
-      // boons, once-per-session abilities, an open overcome or roll on the
-      // table, pledged boons, and any proposal the facilitator never accepted
-      // or rejected. Nothing from a closed session carries into the next one.
-      floatingBoons: [],
-      usedAbilities: [],
-      overcome: null,
-      pendingRoll: null,
-      committedBoons: [],
-      proposals: [],
-    };
-    await this.saveStoneState(this.gameState);
-
-    await this.appendMessage({
-      authorId: authInfo.discordUserId,
-      authorName: authInfo.username,
-      role: authInfo.role,
-      content: `Session ended — ${session.goal}: ${outcome}`,
-    });
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    return this.commit(
+      {
+        ...this.game,
+        session: null,
+        sessionHistory,
+        characters,
+        untether,
+        // Ending a session discards everything left unresolved: unspent
+        // floating boons, once-per-session abilities, an open overcome or roll
+        // on the table, pledged boons, and any proposal the facilitator never
+        // accepted or rejected. Nothing from a closed session carries in.
+        floatingBoons: [],
+        usedAbilities: [],
+        overcome: null,
+        pendingRoll: null,
+        committedBoons: [],
+        proposals: [],
+      },
+      {
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: `Session ended — ${session.goal}: ${outcome}`,
+      },
+    );
   }
 
   /** Facilitator rewrites the running session's goal. */
@@ -1709,7 +1714,7 @@ export class GameTable implements DurableObject {
     request: Request,
     authInfo: AuthInfo,
   ): Promise<Response> {
-    const session = this.gameState!.session;
+    const session = this.game.session;
     if (!session) {
       return new Response("No session is running", { status: 400 });
     }
@@ -1729,21 +1734,15 @@ export class GameTable implements DurableObject {
       .bind(goal, session.id)
       .run();
 
-    this.gameState = {
-      ...this.gameState!,
-      session: { ...session, goal },
-    };
-    await this.saveStoneState(this.gameState);
-
-    await this.appendMessage({
-      authorId: authInfo.discordUserId,
-      authorName: authInfo.username,
-      role: authInfo.role,
-      content: `Goal updated — ${goal}`,
-    });
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    return this.commit(
+      { ...this.game, session: { ...session, goal } },
+      {
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: `Goal updated — ${goal}`,
+      },
+    );
   }
 
   /**
@@ -1753,29 +1752,26 @@ export class GameTable implements DurableObject {
    * through the normal sheet edit.
    */
   private async handleResolveUntether(authInfo: AuthInfo): Promise<Response> {
-    const untether = this.gameState!.untether;
+    const untether = this.game.untether;
     if (!untether) {
       return new Response("No untether to resolve", { status: 400 });
     }
 
-    const target = this.gameState!.characters.find(
+    const target = this.game.characters.find(
       (c) => c.slot === untether.slot,
     );
 
-    this.gameState = { ...this.gameState!, untether: null };
-    await this.saveStoneState(this.gameState);
-
-    await this.appendMessage({
-      authorId: authInfo.discordUserId,
-      authorName: authInfo.username,
-      role: authInfo.role,
-      content: `Untether resolved${
-        target ? ` — ${characterLabel(target)}` : ""
-      } (${untether.aspect})`,
-    });
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    return this.commit(
+      { ...this.game, untether: null },
+      {
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: `Untether resolved${
+          target ? ` — ${characterLabel(target)}` : ""
+        } (${untether.aspect})`,
+      },
+    );
   }
 
   private async handleUpdateCharacter(
@@ -1788,7 +1784,7 @@ export class GameTable implements DurableObject {
       return new Response("Invalid body", { status: 400 });
     }
 
-    const character = this.gameState!.characters.find((c) => c.slot === slot);
+    const character = this.game.characters.find((c) => c.slot === slot);
     if (!character) {
       return new Response("Not found", { status: 404 });
     }
@@ -1819,15 +1815,12 @@ export class GameTable implements DurableObject {
 
     await updateFields(this.env.DB, updated, Date.now());
 
-    this.gameState = {
-      ...this.gameState!,
-      characters: this.gameState!.characters.map((c) =>
+    return this.commit({
+      ...this.game,
+      characters: this.game.characters.map((c) =>
         c.slot === slot ? updated : c,
       ),
-    };
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    });
   }
 
   /**
@@ -1838,7 +1831,7 @@ export class GameTable implements DurableObject {
     slot: number,
     authInfo: AuthInfo,
   ): Promise<Response> {
-    const target = this.gameState!.characters.find((c) => c.slot === slot);
+    const target = this.game.characters.find((c) => c.slot === slot);
     if (!target) {
       return new Response("Not found", { status: 404 });
     }
@@ -1852,7 +1845,7 @@ export class GameTable implements DurableObject {
     }
 
     const now = Date.now();
-    const priorSlots = this.gameState!.characters.filter(
+    const priorSlots = this.game.characters.filter(
       (c) => c.ownerId === authInfo.discordUserId && c.slot !== slot,
     );
     for (const prior of priorSlots) {
@@ -1861,8 +1854,8 @@ export class GameTable implements DurableObject {
     await this.setSheetOwner(target.id, authInfo.discordUserId, now);
 
     let next: GameState = {
-      ...this.gameState!,
-      characters: this.gameState!.characters.map((c) => {
+      ...this.game,
+      characters: this.game.characters.map((c) => {
         if (c.slot === slot) return { ...c, ownerId: authInfo.discordUserId };
         if (priorSlots.some((p) => p.id === c.id)) return { ...c, ownerId: null };
         return c;
@@ -1874,11 +1867,7 @@ export class GameTable implements DurableObject {
     for (const changed of [slot, ...priorSlots.map((p) => p.slot)]) {
       next = clearSlotPendingState(next, changed);
     }
-    this.gameState = next;
-    await this.saveStoneState(this.gameState);
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    return this.commit(next);
   }
 
   /** Release a sheet. Allowed for the sheet's owner or the facilitator. */
@@ -1886,7 +1875,7 @@ export class GameTable implements DurableObject {
     slot: number,
     authInfo: AuthInfo,
   ): Promise<Response> {
-    const target = this.gameState!.characters.find((c) => c.slot === slot);
+    const target = this.game.characters.find((c) => c.slot === slot);
     if (!target) {
       return new Response("Not found", { status: 404 });
     }
@@ -1901,19 +1890,17 @@ export class GameTable implements DurableObject {
     }
 
     await this.setSheetOwner(target.id, null, Date.now());
-    this.gameState = clearSlotPendingState(
-      {
-        ...this.gameState!,
-        characters: this.gameState!.characters.map((c) =>
-          c.slot === slot ? { ...c, ownerId: null } : c,
-        ),
-      },
-      slot,
+    return this.commit(
+      clearSlotPendingState(
+        {
+          ...this.game,
+          characters: this.game.characters.map((c) =>
+            c.slot === slot ? { ...c, ownerId: null } : c,
+          ),
+        },
+        slot,
+      ),
     );
-    await this.saveStoneState(this.gameState);
-
-    this.broadcast(this.gameState);
-    return ackResponse();
   }
 
   private setSheetOwner(
@@ -1934,7 +1921,7 @@ export class GameTable implements DurableObject {
       return new Response("delta must be an integer", { status: 400 });
     }
 
-    const character = this.gameState!.characters.find((c) => c.slot === slot);
+    const character = this.game.characters.find((c) => c.slot === slot);
     if (!character) {
       return new Response("Not found", { status: 404 });
     }
@@ -1943,15 +1930,12 @@ export class GameTable implements DurableObject {
 
     await setFate(this.env.DB, character.id, fate, Date.now());
 
-    this.gameState = {
-      ...this.gameState!,
-      characters: this.gameState!.characters.map((c) =>
+    return this.commit({
+      ...this.game,
+      characters: this.game.characters.map((c) =>
         c.slot === slot ? { ...c, fate } : c,
       ),
-    };
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    });
   }
 
   /** Add a blank NPC / location row, ready for the facilitator to fill in. */
@@ -1977,7 +1961,7 @@ export class GameTable implements DurableObject {
     )
       .bind(
         entity.id,
-        this.gameState!.sessionId,
+        this.game.sessionId,
         entity.name,
         entity.notes,
         now,
@@ -1985,13 +1969,7 @@ export class GameTable implements DurableObject {
       )
       .run();
 
-    this.gameState = {
-      ...this.gameState!,
-      [kind]: [...this.gameState![kind], entity],
-    };
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    return this.commit({ ...this.game, [kind]: [...this.game[kind], entity] });
   }
 
   private async handleUpdateEntity(
@@ -2004,7 +1982,7 @@ export class GameTable implements DurableObject {
       return new Response("Invalid body", { status: 400 });
     }
 
-    const entity = this.gameState![kind].find((e) => e.id === id);
+    const entity = this.game[kind].find((e) => e.id === id);
     if (!entity) {
       return new Response("Not found", { status: 404 });
     }
@@ -2022,20 +2000,17 @@ export class GameTable implements DurableObject {
       .bind(updated.name, updated.notes, updated.updatedAt, id)
       .run();
 
-    this.gameState = {
-      ...this.gameState!,
-      [kind]: this.gameState![kind].map((e) => (e.id === id ? updated : e)),
-    };
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    return this.commit({
+      ...this.game,
+      [kind]: this.game[kind].map((e) => (e.id === id ? updated : e)),
+    });
   }
 
   private async handleDeleteEntity(
     kind: EntityKind,
     id: string,
   ): Promise<Response> {
-    if (!this.gameState![kind].some((e) => e.id === id)) {
+    if (!this.game[kind].some((e) => e.id === id)) {
       return new Response("Not found", { status: 404 });
     }
 
@@ -2045,20 +2020,17 @@ export class GameTable implements DurableObject {
       .bind(id)
       .run();
 
-    this.gameState = {
-      ...this.gameState!,
-      [kind]: this.gameState![kind].filter((e) => e.id !== id),
-    };
-
-    this.broadcast(this.gameState);
-    return ackResponse();
+    return this.commit({
+      ...this.game,
+      [kind]: this.game[kind].filter((e) => e.id !== id),
+    });
   }
 
   /** Persists the message, then folds it into the current in-memory state. */
   private async appendMessage(input: AddMessageInput): Promise<void> {
     const msg: Message = {
       id: crypto.randomUUID(),
-      sessionId: this.gameState!.sessionId,
+      sessionId: this.game.sessionId,
       authorId: input.authorId,
       authorName: input.authorName,
       role: input.role,
@@ -2084,8 +2056,8 @@ export class GameTable implements DurableObject {
       .run();
 
     this.gameState = {
-      ...this.gameState!,
-      messages: capMessages([...this.gameState!.messages, msg]),
+      ...this.game,
+      messages: capMessages([...this.game.messages, msg]),
     };
   }
 }
