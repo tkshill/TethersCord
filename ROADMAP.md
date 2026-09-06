@@ -785,22 +785,105 @@ rewrite changes what an aspect *means*; it never adds a rating (principle 5,
       aspect — all Banes clear, but does the character keep any marker of what
       they went through?
 
-## 21. Game text, tooltips, and glossary — *see also section 22*
+## 21. Game text, tooltips, glossary, and aspect examples — *see also section 22*
 
 The player-facing copy — move names, proposal descriptions, card titles, hint
-lines — is scattered through `View.elm` as string literals, so tuning the game's
-wording means editing the view. A game this much in flux needs its text easy to
-revise.
+lines — is scattered through `client/src/View/*` as string literals, so tuning
+the game's wording means hunting through the view. The game also leans on terms
+(overcome, boon, bane, aspect, compel, highlight, floating boon, untether) that a
+player new to TTRPGs has no prior hook for. The near-term need is to run this
+game with **people unfamiliar with TTRPGs**, so this section pulls the copy into
+one place, teaches the terms where players meet them, and gives a reference for
+writing aspects at character creation.
 
-- [ ] **Pull user-facing copy into one editable source.** A `Copy.elm` module of
-      named string constants, or a `copy.json` compiled into the bundle, that
-      `View` reads from — one place to rewrite a move's description.
-- [ ] **Player tooltips.** A hover / tap affordance on move and stone terms
-      showing the short rules text for that term. Deferred until the copy source
-      exists.
-- [ ] **A glossary.** A panel (or a section of the copy source) defining the
-      game's terms — overcome, boon, bane, aspect, compel, highlight, floating
-      boon — in one place for players. Deferred alongside tooltips.
+Do it after section 22 step 4 (the `View/` split), which is done — step 4's
+record-props layout is what the tooltip and glossary work builds on.
+
+### 21.1 — One editable copy source — `Copy.elm`
+
+- [ ] **`client/src/Copy.elm`** — a module of named `String` constants for every
+      player-facing string currently inline in `View.elm` and `View/*`: card
+      titles, section hints ("Once per session", "Any time", "Start overcome",
+      "Session pool", "Floating boons", "Bag of N"), empty states ("No session
+      running.", "No messages yet.", "No character sheets."), placeholders
+      ("Write a message…", "Session goal…", "Context this boon represents…"), the
+      `describeProposal` phrases, the connection notes, the untether-banner
+      sentence, and the game-action button labels (Roll, Reroll, Press Fate,
+      Accept, Add boon, Help Out, Add a Detail, Gain Insight, Accept Compel, End
+      session, Resolve untether, …). Grouped by card with comment headers.
+- [ ] Chosen over a `copy.json` compiled into the bundle: type-checked, no
+      decoder, no runtime fetch, a missing key fails the build.
+- [ ] Each `View/*` module imports `Copy` and reads from it; no behaviour
+      change, `pnpm run build:client` is the gate. Mechanical diff, one string at
+      a time. Structural field labels that are not game vocabulary ("Name",
+      "Notes") may stay inline — the target is prose that expresses the game.
+
+### 21.2 — Glossary content — `Copy.Term`
+
+- [ ] **`Term = { term : String, short : String, long : String }`** and
+      `terms : List Term` in `Copy.elm` (or `client/src/Copy/Terms.elm` if that
+      module grows large). `short` is a one-line gloss for the tooltip; `long` is
+      two to three sentences for the glossary card. One definition, two surfaces.
+- [ ] Cover, grouped in order of play: **Roles** — Table, Facilitator, Player;
+      **The session** — Session, Goal, Session pool, Carry; **Stones & rolling**
+      — Stone, Boon, Bane, The bag, Roll, Overcome, Highlight, Pledge, Proposal;
+      **Aspects & growth** — Aspect, Archetype, Desire, Quest, Condition,
+      Untether / reckoning, Frenzy; **Moves & compels** — Compel, Accept Compel,
+      Suggest Compel, Floating boon, Help Out, Add a Detail, Gain Insight.
+- [ ] Definitions track `CLAUDE.md`, section 19, and `DESIGN_PRINCIPLES.md`; no
+      numbers in the prose (principle 6) beyond the fixed payouts the UI already
+      names.
+
+### 21.3 — In-place tooltips
+
+- [ ] **`Ui.withTip : String -> Element msg -> Element msg`** — adds
+      `Element.htmlAttribute (Html.Attributes.title tip)`. No `Model` state.
+- [ ] **`Ui.sectionTitleTip : Term -> Element msg`** — `sectionTitle` with the
+      term's `short` as its `title`. Card titles that are game terms ("Session",
+      "Stones", "Moves") use it; plain titles stay on `sectionTitle`.
+- [ ] Apply `withTip` to the highest-value in-card term labels: the aspect field
+      labels (Archetype / Desire / Quest), "Highlight", "Overcome — <name>",
+      "Session pool", "Floating boons", the once-per-session move buttons. Tip
+      text is the matching `Term.short` from 21.2.
+- [ ] Known limit: `title=` is hover-only — no touch. The glossary card below is
+      the tap path; ship both.
+
+### 21.4 — "How to play" glossary card
+
+- [ ] **`client/src/View/Guide.elm`** — a section card, **collapsed by
+      default**, rendering `Copy.terms` grouped by the 21.2 headings, each row
+      `term — long`. Same `Ui.card` / `Ui.sectionTitle` shell as the other
+      sections; the header row is a ▸ / ▾ toggle.
+- [ ] `Model.guideExpanded : Bool` (default `False` in `Main.init`) and a
+      `ToggleGuide` message; `update` stays pure — it yields `Effect.None`.
+- [ ] Slotted **last** in `View.view`'s section list, after the Log.
+
+### 21.5 — Aspect examples
+
+- [ ] **`ASPECTS.md`** at the repo root (beside `DESIGN_PRINCIPLES.md`) — the
+      canonical collection: what makes a strong aspect (true now, at odds with
+      the world as it is, something the table can pull on — per section 19), then
+      generous lists under **Archetype**, **Desire**, **Quest**, plus a handful
+      of fully-worked characters showing all three together. A prose reference
+      readable outside the app.
+- [ ] **`Copy.aspectExamples : Aspect -> List String`** — a curated subset (~6
+      per aspect) of `ASPECTS.md`.
+- [ ] **`View/Characters.elm` `aspectField`** — a "see examples" text toggle
+      beneath each aspect input, expanding an inline bulleted list from
+      `aspectExamples`. Shown only when the field is `editable` (owner /
+      unclaimed / facilitator), i.e. during creation and revision — it also
+      helps the section 19 forced rewrite after an untether.
+- [ ] `Model.aspectExamplesOpen : Maybe ( Int, Aspect )` (one open at a time)
+      and a `ToggleAspectExamples Int Aspect` message; pure `update` arm.
+
+### Sequencing
+
+Each sub-step is its own branch off `main` with a professional commit message,
+merged before the next starts. 21.1 first (the constants the rest read); 21.2
+before 21.3 / 21.4 (the `Term` list); 21.3, 21.4, 21.5 are independent after
+that. No wire-format, D1, or `KEY_STONES` change anywhere in this section;
+`pnpm run build:client` is the gate for the mechanical parts, `pnpm run build`
+before merge.
 
 ## 22. Maintainability pass — the view and the Durable Object
 
@@ -978,8 +1061,9 @@ needs (the existing suite does not touch every handler path):
 
 ### Relates to
 
-- **Section 21** (game text / tooltips / glossary) — the copy-extraction step
-  wants the new `View/` module layout to exist first, so do 21 after step 4.
+- **Section 21** (game text / tooltips / glossary / aspect examples) — the
+  copy-extraction step wants the new `View/` module layout to exist first, so do
+  21 after step 4. Step 4 is done, so section 21 is unblocked.
 - **Section 15** delta broadcasts — untouched here; the route table and
   `commit()` helper give it fewer call sites to rewrite when it lands.
 
