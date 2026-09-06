@@ -22,6 +22,9 @@ version yet, so headings are dates.
   after `typecheck`, and a new `.github/workflows/ci.yml` runs `pnpm run build`
   on push and PR — the project's first CI. `avh4/elm-program-test` is still to
   come.
+- `DESIGN_PRINCIPLES.md` — the ten core design principles the game is measured
+  against, recorded as a stable reference alongside the forward-looking
+  `ROADMAP.md` and the historical `CHANGELOG.md`.
 - Player moves and abilities (roadmap section 10). A new **Moves** card offers
   each player, once they hold a sheet: the once-per-session abilities **Help
   Out** (reroll an overcome), **Add a Detail** and **Gain Insight** (each mints a
@@ -81,6 +84,13 @@ version yet, so headings are dates.
   as data; `Effect.perform` turns it into a `Cmd` once, at the `Main` boundary.
   No behaviour change — the refactor exists so `update` can be tested without
   mocking `Cmd`.
+- `ROADMAP.md` sections 19–20 rewritten around a settled overcome-aftermath
+  design: aspects accumulate Banes only, the sheet's `condition` line is the
+  whole harm model, the session pool keeps its Banes between sessions so goals
+  escalate until a failure, and a failed session untethers one player (weighted
+  random draw across every aspect Bane) into a forced aspect rewrite. Supersedes
+  the old section 19 sketch, section 7's met/partial/failed thresholds, and
+  section 4's deferred facilitator-set difficulty.
 - Stones now name their outcome instead of a colour: `Boon` (favourable) and
   `Bane` replace `WhiteStone` / `BlackStone` across the client, the worker, and
   the `"Boon" | "Bane"` wire format. Durable Object stone storage is migrated

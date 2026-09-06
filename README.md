@@ -7,6 +7,9 @@ character sheets, and dice, built with:
 - Cloudflare Workers + Durable Objects + D1 for backend state
 - Discord Embedded App SDK + OAuth2 for real user IDs and roles (DM vs player)
 
+`DESIGN_PRINCIPLES.md` records the ten core design principles; `ROADMAP.md` is
+forward-looking and `CHANGELOG.md` is the record of what shipped.
+
 ## Structure
 
 Everything deploys as a **single Cloudflare Worker**. The built Elm SPA is
