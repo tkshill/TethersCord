@@ -19,3 +19,10 @@ client/elm-stuff/
 .env.*.local
 .dev.vars
 !.dev.vars.example
+
+# Claude Code — local, machine-specific config (permission allowlists etc.).
+# settings.local.json is already covered by the global gitignore; settings.json
+# here only accumulates per-session approval cruft, so keep it out too. A
+# deliberate shared config can be force-added later.
+.claude/settings.json
+.claude/settings.local.json
