@@ -13,6 +13,7 @@ import Http
 import Main
 import Set
 import Test exposing (Test, describe, test)
+import Time
 import Types exposing (Model, Msg(..))
 
 
@@ -355,4 +356,60 @@ suite =
                         |> Expect.equal
                             ( Nothing, Effect.PostDeleteEntity Fixtures.playerAuth Types.Npc "n1" )
             ]
+        , describe "earlier-message history"
+            [ test "LoadEarlierMessages asks for rows before the oldest loaded one" <|
+                \_ ->
+                    let
+                        seeded =
+                            withMessages [ msgAt "a" 1000, msgAt "b" 2000 ]
+                    in
+                    Main.update LoadEarlierMessages seeded
+                        |> (\( next, eff ) -> ( next.loadingHistory, eff ))
+                        |> Expect.equal ( True, Effect.GetMessageHistory Fixtures.playerAuth 1000 )
+            , test "LoadEarlierMessages does nothing while a fetch is already in flight" <|
+                \_ ->
+                    let
+                        seeded =
+                            withMessages [ msgAt "a" 1000 ]
+                    in
+                    Main.update LoadEarlierMessages { seeded | loadingHistory = True }
+                        |> Expect.equal ( { seeded | loadingHistory = True }, Effect.None )
+            , test "an empty history page marks the log fully loaded" <|
+                \_ ->
+                    Main.update (GotEarlierMessages (Ok [])) { ready | loadingHistory = True }
+                        |> (\( next, _ ) -> ( next.loadingHistory, next.noMoreHistory ))
+                        |> Expect.equal ( False, True )
+            , test "a history page is prepended, older first, without duplicating known rows" <|
+                \_ ->
+                    let
+                        seeded =
+                            withMessages [ msgAt "b" 2000, msgAt "c" 3000 ]
+                    in
+                    Main.update (GotEarlierMessages (Ok [ msgAt "a" 1000, msgAt "b" 2000 ])) seeded
+                        |> Tuple.first
+                        |> .gameState
+                        |> Maybe.map (.messages >> List.map .id)
+                        |> Expect.equal (Just [ "a", "b", "c" ])
+            ]
         ]
+
+
+msgAt : String -> Int -> Types.Message
+msgAt id millis =
+    { id = id
+    , authorId = "u"
+    , authorName = "U"
+    , role = Types.Player
+    , content = id
+    , createdAt = Time.millisToPosix millis
+    }
+
+
+withMessages : List Types.Message -> Model
+withMessages messages =
+    case ready.gameState of
+        Just gs ->
+            { ready | gameState = Just { gs | messages = messages } }
+
+        Nothing ->
+            ready

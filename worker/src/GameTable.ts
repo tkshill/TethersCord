@@ -63,6 +63,14 @@ const ABILITY_KINDS: readonly AbilityKind[] = [
  * real effect to what the character holds anyway. */
 const MAX_PLEDGE_DELTA = 50;
 
+/**
+ * How many of the most recent messages the Durable Object holds in memory and
+ * carries in every snapshot / broadcast. Kept small so the connect payload and
+ * each re-render stay cheap; older history is pulled on demand through
+ * `GET /messages/history`.
+ */
+const MESSAGE_WINDOW = 50;
+
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_FIELD_LENGTH = 500;
 const MAX_NOTES_LENGTH = 4000;
@@ -233,6 +241,10 @@ export class GameTable implements DurableObject {
 
     if (url.pathname === "/messages" && request.method === "GET") {
       return jsonResponse(this.gameState);
+    }
+
+    if (url.pathname === "/messages/history" && request.method === "GET") {
+      return this.handleMessageHistory(sessionId, url);
     }
 
     if (url.pathname === "/message" && request.method === "POST") {
@@ -509,10 +521,10 @@ export class GameTable implements DurableObject {
       FROM messages
       WHERE session_id = ?
       ORDER BY created_at DESC, id DESC
-      LIMIT 200
+      LIMIT ?
     `,
     )
-      .bind(sessionId)
+      .bind(sessionId, MESSAGE_WINDOW)
       .all<Message>();
 
     const messages = rows.results ? [...rows.results].reverse() : [];
@@ -720,6 +732,39 @@ export class GameTable implements DurableObject {
 
     this.broadcast(this.gameState!);
     return ackResponse();
+  }
+
+  /**
+   * Older history for the "load earlier" affordance. The snapshot only carries
+   * the last `MESSAGE_WINDOW` messages; this returns the page of up to
+   * `MESSAGE_WINDOW` rows immediately before `?before=<createdAt>`, oldest first.
+   * Read-only: no lock, no broadcast, does not touch `this.gameState`.
+   */
+  private async handleMessageHistory(
+    sessionId: string,
+    url: URL,
+  ): Promise<Response> {
+    const rawBefore = url.searchParams.get("before");
+    const before = Number(rawBefore);
+    if (!rawBefore || !Number.isFinite(before) || before <= 0) {
+      return new Response("before must be a positive timestamp", { status: 400 });
+    }
+
+    const rows = await this.env.DB.prepare(
+      `
+      SELECT id, session_id AS sessionId, author_id AS authorId,
+             author_name AS authorName, role, content, created_at AS createdAt
+      FROM messages
+      WHERE session_id = ? AND created_at < ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `,
+    )
+      .bind(sessionId, before, MESSAGE_WINDOW)
+      .all<Message>();
+
+    const messages = rows.results ? [...rows.results].reverse() : [];
+    return jsonResponse({ messages });
   }
 
   /**
@@ -1949,11 +1994,9 @@ type AddMessageInput = {
   content: string;
 };
 
-const MAX_MESSAGES = 200;
-
 function capMessages(messages: Message[]): Message[] {
-  return messages.length > MAX_MESSAGES
-    ? messages.slice(messages.length - MAX_MESSAGES)
+  return messages.length > MESSAGE_WINDOW
+    ? messages.slice(messages.length - MESSAGE_WINDOW)
     : messages;
 }
 

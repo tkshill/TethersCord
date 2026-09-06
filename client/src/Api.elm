@@ -1,6 +1,7 @@
 module Api exposing
     ( decodeGameState
     , getGameState
+    , getMessageHistory
     , postAcceptCompelMove
     , postCancelOvercome
     , postCharacterUpdate
@@ -64,6 +65,25 @@ getGameState flags auth toMsg =
         , url = tableUrl flags "/messages"
         , body = Http.emptyBody
         , expect = Http.expectJson toMsg decodeGameState
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+{-| Older log rows, for the "load earlier" affordance. `before` is a POSIX
+millisecond timestamp; the Worker returns up to a windowful of messages older
+than it, oldest first.
+-}
+getMessageHistory : Flags -> Auth -> Int -> (Result Http.Error (List Types.Message) -> msg) -> Cmd msg
+getMessageHistory flags auth before toMsg =
+    Http.request
+        { method = "GET"
+        , headers = authHeaders auth
+        , url = tableUrl flags ("/messages/history?before=" ++ String.fromInt before)
+        , body = Http.emptyBody
+        , expect =
+            Http.expectJson toMsg
+                (Decode.field "messages" (Decode.list decodeMessage))
         , timeout = Nothing
         , tracker = Nothing
         }

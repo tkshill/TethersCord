@@ -403,6 +403,13 @@ type alias Model =
     -- by proposal id so each queued proposal has its own field.
     , proposalDrafts : Dict String String
 
+    -- A `GET /messages/history` fetch for older log rows is in flight.
+    , loadingHistory : Bool
+
+    -- The last history fetch came back short, so there is no earlier history to
+    -- ask for and the "load earlier" affordance is hidden.
+    , noMoreHistory : Bool
+
     -- Backend WebSocket connection state, as last reported by the JS socket.
     , connection : Connection
 
@@ -436,6 +443,8 @@ type Msg
     | NewMessageChanged String
     | SendMessage
     | LogScrolled Bool
+    | LoadEarlierMessages
+    | GotEarlierMessages (Result Http.Error (List Message))
     | MessagePosted (Result Http.Error ())
     | ClearLog
     | LogCleared (Result Http.Error ())

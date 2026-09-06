@@ -117,6 +117,8 @@ init flags =
       , newSessionGoal = ""
       , goalEdit = ""
       , proposalDrafts = Dict.empty
+      , loadingHistory = False
+      , noMoreHistory = False
       , connection = Connected
       , gameStateAttempts = 0
       , timeZone = Time.utc
@@ -326,6 +328,34 @@ update msg model =
         -- messages only auto-scroll while this stays True.
         LogScrolled atBottom ->
             ( { model | logAtBottom = atBottom }, Effect.None )
+
+        -- The snapshot only carries the most recent window of messages; this
+        -- pulls the page before the oldest one currently loaded.
+        LoadEarlierMessages ->
+            case ( model.auth, oldestMessageMillis model.gameState ) of
+                ( Just auth, Just before ) ->
+                    if model.loadingHistory || model.noMoreHistory then
+                        ( model, Effect.None )
+
+                    else
+                        ( { model | loadingHistory = True }
+                        , Effect.GetMessageHistory auth before
+                        )
+
+                _ ->
+                    ( model, Effect.None )
+
+        GotEarlierMessages (Ok older) ->
+            ( { model
+                | loadingHistory = False
+                , noMoreHistory = List.isEmpty older
+                , gameState = Maybe.map (prependMessages older) model.gameState
+              }
+            , Effect.None
+            )
+
+        GotEarlierMessages (Err _) ->
+            fail "Couldn't load earlier messages." { model | loadingHistory = False }
 
         SendMessage ->
             case ( model.auth, model.gameState ) of
@@ -745,6 +775,32 @@ mapEntityAtId kind entityId f gs =
 
         Location ->
             { gs | locations = apply gs.locations }
+
+
+{-| POSIX-millisecond timestamp of the oldest message currently loaded — the
+cursor the "load earlier" fetch asks for rows before. Messages are ordered oldest
+first, so this is the head.
+-}
+oldestMessageMillis : Maybe GameState -> Maybe Int
+oldestMessageMillis maybeGs =
+    maybeGs
+        |> Maybe.andThen (.messages >> List.head)
+        |> Maybe.map (.createdAt >> Time.posixToMillis)
+
+
+{-| Prepend a page of older messages, dropping any already present (a broadcast
+could have re-sent an overlapping row) and keeping oldest-first order.
+-}
+prependMessages : List Message -> GameState -> GameState
+prependMessages older gs =
+    let
+        knownIds =
+            List.map .id gs.messages |> Set.fromList
+
+        fresh =
+            List.filter (\m -> not (Set.member m.id knownIds)) older
+    in
+    { gs | messages = fresh ++ gs.messages }
 
 
 findCharacterAtSlot : Int -> GameState -> Maybe CharacterSheet
