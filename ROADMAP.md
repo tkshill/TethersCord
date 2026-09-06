@@ -784,7 +784,7 @@ rewrite changes what an aspect *means*; it never adds a rating (principle 5,
       aspect — all Banes clear, but does the character keep any marker of what
       they went through?
 
-## 21. Game text, tooltips, and glossary
+## 21. Game text, tooltips, and glossary — *see also section 22*
 
 The player-facing copy — move names, proposal descriptions, card titles, hint
 lines — is scattered through `View.elm` as string literals, so tuning the game's
@@ -800,6 +800,159 @@ revise.
 - [ ] **A glossary.** A panel (or a section of the copy source) defining the
       game's terms — overcome, boon, bane, aspect, compel, highlight, floating
       boon — in one place for players. Deferred alongside tooltips.
+
+## 22. Maintainability pass — the view and the Durable Object
+
+**Next in queue for implementation**, ahead of the exploratory sections 17–21.
+No new gameplay; this is structural cleanup so the next rules section is cheaper
+to build.
+
+Nineteen sections of features have landed on a structure that was drawn for far
+less. Complexity is now concentrated in two files that grow every time a rule is
+added:
+
+| File | Lines | Shape |
+| --- | --- | --- |
+| `worker/src/GameTable.ts` | ~2500 | one DO class, ~40 methods, a 230-line `fetch` if-ladder |
+| `client/src/View.elm` | ~1550 | one module, ~40 functions, long positional argument lists |
+| `client/src/Main.elm` | ~830 | `update` — one `case` with ~64 branches, ~70 of them boilerplate |
+| `client/src/Api.elm` | ~670 | 24 near-identical `Http.request` builders |
+
+Section 1 deferred the `View.elm` split "only if it grows further after future
+UI work" — it has. This section acts on that, and on the equivalent split for
+the Worker.
+
+### Guiding rules
+
+- **No behaviour change.** `pnpm run build` (optimised client bundle +
+  `typecheck` both sides + both test suites) is the whole gate, plus new unit
+  tests on each function that becomes pure. Prefer many small mechanical diffs
+  over one rewrite.
+- Sequenced sub-steps below, each its own branch off `main` with a professional
+  commit message, merged before the next starts. The steps are independent
+  except where noted, so the order can flex.
+- The only wire-format change anywhere here is one *additive* field
+  (`outcomeKind`, step 3); no D1 migration, no `KEY_STONES` shape change.
+
+### Step 1 — client quick wins (low risk, independently shippable)
+
+- [ ] **`Api.elm` request helpers.** Collapse the 24 `Http.request` builders
+      behind three privates — `postJson` / `postEmpty` / `get` — that own
+      `method`, `authHeaders`, `jsonContentType`, `timeout`, `tracker`, and the
+      `expectWhatever` / `expectJson`. `slotAction` already hints at this.
+      Each endpoint becomes one line; the module roughly halves.
+- [ ] **Collapse the mutation-result branches in `update`.** The ~11
+      `…Updated (Ok ()) -> ( clearInflight "x:" model, None )` /
+      `(Err _) -> fail "…" (clearInflight "x:" model)` pairs become one
+      `MutationDone { family : String, failMsg : String } (Result Http.Error ())`
+      message (or a shared helper). Removes ~11 `Msg` constructors and their
+      `Effect` → `Api` wiring, ~60 lines net.
+- [ ] **Unwrap `Maybe GameState` once** in `View.view`: a single top-level
+      loading branch, and every section function takes `GameState`, not
+      `Maybe GameState`. Removes the ~6 repeated `case maybeGs of Nothing …`
+      blocks.
+- [ ] **`Format.pluralize : Int -> String -> String`** for the
+      `"Bane" ++ (if n == 1 then "" else "s")` pattern (three sites in `View`,
+      more in the Worker).
+- [ ] **`Types.characterAtSlot`** — one shared slot lookup, replacing
+      `Main.findCharacterAtSlot` and `View.characterAtSlot`.
+
+### Step 2 — typed proposal and ability kinds
+
+- [ ] **`ProposalKind` / `AbilityKind` custom types in `Types.elm`** with
+      decoders (following `decodeRole` / `decodeAspect`), replacing
+      `Proposal.kind : String` and the ~27 string-literal kind references across
+      `View` and `Main` (`countProposals myId "add-boon"`,
+      `abilityUsed slot "suggest-compel"`, the `describeProposal` string `case`).
+      `describeProposal` becomes a total `case`. The Worker already has
+      `ProposalKind` in `types.ts`; this brings the client to parity, so adding a
+      kind produces compiler errors at every site that must handle it.
+
+### Step 3 — a structured session outcome
+
+- [ ] `View.verdictWord` / `verdictColor` currently parse a prose outcome string
+      (`String.contains "failed"`) that `handleEndSession` assembles in English.
+      Add an additive `outcomeKind : "met" | "failed" | "partial"` field to the
+      broadcast `SessionSummary` (and derive it for historical rows from the
+      existing `outcome` text on read). The view switches on the field; the prose
+      stays as the human note.
+
+### Step 4 — split `View.elm`
+
+- [ ] **Per-section modules** under `client/src/View/`: `Session`, `Stones`,
+      `Characters`, `Log`, `Moves`, `Entities`. Each exposes one
+      `view : <props record> -> GameState -> Element Msg`.
+- [ ] **Record props, not positional args.** A shared `ViewContext`
+      (`{ facilitator : Bool, myId : Maybe String, zone : Time.Zone }`) computed
+      once in `View.view` and threaded; each section adds its own small record
+      for the model slices it needs (`confirming`, `inflight`, `proposalDrafts`,
+      …). No more `sessionPanel : Bool -> Maybe String -> String -> String -> …`.
+- [ ] **`View.elm` keeps** `view` (the `Ui.page [ … ]` composition, which stays
+      the table of contents), `header`, `connectionNote`, `logDomId`.
+- [ ] **Move the generic helpers.** `press` and `onlyWhen` into `Ui.elm`; any
+      remaining shared view helpers into `View/Helpers.elm`.
+- [ ] Update the section 1 note here and the module-layout list in `CLAUDE.md`.
+
+### Step 5 — worker pure-logic extraction (no behaviour change)
+
+- [ ] **`worker/src/gameLogic.ts`** — move the already-pure helpers out of
+      `GameTable.ts`: `applyPledge`, `routeOvercomeDraw`, `markAbilityUsed`,
+      `clearSlotPendingState`, `aspectBaneBag`, `pickTwoRandom`, `randomInt`,
+      `totalCommittedBoons`, `characterLabel`, `describeStones`. Direct unit
+      tests instead of only exercising them through `SELF.fetch`.
+- [ ] **`worker/src/characters.ts`** — a persistence helper owning the raw
+      `characters` SQL: `setFate`, `setOwner`, `incrementAspectBane`,
+      `updateFields`, `rowToCharacterSheet`. The four duplicated
+      `UPDATE characters SET fate = ?` sites (`bumpFate`, the reroll cost in
+      `handleRoll`, the pledge spend loop in `handleAcceptRoll`,
+      `handleUpdateFate`) all route through one path.
+- [ ] **`handleProposalDecision` per-kind resolvers** — extract each arm of the
+      ~180-line `switch` to a pure
+      `(state, proposal, ctx) => { state, logLine } | Response`, matching the
+      `routeOvercomeDraw` pattern. Unit-test each.
+- [ ] **`migrateStoneState.ts`** — move `LegacyStoneKind` / `LegacyStoneState` /
+      `migrateStoneKind` and the `?? default` fan-out in `loadStoneState` out of
+      the main flow, so the load-time cruft is easy to delete later.
+
+### Step 6 — split `GameTable.ts`
+
+- [ ] **Route table.** Replace the `fetch` if-ladder with a declarative
+      `ROUTES` array — `{ method, path: string | RegExp, gate?: "facilitator" |
+      "roll", handler }` — matched in a loop. Extract
+      `const UUID = "[0-9a-fA-F-]{36}"` (inlined in two regexes) and a
+      `parseSlot(raw): number | null` for the repeated slot-range check.
+- [ ] **`commit()` helper** — fold the
+      `gameState = { … }; await saveStoneState(…); await appendMessage?(…);
+      broadcast(…); return ackResponse()` trailer (in ~24 handlers) into one
+      call, so each handler's diff is just the state change.
+- [ ] **`private get game(): GameState`** — drops the ~85 `this.gameState!`
+      non-null assertions.
+- [ ] **Handler modules** under `worker/src/handlers/`: `stones`, `session`,
+      `characters`, `entities`, `proposals`. Each takes a `HandlerContext`
+      (`{ game, env, commit, appendMessage, broadcast }`). The DO class keeps
+      routing, lifecycle (`ensureLoaded` / `loadInitialState` / `handleConnect` /
+      the `webSocket*` hooks), `withLock`, auth, and the context object.
+- [ ] **`Promise.all` the independent cold-start reads** in `loadInitialState`
+      (messages, `loadSessionHistory`, the two `loadEntities`) — meaningful on
+      the Free-tier cold path.
+- [ ] Update the `GameTable` description in `CLAUDE.md` and the test-coverage
+      notes in section 11 / `CLAUDE.md` for the new module layout.
+- Target: no file in `worker/src/` over ~500 lines.
+
+### Step 7 — smaller TS cleanup
+
+- [ ] Consolidate the three hand-maintained Elm-port shapes (`ElmPorts` in
+      `DiscordBridge.ts`, `GameSocketPorts` in `GameSocket.ts`, the inline shape
+      in `main.ts`) into one `client/src/ports.ts`.
+- [ ] A typed `declare global { interface Window }` for `DISCORD_CLIENT_ID` /
+      `BACKEND_BASE_URL` in place of the repeated `(window as any)`.
+
+### Relates to
+
+- **Section 21** (game text / tooltips / glossary) — the copy-extraction step
+  wants the new `View/` module layout to exist first, so do 21 after step 4.
+- **Section 15** delta broadcasts — untouched here; the route table and
+  `commit()` helper give it fewer call sites to rewrite when it lands.
 
 ---
 
