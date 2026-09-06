@@ -1,6 +1,9 @@
 module Ui exposing
     ( accent
+    , baneFill
     , banner
+    , boonDot
+    , boonFill
     , card
     , danger
     , divider
@@ -16,12 +19,14 @@ module Ui exposing
     , onEnter
     , onScrolledToBottom
     , page
+    , pledgedStoneChip
     , primaryButton
     , sans
     , sectionTitle
     , sm
     , speakerColor
     , stoneChip
+    , tab
     , xl
     , xs
     )
@@ -84,6 +89,18 @@ accentText =
 facilitatorTint : Color
 facilitatorTint =
     rgb255 122 74 44
+
+
+{-| Stone fills. A Boon is near-white on the paper surface; a Bane is near-black.
+-}
+boonFill : Color
+boonFill =
+    rgb255 249 248 246
+
+
+baneFill : Color
+baneFill =
+    rgb255 42 42 46
 
 
 danger : Color
@@ -283,25 +300,108 @@ ghostButton config =
         { onPress = config.onPress, label = text config.label }
 
 
+{-| One entry in a tab strip. The selected tab reads as the accent button; the
+rest are quiet until hovered.
+-}
+tab : Bool -> String -> msg -> Element msg
+tab selected label msg =
+    Input.button
+        [ Font.size 12
+        , paddingXY_ md xs
+        , Border.rounded 6
+        , Border.width 1
+        , Background.color
+            (if selected then
+                accent
+
+             else
+                panel
+            )
+        , Font.color
+            (if selected then
+                accentText
+
+             else
+                inkSoft
+            )
+        , Border.color
+            (if selected then
+                accent
+
+             else
+                line
+            )
+        , Element.mouseOver
+            (if selected then
+                []
+
+             else
+                [ Border.color accent, Font.color accent ]
+            )
+        ]
+        { onPress = Just msg, label = text label }
+
+
 {-| A stone: a filled circle with its name captioned beneath. `swatch` is the
 fill.
 -}
 stoneChip : Color -> String -> Element msg
 stoneChip swatch label =
+    labeledStone swatch False label
+
+
+{-| As `stoneChip`, but marked with a centre dot — used to show a boon that has
+been pledged into the current roll sitting in the bag.
+-}
+pledgedStoneChip : Color -> String -> Element msg
+pledgedStoneChip swatch label =
+    labeledStone swatch True label
+
+
+labeledStone : Color -> Bool -> String -> Element msg
+labeledStone swatch marked label =
     Element.column
         [ spacing xs, Font.size 10, Font.color inkSoft ]
-        [ el
-            [ width (Element.px 22)
-            , Element.height (Element.px 22)
-            , Background.color swatch
-            , Border.color line
-            , Border.width 1
-            , Border.rounded 999
-            , Element.centerX
-            ]
-            Element.none
+        [ el [ Element.centerX ] (stoneCircle swatch marked 22)
         , el [ Element.centerX ] (text label)
         ]
+
+
+{-| A small boon circle with no caption, for the row of boons on a character
+sheet. Marked with a centre dot when the boon is pledged into the current roll.
+-}
+boonDot : Bool -> Element msg
+boonDot marked =
+    stoneCircle boonFill marked 16
+
+
+{-| The bare circle both stone shapes are built from. `marked` draws an accent
+centre dot; `size` is the diameter in pixels.
+-}
+stoneCircle : Color -> Bool -> Int -> Element msg
+stoneCircle swatch marked size =
+    el
+        [ width (Element.px size)
+        , Element.height (Element.px size)
+        , Background.color swatch
+        , Border.color line
+        , Border.width 1
+        , Border.rounded 999
+        ]
+        (if marked then
+            el
+                [ Element.centerX
+                , Element.centerY
+                , width (Element.px (Basics.max 4 (size // 3)))
+                , Element.height (Element.px (Basics.max 4 (size // 3)))
+                , Background.color accent
+                , Border.rounded 999
+                ]
+                Element.none
+
+         else
+            Element.none
+        )
 
 
 paddingXY_ : Int -> Int -> Attribute msg

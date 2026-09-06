@@ -10,11 +10,9 @@ import Element
         , fill
         , height
         , maximum
-        , minimum
         , none
         , padding
         , px
-        , rgb255
         , spacing
         , text
         , width
@@ -55,7 +53,7 @@ view model =
         , Ui.banner model.status
         , sessionPanel facilitator model.timeZone model.newSessionGoal model.gameState
         , rollPanel facilitator myId model.gameState
-        , characterSheets facilitator myId model.gameState
+        , characterSheets facilitator myId model.selectedSlot model.gameState
         , messageLog facilitator model.timeZone model.gameState
         , composer model
         ]
@@ -232,9 +230,13 @@ rollPanel facilitator myId maybeGs =
                         countProposals myId "add-boon" gs.proposals
                 in
                 Element.column [ spacing Ui.md, width fill ]
-                    [ Element.wrappedRow [ spacing Ui.xs ] (List.map stoneChip gs.stonePool)
+                    [ Element.wrappedRow [ spacing Ui.xs ]
+                        (List.map stoneChip gs.stonePool
+                            ++ List.repeat committed
+                                (Ui.pledgedStoneChip Ui.boonFill "Pledged")
+                        )
                     , el [ Font.size 12, Font.color Ui.inkSoft ]
-                        (text (poolSummary (List.length gs.stonePool) committed))
+                        (text ("Bag of " ++ String.fromInt (List.length gs.stonePool + committed)))
                     , case gs.pendingRoll of
                         Nothing ->
                             Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
@@ -341,35 +343,22 @@ onlyFacilitator facilitator elements =
         []
 
 
-poolSummary : Int -> Int -> String
-poolSummary poolCount committed =
-    let
-        base =
-            "Bag of " ++ String.fromInt (poolCount + committed)
-    in
-    if committed > 0 then
-        base ++ " (" ++ String.fromInt committed ++ " boon pledged)"
-
-    else
-        base
-
-
 stoneChip : Stone -> Element msg
 stoneChip stone =
     case stone of
         Boon ->
-            Ui.stoneChip (rgb255 249 248 246) "Boon"
+            Ui.stoneChip Ui.boonFill "Boon"
 
         Bane ->
-            Ui.stoneChip (rgb255 42 42 46) "Bane"
+            Ui.stoneChip Ui.baneFill "Bane"
 
 
 
 -- CHARACTERS
 
 
-characterSheets : Bool -> Maybe String -> Maybe GameState -> Element Msg
-characterSheets facilitator myId maybeGs =
+characterSheets : Bool -> Maybe String -> Int -> Maybe GameState -> Element Msg
+characterSheets facilitator myId selectedSlot maybeGs =
     Ui.card
         [ Ui.sectionTitle "Characters"
         , case maybeGs of
@@ -377,9 +366,53 @@ characterSheets facilitator myId maybeGs =
                 placeholder "Loading character sheets…"
 
             Just gs ->
-                Element.wrappedRow [ spacing Ui.md, width fill ]
-                    (List.map (characterSheet facilitator myId gs) gs.characters)
+                let
+                    selected =
+                        case List.filter (\c -> c.slot == selectedSlot) gs.characters of
+                            first :: _ ->
+                                Just first
+
+                            [] ->
+                                List.head gs.characters
+                in
+                Element.column [ spacing Ui.md, width fill ]
+                    [ tabStrip myId selectedSlot gs.characters
+                    , case selected of
+                        Just ch ->
+                            characterSheet facilitator myId gs ch
+
+                        Nothing ->
+                            placeholder "No character sheets."
+                    ]
         ]
+
+
+{-| One tab per sheet, labelled by character name (or a slot number until one is
+set) with a "(you)" marker on the sheet the viewer holds. -}
+tabStrip : Maybe String -> Int -> List CharacterSheet -> Element Msg
+tabStrip myId selectedSlot characters =
+    Element.wrappedRow [ spacing Ui.xs, width fill ]
+        (List.map
+            (\c -> Ui.tab (c.slot == selectedSlot) (tabLabel myId c) (SelectSlot c.slot))
+            characters
+        )
+
+
+tabLabel : Maybe String -> CharacterSheet -> String
+tabLabel myId ch =
+    let
+        base =
+            if String.trim ch.name /= "" then
+                ch.name
+
+            else
+                "Character " ++ String.fromInt (ch.slot + 1)
+    in
+    if ch.ownerId /= Nothing && ch.ownerId == myId then
+        base ++ " (you)"
+
+    else
+        base
 
 
 characterSheet : Bool -> Maybe String -> GameState -> CharacterSheet -> Element Msg
@@ -401,12 +434,13 @@ characterSheet facilitator myId gs ch =
     Element.column
         [ spacing Ui.sm
         , padding Ui.md
-        , width (fill |> minimum 240)
+        , width fill
         , Border.color Ui.line
         , Border.width 1
         , Border.rounded 6
         ]
         [ ownerRow facilitator mine ch
+        , boonsBlock facilitator mine ch (committedBoonsForSlot ch.slot gs.committedBoons) pendingPledges
         , field editable ch NameField "Name" ch.name
         , field editable ch NotableFeaturesField "Notable features" ch.notableFeatures
         , field editable ch ArchetypeField "Archetype" ch.archetype
@@ -414,8 +448,6 @@ characterSheet facilitator myId gs ch =
         , field editable ch QuestField "Quest" ch.quest
         , field editable ch ConditionField "Condition" ch.condition
         , notesField editable ch
-        , fateRow facilitator ch
-        , commitRow mine (committedBoonsForSlot ch.slot gs.committedBoons) pendingPledges
         ]
 
 
@@ -502,36 +534,58 @@ readOnlyField label value =
         ]
 
 
-fateRow : Bool -> CharacterSheet -> Element Msg
-fateRow facilitator ch =
-    Element.row [ spacing Ui.sm, Element.centerY ]
-        ([ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Boons")
-         , el [ Font.semiBold, width (px 20), Font.center ] (text (String.fromInt ch.fate))
-         ]
-            ++ onlyFacilitator facilitator
-                [ Ui.ghostButton { onPress = Just (FateDecrement ch.slot), label = "−" }
-                , Ui.ghostButton { onPress = Just (FateIncrement ch.slot), label = "+" }
-                ]
-        )
+{-| A character's boons, at the top of the sheet where a player can see their
+spendable stones alongside the current roll. The boons show as circles; the ones
+pledged into the next roll carry a centre dot rather than a separate count. The
+facilitator gets a Grant `+` / `−`; the sheet's owner gets a Pledge `+` / `−`
+and a note of any unresolved pledge proposals. -}
+boonsBlock : Bool -> Bool -> CharacterSheet -> Int -> Int -> Element Msg
+boonsBlock facilitator mine ch pledged pending =
+    Element.column [ spacing Ui.xs, width fill ]
+        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Boons")
+        , boonCircles ch.fate pledged
+        , Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
+            (grantControls facilitator ch ++ pledgeControls mine pending)
+        ]
 
 
-{-| Boons pledged into the next roll. The count shows on every sheet; only the
-sheet's owner gets the `+` / `−` and a note of their unresolved pledges. -}
-commitRow : Bool -> Int -> Int -> Element Msg
-commitRow mine pledged pending =
-    Element.row [ spacing Ui.sm, Element.centerY ]
-        ([ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Pledged")
-         , el [ Font.semiBold, width (px 20), Font.center ] (text (String.fromInt pledged))
-         ]
-            ++ (if mine then
-                    Ui.ghostButton { onPress = Just CommitBoonDecrement, label = "−" }
-                        :: Ui.ghostButton { onPress = Just CommitBoonIncrement, label = "+" }
-                        :: pendingHint pending
+{-| `total` boon circles, the first `pledged` of them marked as pledged into the
+next roll. -}
+boonCircles : Int -> Int -> Element msg
+boonCircles total pledged =
+    if total <= 0 then
+        el [ Font.size 12, Font.color Ui.inkSoft ] (text "None")
 
-                else
-                    []
-               )
-        )
+    else
+        Element.wrappedRow [ spacing Ui.xs ]
+            (List.range 1 total
+                |> List.map (\i -> Ui.boonDot (i <= pledged))
+            )
+
+
+grantControls : Bool -> CharacterSheet -> List (Element Msg)
+grantControls facilitator ch =
+    if facilitator then
+        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Grant")
+        , Ui.ghostButton { onPress = Just (FateDecrement ch.slot), label = "−" }
+        , Ui.ghostButton { onPress = Just (FateIncrement ch.slot), label = "+" }
+        ]
+
+    else
+        []
+
+
+pledgeControls : Bool -> Int -> List (Element Msg)
+pledgeControls mine pending =
+    if mine then
+        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Pledge")
+        , Ui.ghostButton { onPress = Just CommitBoonDecrement, label = "−" }
+        , Ui.ghostButton { onPress = Just CommitBoonIncrement, label = "+" }
+        ]
+            ++ pendingHint pending
+
+    else
+        []
 
 
 fieldLabel : String -> Input.Label msg
