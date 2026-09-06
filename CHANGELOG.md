@@ -10,6 +10,13 @@ version yet, so headings are dates.
 
 ### Added
 
+- A client test suite (roadmap section 11, first pass). `pnpm run test` runs
+  `elm-test` over `client/tests/`: `Api.decodeGameState` against a full wire
+  snapshot, `Main.applyServerState`'s edit-cursor merge, `Main.update` guards
+  and the `Effect` each `Msg` yields, and the `Format` / `Roll` helpers. It is
+  folded into `pnpm run build` after `typecheck`, and a new
+  `.github/workflows/ci.yml` runs `pnpm run build` on push and PR — the
+  project's first CI. Worker / Durable Object tests are still to come.
 - Player moves and abilities (roadmap section 10). A new **Moves** card offers
   each player, once they hold a sheet: the once-per-session abilities **Help
   Out** (reroll an overcome), **Add a Detail** and **Gain Insight** (each mints a
@@ -64,6 +71,11 @@ version yet, so headings are dates.
 
 ### Changed
 
+- The client `update` is now a pure function returning `( Model, Effect )`
+  instead of `( Model, Cmd Msg )`. A new `Effect` module names each side effect
+  as data; `Effect.perform` turns it into a `Cmd` once, at the `Main` boundary.
+  No behaviour change — the refactor exists so `update` can be tested without
+  mocking `Cmd`.
 - Stones now name their outcome instead of a colour: `Boon` (favourable) and
   `Bane` replace `WhiteStone` / `BlackStone` across the client, the worker, and
   the `"Boon" | "Bane"` wire format. Durable Object stone storage is migrated

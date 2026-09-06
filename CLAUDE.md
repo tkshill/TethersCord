@@ -10,7 +10,8 @@ All scripts live in the root `package.json`; run them with pnpm from the repo ro
 | --- | --- |
 | `pnpm install` | Install; `pnpm-workspace.yaml` allowlists the `elm` / `esbuild` / `workerd` build scripts |
 | `pnpm run dev` | Build client, then run the client watcher + `wrangler dev` on http://localhost:8787 (SPA and API on one origin) |
-| `pnpm run build` | `build:client` then `typecheck` (client + worker) — the pre-deploy gate |
+| `pnpm run build` | `build:client`, then `typecheck` (client + worker), then `test` — the pre-deploy gate |
+| `pnpm run test` / `test:client` | `elm-test` over `client/tests/` (uses the pinned Elm via `--compiler`). No worker suite yet |
 | `pnpm run build:client` | `node client/scripts/build.mjs`: `elm make src/Main.elm --optimize` → `client/dist/elm.js`, esbuild `src/main.ts` → `client/dist/main.js`, copy `index.html`. Run after any Elm change |
 | `pnpm run watch:client` | Rebuild `client/dist` in place on change (`wrangler dev` reads it off disk; there is no project dev server) |
 | `pnpm run typecheck:worker` / `typecheck:client` | `tsc --noEmit`. Run the worker one after any Worker change |
@@ -24,7 +25,9 @@ Quick Elm compile check without the full bundle, from `client/`: `../node_module
 
 ### Tests
 
-There is **no test suite yet** — `client/elm.json` `test-dependencies` is empty and there is no JS test runner. `pnpm run build` (typecheck + optimized Elm compile) is the current safety net. `ROADMAP.md` section 11 plans `elm-explorations/test` + `avh4/elm-program-test`.
+`pnpm run test` runs the **client** suite: `elm-test` (`elm-explorations/test` 2.2.1) over `client/tests/`, invoked with `--compiler ../node_modules/elm/bin/elm` so it uses the pinned Elm. It is folded into `pnpm run build` after `typecheck`, so `deploy` and CI (`.github/workflows/ci.yml`) run it. Coverage today: `Api.decodeGameState` against a full wire snapshot, `Main.applyServerState` (the edit-cursor merge), `Main.update` guards and the `Effect` each `Msg` yields, and the `Format` / `Roll` helpers. `Main` exposes `init` / `update` / `applyServerState` for the tests.
+
+There is **no worker test suite yet** — `ROADMAP.md` section 11 plans `@cloudflare/vitest-pool-workers` for the `GameTable` state machine, the auth gates, and the `index.ts` proxy. `avh4/elm-program-test` is also still deferred; the update tests fold `Main.update` directly for now.
 
 ### Elm version
 
@@ -73,9 +76,10 @@ State is partitioned by `tableId`, one `GameTable` Durable Object per table.
 
 ### Client module layout (Elm + TS interop)
 
-Elm (`client/src/`), dependency direction `Types` ← everything, `Main` → `Api`/`Ports`/`View`/`Format`:
+Elm (`client/src/`), dependency direction `Types` ← everything, `Main` → `Effect`/`Api`/`Ports`/`View`/`Format`:
 
-- **`Main.elm`** — wiring only: `init` / `update` / `subscriptions` / `main`.
+- **`Main.elm`** — wiring only: `init` / `update` / `subscriptions` / `main`. `update : Msg -> Model -> ( Model, Effect )` is pure — it returns an `Effect` value, never a `Cmd` — and `main` runs `Effect.perform` on the result at the boundary.
+- **`Effect.elm`** — an `Effect` type with one constructor per side effect the app performs (`GetGameState`, `PostMessage`, `PostStones`, `ScrollLogToBottom`, `Authorize`, `Batch`, `None`, …), and `Effect.perform : Flags -> Effect -> Cmd Msg` translating each to an `Api` / `Ports` / `Task` call. `Post*` effects carry the `Auth` they need; `update` still decides whether the user is authorised. This is what lets `update` be asserted on in tests without mocking `Cmd`.
 - **`Types.elm`** — domain types **plus `Model` and `Msg`**. They live here, not in `Main`, so `View` can import them without a cycle (`Main` imports `View`).
 - **`Api.elm`** — every `Http.request` command and the JSON decoders. Commands take their result-message constructor as an argument, so this module has no dependency on `Types.Msg`.
 - **`Ports.elm`** (`port module`) — the `toDiscord` / `fromDiscord` / `wsGameState` ports, `authorize`, and a typed `DiscordInbound` + `decodeInbound`. Ports declared here still surface on `app.ports`; the JS side does not care which module declares them.
