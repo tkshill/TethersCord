@@ -10,6 +10,9 @@ version yet, so headings are dates.
 
 ### Added
 
+- `DESIGN_PRINCIPLES.md` — the ten core design principles the game is measured
+  against, recorded as a stable reference alongside the forward-looking
+  `ROADMAP.md` and the historical `CHANGELOG.md`.
 - Player moves and abilities (roadmap section 10). A new **Moves** card offers
   each player, once they hold a sheet: the once-per-session abilities **Help
   Out** (reroll an overcome), **Add a Detail** and **Gain Insight** (each mints a

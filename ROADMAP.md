@@ -3,6 +3,9 @@
 The backend (single Worker + Durable Object + D1) is stable. Everything below is
 incremental work on top of it, roughly in priority order.
 
+`DESIGN_PRINCIPLES.md` holds the ten core design principles every item here is
+weighed against.
+
 ## 1. Module structure — done
 
 `client/src/Main.elm` had grown to a single ~900-line file holding flags, model,
