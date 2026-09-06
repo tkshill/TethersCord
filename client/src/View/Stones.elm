@@ -19,10 +19,12 @@ import View.Helpers
         ( ViewContext
         , characterLabel
         , countProposals
+        , glossaryTitle
         , inputAttrs
         , latestProposalId
         , pendingHint
         , stoneChip
+        , tip
         )
 
 
@@ -91,7 +93,7 @@ view ctx props gs =
                 Copy.reroll ++ costSuffix
     in
     Ui.card
-        [ Ui.sectionTitle Copy.stonesTitle
+        [ glossaryTitle Copy.stonesTitle "Stone"
         , Element.column [ spacing Ui.md, width fill ]
             [ overcomeBlock ctx.facilitator target gs.characters
             , Element.wrappedRow [ spacing Ui.xs ]
@@ -184,7 +186,8 @@ floatingBoonsBlock facilitator myId gs =
                     ]
         in
         Element.column [ spacing Ui.xs, width fill ]
-            (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.floatingBoons)
+            (tip "Floating boon"
+                (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.floatingBoons))
                 :: List.map row gs.floatingBoons
             )
 
@@ -198,8 +201,10 @@ overcomeBlock facilitator target characters =
     case target of
         Just t ->
             Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
-                (el [ Font.size 12, Font.semiBold ]
-                    (text (Copy.overcomeWith (characterLabel t)))
+                (tip "Overcome"
+                    (el [ Font.size 12, Font.semiBold ]
+                        (text (Copy.overcomeWith (characterLabel t)))
+                    )
                     :: Ui.onlyWhen facilitator
                         [ Ui.ghostButton { onPress = Just CancelOvercome, label = Copy.callOffOvercome } ]
                 )
