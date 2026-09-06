@@ -109,11 +109,12 @@ suite =
                 decoded
                     |> Result.map .untether
                     |> Expect.equal (Ok (Just { slot = 1, aspect = Types.Quest }))
-        , test "reads completed sessions in history" <|
+        , test "reads completed sessions in history, prose and classified kind" <|
             \_ ->
                 decoded
-                    |> Result.map (.sessionHistory >> List.map .outcome)
-                    |> Expect.equal (Ok [ "goal failed — drew Bane (pool flushed)" ])
+                    |> Result.map (.sessionHistory >> List.map (\s -> ( s.outcome, s.outcomeKind )))
+                    |> Expect.equal
+                        (Ok [ ( "goal failed — drew Bane (pool flushed)", Types.OutcomeFailed ) ])
         , test "reads NPC and location reference rows" <|
             \_ ->
                 decoded

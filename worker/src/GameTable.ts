@@ -21,6 +21,7 @@ import type {
   Proposal,
   ProposalDecisionInput,
   Role,
+  SessionOutcomeKind,
   SessionState,
   SessionSummary,
   StartOvercomeInput,
@@ -709,9 +710,12 @@ export class GameTable implements DurableObject {
     `,
     )
       .bind(sessionId)
-      .all<SessionSummary>();
+      .all<Omit<SessionSummary, "outcomeKind">>();
 
-    return rows.results ?? [];
+    return (rows.results ?? []).map((row) => ({
+      ...row,
+      outcomeKind: deriveOutcomeKind(row.outcome),
+    }));
   }
 
   /**
@@ -2209,6 +2213,19 @@ function capMessages(messages: Message[]): Message[] {
   return messages.length > MESSAGE_WINDOW
     ? messages.slice(messages.length - MESSAGE_WINDOW)
     : messages;
+}
+
+/**
+ * Classify a stored `outcome` sentence for the history view. `/session/end`
+ * writes "goal met — …" / "goal failed — …"; rows from the retired tiers read
+ * "met (…)" / "partial (…)" / "failed (…)". "failed" is checked first because a
+ * "goal failed" sentence also contains "goal". Anything unrecognised falls to
+ * `partial`, the neutral middle.
+ */
+function deriveOutcomeKind(outcome: string): SessionOutcomeKind {
+  if (outcome.includes("failed")) return "failed";
+  if (outcome.includes("met")) return "met";
+  return "partial";
 }
 
 async function readJson(request: Request): Promise<unknown> {

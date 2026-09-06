@@ -313,40 +313,37 @@ pastSessionRow zone s =
             (text (Format.date zone s.startedAt))
         , Element.paragraph [ Font.size 12, spacing 3 ]
             [ text s.goal
-            , el [ Font.color (verdictColor s.outcome), Font.semiBold ]
-                (text ("  " ++ verdictWord s.outcome))
+            , el [ Font.color (verdictColor s.outcomeKind), Font.semiBold ]
+                (text ("  " ++ verdictWord s.outcomeKind))
             ]
         ]
 
 
-{-| A one-word verdict from a stored outcome string. Section 19 writes
-"goal met — …" / "goal failed — …"; older rows read "met (…)" / "partial (…)" /
-"failed (…)". -}
-verdictWord : String -> String
+{-| The one-word verdict for the history row. The Worker classifies the stored
+outcome sentence into `outcomeKind`, so the view no longer parses prose. -}
+verdictWord : SessionOutcome -> String
 verdictWord outcome =
-    if String.contains "failed" outcome then
-        "failed"
+    case outcome of
+        OutcomeMet ->
+            "met"
 
-    else if String.contains "met" outcome then
-        "met"
+        OutcomeFailed ->
+            "failed"
 
-    else if String.contains "partial" outcome then
-        "partial"
-
-    else
-        outcome
+        OutcomePartial ->
+            "partial"
 
 
-verdictColor : String -> Element.Color
+verdictColor : SessionOutcome -> Element.Color
 verdictColor outcome =
-    case verdictWord outcome of
-        "met" ->
+    case outcome of
+        OutcomeMet ->
             Ui.speakerColor 2
 
-        "failed" ->
+        OutcomeFailed ->
             Ui.danger
 
-        _ ->
+        OutcomePartial ->
             Ui.inkSoft
 
 

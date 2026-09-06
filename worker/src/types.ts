@@ -168,9 +168,18 @@ export type SessionState = {
   carriedBanes: number;
 };
 
+/** How a completed session's goal landed. `partial` is retired for new
+ * sessions (section 19's single-stone draw is met or failed) but kept so
+ * historical rows written under the old tiers still classify. */
+export type SessionOutcomeKind = "met" | "failed" | "partial";
+
 /**
  * A completed session, as read back from the `game_sessions` D1 rows. Feeds the
  * table's session-history view; the running session is not included.
+ *
+ * `outcome` is the human sentence written at `/session/end`; `outcomeKind` is
+ * that sentence classified for the view, derived on read (there is no
+ * `outcome_kind` column) so it costs no migration.
  */
 export type SessionSummary = {
   id: string;
@@ -178,6 +187,7 @@ export type SessionSummary = {
   startedAt: number;
   endedAt: number;
   outcome: string;
+  outcomeKind: SessionOutcomeKind;
 };
 
 /**

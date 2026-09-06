@@ -155,7 +155,8 @@ snapshotJson =
         ]
     , "sessionHistory":
         [ { "id": "s0", "goal": "The bridge", "startedAt": 1699000000000
-          , "endedAt": 1699000900000, "outcome": "goal failed — drew Bane (pool flushed)" }
+          , "endedAt": 1699000900000, "outcome": "goal failed — drew Bane (pool flushed)"
+          , "outcomeKind": "failed" }
         ]
     , "overcome": { "targetSlot": 1 }
     , "untether": { "slot": 1, "aspect": "quest" }

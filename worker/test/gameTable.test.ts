@@ -661,16 +661,18 @@ describe("section 19 — the overcome aftermath (integration)", () => {
 
         await call(table, "/session/end", { token: fac });
         const ended = await readState(table, fac);
-        const outcome = ended.sessionHistory[0].outcome;
+        const { outcome, outcomeKind } = ended.sessionHistory[0];
 
         await call(table, "/session/start", { token: fac, body: { goal: "next" } });
         const carried = (await readState(table, fac)).session?.carriedBanes ?? -1;
 
         if (outcome.includes("met")) {
           expect(carried).toBe(banesInPool);
+          expect(outcomeKind).toBe("met");
           sawMet = true;
         } else {
           expect(outcome).toContain("failed");
+          expect(outcomeKind).toBe("failed");
           expect(carried).toBe(0);
           sawFailed = true;
         }
