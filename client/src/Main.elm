@@ -61,6 +61,7 @@ init flags =
       , selectedSlot = 0
       , logAtBottom = True
       , newSessionGoal = ""
+      , proposalDraft = ""
       , connection = Connected
       , gameStateAttempts = 0
       , timeZone = Time.utc
@@ -209,16 +210,58 @@ update msg model =
             ( { model | status = "Couldn't claim that character sheet." }, Cmd.none )
 
         AcceptProposal id ->
-            ( model, proposalCmd model id "accept" )
+            let
+                context =
+                    case String.trim model.proposalDraft of
+                        "" ->
+                            Nothing
+
+                        text ->
+                            Just text
+            in
+            ( model, proposalCmd model id "accept" context )
 
         RejectProposal id ->
-            ( model, proposalCmd model id "reject" )
+            ( model, proposalCmd model id "reject" Nothing )
+
+        ProposalDraftChanged s ->
+            ( { model | proposalDraft = s }, Cmd.none )
 
         ProposalResolved (Ok ()) ->
-            ( model, Cmd.none )
+            ( { model | proposalDraft = "" }, Cmd.none )
 
         ProposalResolved (Err _) ->
             ( { model | status = "Failed to resolve the proposal." }, Cmd.none )
+
+        UseAbility kind ->
+            case model.auth of
+                Just auth ->
+                    ( model, Api.postUseAbility model.flags auth kind MoveRaised )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        AcceptCompelMove ->
+            case model.auth of
+                Just auth ->
+                    ( model, Api.postAcceptCompelMove model.flags auth MoveRaised )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        UseFloatingBoon floatingId ->
+            case model.auth of
+                Just auth ->
+                    ( model, Api.postUseFloatingBoon model.flags auth floatingId MoveRaised )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        MoveRaised (Ok ()) ->
+            ( model, Cmd.none )
+
+        MoveRaised (Err _) ->
+            ( { model | status = "Couldn't raise that move." }, Cmd.none )
 
         SessionGoalChanged s ->
             ( { model | newSessionGoal = s }, Cmd.none )
@@ -415,11 +458,11 @@ releaseCmd model slot =
             Cmd.none
 
 
-proposalCmd : Model -> String -> String -> Cmd Msg
-proposalCmd model id decision =
+proposalCmd : Model -> String -> String -> Maybe String -> Cmd Msg
+proposalCmd model id decision context =
     case model.auth of
         Just auth ->
-            Api.postProposalDecision model.flags auth id decision ProposalResolved
+            Api.postProposalDecision model.flags auth id decision context ProposalResolved
 
         Nothing ->
             Cmd.none

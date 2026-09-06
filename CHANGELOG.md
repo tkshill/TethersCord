@@ -10,6 +10,18 @@ version yet, so headings are dates.
 
 ### Added
 
+- Player moves and abilities (roadmap section 10, less the multi-party compel
+  handshake). A new **Moves** card offers each player, once they hold a sheet:
+  the once-per-session abilities **Help Out** (reroll an overcome), **Add a
+  Detail** and **Gain Insight** (each mints a *floating boon*), and the **Accept
+  Compel** move (take a complication for 2 boons). Every one is queued as a
+  proposal the facilitator accepts or rejects; abilities are only marked used on
+  approval and reset when a session starts. A **floating boon** is a boon owned
+  by nobody, created with a context note the facilitator attaches on approval; it
+  sits in the Stones card until a player spends it on a roll (a facilitator-
+  approved Highlight) and is discarded at session end. The sheet's pledge control
+  is now labelled **Highlight**, and the overcome target's reroll button reads
+  **Press Fate**.
 - The overcome: the facilitator frames a risky attempt and names one character
   as its target (`POST /api/table/:id/overcome/{start,cancel}`, new
   `GameState.overcome`). While an overcome is open, the target's player — not

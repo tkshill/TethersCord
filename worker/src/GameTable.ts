@@ -5,15 +5,18 @@ import type {
   DurableObjectState,
 } from "@cloudflare/workers-types";
 import type {
+  AbilityKind,
   CommitBoonInput,
   CommittedBoon,
   Env,
+  FloatingBoon,
   GameState,
   Message,
   Overcome,
   PendingRoll,
   PostMessageInput,
   Proposal,
+  ProposalDecisionInput,
   Role,
   SessionState,
   SessionSummary,
@@ -23,6 +26,9 @@ import type {
   CharacterSheet,
   UpdateCharacterInput,
   UpdateFateInput,
+  UsedAbilities,
+  UseAbilityInput,
+  UseFloatingBoonInput,
 } from "./types";
 
 // Every roll starts from this base — two Boon, two Bane — before any boons a
@@ -33,6 +39,16 @@ const CHARACTER_SLOT_COUNT = 3;
 
 /** Boons the overcome target spends to Reroll while an overcome is open. */
 const REROLL_COST = 2;
+
+/** Boons the facilitator pays out for an approved Accept Compel move. */
+const ACCEPT_COMPEL_BOONS = 2;
+
+/** The once-per-session abilities, for validation of the `/abilities/use` route. */
+const ABILITY_KINDS: readonly AbilityKind[] = [
+  "help-out",
+  "add-detail",
+  "gain-insight",
+];
 
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_FIELD_LENGTH = 500;
@@ -56,6 +72,8 @@ type StoneState = {
   pendingRoll: PendingRoll | null;
   overcome: Overcome | null;
   committedBoons: CommittedBoon[];
+  floatingBoons: FloatingBoon[];
+  usedAbilities: UsedAbilities[];
   proposals: Proposal[];
   session: SessionState | null;
 };
@@ -70,6 +88,8 @@ type LegacyStoneState = {
   } | null;
   overcome?: Overcome | null;
   committedBoons?: CommittedBoon[];
+  floatingBoons?: FloatingBoon[];
+  usedAbilities?: UsedAbilities[];
   proposals?: Proposal[];
   session?: SessionState | null;
 };
@@ -192,9 +212,23 @@ export class GameTable implements DurableObject {
           this.handleProposalDecision(
             proposalId,
             decision as "accept" | "reject",
+            authInfo,
+            request,
           ),
         )
       );
+    }
+
+    if (url.pathname === "/abilities/use" && request.method === "POST") {
+      return this.withLock(() => this.handleUseAbility(request, authInfo));
+    }
+
+    if (url.pathname === "/moves/accept-compel" && request.method === "POST") {
+      return this.withLock(() => this.handleAcceptCompelMove(authInfo));
+    }
+
+    if (url.pathname === "/stones/use-floating" && request.method === "POST") {
+      return this.withLock(() => this.handleUseFloating(request, authInfo));
     }
 
     if (url.pathname === "/stones/roll" && request.method === "POST") {
@@ -395,6 +429,8 @@ export class GameTable implements DurableObject {
       pendingRoll: stones.pendingRoll,
       overcome: stones.overcome,
       committedBoons: stones.committedBoons,
+      floatingBoons: stones.floatingBoons,
+      usedAbilities: stones.usedAbilities,
       proposals: stones.proposals,
       session: stones.session,
       sessionHistory,
@@ -426,7 +462,13 @@ export class GameTable implements DurableObject {
           : null,
         overcome: stored.overcome ?? null,
         committedBoons: stored.committedBoons ?? [],
-        proposals: stored.proposals ?? [],
+        floatingBoons: stored.floatingBoons ?? [],
+        usedAbilities: stored.usedAbilities ?? [],
+        // Proposals from before the moves work carry no `floatingId`.
+        proposals: (stored.proposals ?? []).map((p) => ({
+          ...p,
+          floatingId: p.floatingId ?? null,
+        })),
         session: stored.session ?? null,
       };
     }
@@ -436,6 +478,8 @@ export class GameTable implements DurableObject {
       pendingRoll: null,
       overcome: null,
       committedBoons: [],
+      floatingBoons: [],
+      usedAbilities: [],
       proposals: [],
       session: null,
     };
@@ -449,6 +493,8 @@ export class GameTable implements DurableObject {
       pendingRoll: state.pendingRoll,
       overcome: state.overcome,
       committedBoons: state.committedBoons,
+      floatingBoons: state.floatingBoons,
+      usedAbilities: state.usedAbilities,
       proposals: state.proposals,
       session: state.session,
     } satisfies StoneState);
@@ -620,11 +666,151 @@ export class GameTable implements DurableObject {
     });
   }
 
-  private async addProposal(
-    fields: Omit<Proposal, "id" | "createdAt">,
+  /**
+   * Raise a once-per-session ability (`help-out` / `add-detail` / `gain-insight`)
+   * for the caller's claimed sheet. The ability is only marked used when the
+   * facilitator accepts it; a rejection costs nothing.
+   */
+  private async handleUseAbility(
+    request: Request,
+    authInfo: AuthInfo,
   ): Promise<Response> {
+    const input = (await readJson(request)) as UseAbilityInput | null;
+    const kind = input?.kind;
+    if (!kind || !ABILITY_KINDS.includes(kind)) {
+      return new Response("Unknown ability", { status: 400 });
+    }
+    if (!this.gameState!.session) {
+      return new Response("Abilities need a running session", { status: 400 });
+    }
+
+    const character = this.gameState!.characters.find(
+      (c) => c.ownerId === authInfo.discordUserId,
+    );
+    if (!character) {
+      return new Response("Claim a character sheet first", { status: 400 });
+    }
+
+    const used =
+      this.gameState!.usedAbilities.find((u) => u.slot === character.slot)
+        ?.kinds ?? [];
+    if (used.includes(kind)) {
+      return new Response("Already used this ability this session", {
+        status: 409,
+      });
+    }
+    if (
+      this.gameState!.proposals.some(
+        (p) => p.slot === character.slot && p.kind === kind,
+      )
+    ) {
+      return new Response("That ability is already proposed", { status: 409 });
+    }
+    if (
+      kind === "help-out" &&
+      (!this.gameState!.overcome || !this.gameState!.pendingRoll)
+    ) {
+      return new Response("Help Out needs an overcome roll to help with", {
+        status: 400,
+      });
+    }
+
+    return this.addProposal({
+      kind,
+      proposerId: authInfo.discordUserId,
+      proposerName: authInfo.username,
+      slot: character.slot,
+      delta: 0,
+    });
+  }
+
+  /**
+   * Raise the Accept Compel move — take on a complication for
+   * `ACCEPT_COMPEL_BOONS` boons once the facilitator approves. No per-session
+   * limit, unlike the abilities.
+   */
+  private async handleAcceptCompelMove(
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    const character = this.gameState!.characters.find(
+      (c) => c.ownerId === authInfo.discordUserId,
+    );
+    if (!character) {
+      return new Response("Claim a character sheet first", { status: 400 });
+    }
+    if (
+      this.gameState!.proposals.some(
+        (p) => p.slot === character.slot && p.kind === "accept-compel",
+      )
+    ) {
+      return new Response("An Accept Compel is already proposed", {
+        status: 409,
+      });
+    }
+
+    return this.addProposal({
+      kind: "accept-compel",
+      proposerId: authInfo.discordUserId,
+      proposerName: authInfo.username,
+      slot: character.slot,
+      delta: ACCEPT_COMPEL_BOONS,
+    });
+  }
+
+  /**
+   * Raise a request to spend a floating boon on the roll. Like a Highlight, it
+   * only lands when the facilitator accepts it; the boon then leaves the
+   * floating pool and a Boon enters the bag.
+   */
+  private async handleUseFloating(
+    request: Request,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    const input = (await readJson(request)) as UseFloatingBoonInput | null;
+    const floatingId =
+      typeof input?.floatingId === "string" ? input.floatingId : "";
+    if (!floatingId) {
+      return new Response("floatingId is required", { status: 400 });
+    }
+
+    const character = this.gameState!.characters.find(
+      (c) => c.ownerId === authInfo.discordUserId,
+    );
+    if (!character) {
+      return new Response("Claim a character sheet first", { status: 400 });
+    }
+    if (!this.gameState!.floatingBoons.some((f) => f.id === floatingId)) {
+      return new Response("No such floating boon", { status: 404 });
+    }
+    if (
+      this.gameState!.proposals.some(
+        (p) => p.kind === "use-floating" && p.floatingId === floatingId,
+      )
+    ) {
+      return new Response("That floating boon is already proposed", {
+        status: 409,
+      });
+    }
+
+    return this.addProposal({
+      kind: "use-floating",
+      proposerId: authInfo.discordUserId,
+      proposerName: authInfo.username,
+      slot: character.slot,
+      delta: 0,
+      floatingId,
+    });
+  }
+
+  private async addProposal(
+    fields: Omit<Proposal, "id" | "createdAt" | "floatingId"> & {
+      floatingId?: string | null;
+    },
+  ): Promise<Response> {
+    const { floatingId = null, ...rest } = fields;
     const proposal: Proposal = {
-      ...fields,
+      ...rest,
+      floatingId,
       id: crypto.randomUUID(),
       createdAt: Date.now(),
     };
@@ -640,11 +826,16 @@ export class GameTable implements DurableObject {
 
   /**
    * Facilitator resolves one proposal. Accept applies its effect (clamped to
-   * current state); reject just drops it. Either way it leaves the queue.
+   * current state); reject just drops it. Either way it leaves the queue. Some
+   * accepts can still be refused — Help Out with no roll to affect, an
+   * Add a Detail / Gain Insight with no context note — in which case the
+   * proposal stays put for another try.
    */
   private async handleProposalDecision(
     proposalId: string,
     decision: "accept" | "reject",
+    authInfo: AuthInfo,
+    request: Request,
   ): Promise<Response> {
     const proposal = this.gameState!.proposals.find((p) => p.id === proposalId);
     if (!proposal) {
@@ -655,38 +846,138 @@ export class GameTable implements DurableObject {
       ...this.gameState!,
       proposals: this.gameState!.proposals.filter((p) => p.id !== proposalId),
     };
+    let logLine = "";
 
-    if (decision === "accept" && proposal.kind === "add-boon") {
-      state = { ...state, stonePool: [...state.stonePool, "Boon"] };
-    } else if (
-      decision === "accept" &&
-      proposal.kind === "pledge" &&
-      proposal.slot !== null
-    ) {
-      const character = state.characters.find((c) => c.slot === proposal.slot);
-      if (character) {
-        const current =
-          state.committedBoons.find((c) => c.slot === proposal.slot)?.count ?? 0;
-        const next = Math.max(
-          0,
-          Math.min(character.fate, current + proposal.delta),
-        );
-        const committedBoons = state.committedBoons.filter(
-          (c) => c.slot !== proposal.slot,
-        );
-        if (next > 0) {
-          committedBoons.push({ slot: proposal.slot, count: next });
+    if (decision === "accept") {
+      switch (proposal.kind) {
+        case "add-boon":
+          state = { ...state, stonePool: [...state.stonePool, "Boon"] };
+          break;
+
+        case "pledge":
+          if (proposal.slot !== null) {
+            state = applyPledge(state, proposal.slot, proposal.delta);
+          }
+          break;
+
+        case "help-out": {
+          if (!state.overcome || !state.pendingRoll) {
+            return new Response(
+              "Help Out needs an overcome roll to help with",
+              { status: 400 },
+            );
+          }
+          const pendingRoll = this.drawFromBag();
+          state = {
+            ...state,
+            pendingRoll,
+            usedAbilities: markAbilityUsed(
+              state.usedAbilities,
+              proposal.slot ?? -1,
+              "help-out",
+            ),
+          };
+          logLine = `Help Out — ${proposal.proposerName} · rerolled ${describeStones(
+            pendingRoll.chosen,
+          )}`;
+          break;
         }
-        committedBoons.sort((a, b) => a.slot - b.slot);
-        state = { ...state, committedBoons };
+
+        case "add-detail":
+        case "gain-insight": {
+          const body = (await readJson(request)) as ProposalDecisionInput | null;
+          const text = boundedString(body?.text, MAX_GOAL_LENGTH).trim();
+          if (!text) {
+            return new Response("A context note is required", { status: 400 });
+          }
+          const floating: FloatingBoon = {
+            id: crypto.randomUUID(),
+            text,
+            createdByName: proposal.proposerName,
+            createdAt: Date.now(),
+          };
+          state = {
+            ...state,
+            floatingBoons: [...state.floatingBoons, floating],
+            usedAbilities: markAbilityUsed(
+              state.usedAbilities,
+              proposal.slot ?? -1,
+              proposal.kind,
+            ),
+          };
+          logLine = `${
+            proposal.kind === "add-detail" ? "Detail added" : "Insight gained"
+          } — ${text} (${proposal.proposerName})`;
+          break;
+        }
+
+        case "accept-compel": {
+          const character =
+            proposal.slot === null
+              ? undefined
+              : state.characters.find((c) => c.slot === proposal.slot);
+          if (character) {
+            const fate = character.fate + ACCEPT_COMPEL_BOONS;
+            await this.env.DB.prepare(
+              `UPDATE characters SET fate = ?, updated_at = ? WHERE id = ?`,
+            )
+              .bind(fate, Date.now(), character.id)
+              .run();
+            state = {
+              ...state,
+              characters: state.characters.map((c) =>
+                c.slot === character.slot ? { ...c, fate } : c,
+              ),
+            };
+            logLine = `Compel accepted — ${characterLabel(
+              character,
+            )} +${ACCEPT_COMPEL_BOONS} boons`;
+          }
+          break;
+        }
+
+        case "use-floating": {
+          const floating = state.floatingBoons.find(
+            (f) => f.id === proposal.floatingId,
+          );
+          if (floating) {
+            state = {
+              ...state,
+              floatingBoons: state.floatingBoons.filter(
+                (f) => f.id !== floating.id,
+              ),
+              stonePool: [...state.stonePool, "Boon"],
+            };
+            logLine = `Floating boon spent — ${floating.text} (${proposal.proposerName})`;
+          }
+          break;
+        }
       }
     }
 
     this.gameState = state;
     await this.saveStoneState(this.gameState);
 
+    if (logLine) {
+      await this.appendMessage({
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: logLine,
+      });
+    }
+
     this.broadcast(this.gameState);
     return ackResponse();
+  }
+
+  private drawFromBag(): PendingRoll {
+    const committed = totalCommittedBoons(this.gameState!.committedBoons);
+    const bag: StoneKind[] = [
+      ...this.gameState!.stonePool,
+      ...Array<StoneKind>(committed).fill("Boon"),
+    ];
+    return pickTwoRandom(bag);
   }
 
   /**
@@ -745,11 +1036,7 @@ export class GameTable implements DurableObject {
     }
 
     const committed = totalCommittedBoons(this.gameState!.committedBoons);
-    const bag: StoneKind[] = [
-      ...this.gameState!.stonePool,
-      ...Array<StoneKind>(committed).fill("Boon"),
-    ];
-    const pendingRoll = pickTwoRandom(bag);
+    const pendingRoll = this.drawFromBag();
 
     this.gameState = { ...this.gameState!, characters, pendingRoll };
     await this.saveStoneState(this.gameState);
@@ -930,6 +1217,10 @@ export class GameTable implements DurableObject {
     this.gameState = {
       ...this.gameState!,
       session: { id, goal, pool: [...INITIAL_SESSION_POOL] },
+      // A new session resets the once-per-session abilities and starts with no
+      // floating boons.
+      usedAbilities: [],
+      floatingBoons: [],
     };
     await this.saveStoneState(this.gameState);
 
@@ -964,7 +1255,14 @@ export class GameTable implements DurableObject {
     const sessionHistory = await this.loadSessionHistory(
       this.gameState!.sessionId,
     );
-    this.gameState = { ...this.gameState!, session: null, sessionHistory };
+    this.gameState = {
+      ...this.gameState!,
+      session: null,
+      sessionHistory,
+      // Unspent floating boons are discarded when the session closes.
+      floatingBoons: [],
+      usedAbilities: [],
+    };
     await this.saveStoneState(this.gameState);
 
     await this.appendMessage({
@@ -1282,6 +1580,41 @@ function characterLabel(character: CharacterSheet): string {
 
 function totalCommittedBoons(committed: CommittedBoon[]): number {
   return committed.reduce((sum, c) => sum + c.count, 0);
+}
+
+/**
+ * Pledge (`delta` +1) or withdraw (-1) one of a character's own boons on the
+ * next roll, clamped to what they hold. Shared by the direct pledge route and
+ * an accepted `pledge` proposal.
+ */
+function applyPledge(state: GameState, slot: number, delta: number): GameState {
+  const character = state.characters.find((c) => c.slot === slot);
+  if (!character) return state;
+
+  const current =
+    state.committedBoons.find((c) => c.slot === slot)?.count ?? 0;
+  const next = Math.max(0, Math.min(character.fate, current + delta));
+
+  const committedBoons = state.committedBoons.filter((c) => c.slot !== slot);
+  if (next > 0) {
+    committedBoons.push({ slot, count: next });
+  }
+  committedBoons.sort((a, b) => a.slot - b.slot);
+  return { ...state, committedBoons };
+}
+
+/** Record `kind` as spent for `slot` this session; idempotent. */
+function markAbilityUsed(
+  used: UsedAbilities[],
+  slot: number,
+  kind: AbilityKind,
+): UsedAbilities[] {
+  const row = used.find((u) => u.slot === slot);
+  if (!row) return [...used, { slot, kinds: [kind] }];
+  if (row.kinds.includes(kind)) return used;
+  return used.map((u) =>
+    u.slot === slot ? { ...u, kinds: [...u.kinds, kind] } : u,
+  );
 }
 
 type CharacterRow = {
