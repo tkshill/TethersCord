@@ -43,11 +43,16 @@ const REROLL_COST = 2;
 /** Boons the facilitator pays out for an approved Accept Compel move. */
 const ACCEPT_COMPEL_BOONS = 2;
 
+/** Boons an approved Suggest Compel pays: the suggester, then the compelled character. */
+const SUGGEST_COMPEL_SUGGESTER_BOONS = 1;
+const SUGGEST_COMPEL_TARGET_BOONS = 2;
+
 /** The once-per-session abilities, for validation of the `/abilities/use` route. */
 const ABILITY_KINDS: readonly AbilityKind[] = [
   "help-out",
   "add-detail",
   "gain-insight",
+  "suggest-compel",
 ];
 
 const MAX_MESSAGE_LENGTH = 2000;
@@ -464,10 +469,12 @@ export class GameTable implements DurableObject {
         committedBoons: stored.committedBoons ?? [],
         floatingBoons: stored.floatingBoons ?? [],
         usedAbilities: stored.usedAbilities ?? [],
-        // Proposals from before the moves work carry no `floatingId`.
+        // Proposals from before the moves work carry no `floatingId` /
+        // `targetSlot`.
         proposals: (stored.proposals ?? []).map((p) => ({
           ...p,
           floatingId: p.floatingId ?? null,
+          targetSlot: p.targetSlot ?? null,
         })),
         session: stored.session ?? null,
       };
@@ -667,9 +674,10 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * Raise a once-per-session ability (`help-out` / `add-detail` / `gain-insight`)
-   * for the caller's claimed sheet. The ability is only marked used when the
-   * facilitator accepts it; a rejection costs nothing.
+   * Raise a once-per-session ability (`help-out` / `add-detail` / `gain-insight`
+   * / `suggest-compel`) for the caller's claimed sheet. The ability is only
+   * marked used when the facilitator accepts it; a rejection costs nothing.
+   * `suggest-compel` carries a `targetSlot` — the character being compelled.
    */
   private async handleUseAbility(
     request: Request,
@@ -715,12 +723,32 @@ export class GameTable implements DurableObject {
       });
     }
 
+    let targetSlot: number | null = null;
+    if (kind === "suggest-compel") {
+      const raw = input?.targetSlot;
+      if (
+        typeof raw !== "number" ||
+        !Number.isInteger(raw) ||
+        raw < 0 ||
+        raw >= CHARACTER_SLOT_COUNT
+      ) {
+        return new Response("A target character is required", { status: 400 });
+      }
+      if (raw === character.slot) {
+        return new Response("You cannot compel your own character", {
+          status: 400,
+        });
+      }
+      targetSlot = raw;
+    }
+
     return this.addProposal({
       kind,
       proposerId: authInfo.discordUserId,
       proposerName: authInfo.username,
       slot: character.slot,
       delta: 0,
+      targetSlot,
     });
   }
 
@@ -803,14 +831,19 @@ export class GameTable implements DurableObject {
   }
 
   private async addProposal(
-    fields: Omit<Proposal, "id" | "createdAt" | "floatingId"> & {
+    fields: Omit<
+      Proposal,
+      "id" | "createdAt" | "floatingId" | "targetSlot"
+    > & {
       floatingId?: string | null;
+      targetSlot?: number | null;
     },
   ): Promise<Response> {
-    const { floatingId = null, ...rest } = fields;
+    const { floatingId = null, targetSlot = null, ...rest } = fields;
     const proposal: Proposal = {
       ...rest,
       floatingId,
+      targetSlot,
       id: crypto.randomUUID(),
       createdAt: Date.now(),
     };
@@ -911,22 +944,57 @@ export class GameTable implements DurableObject {
           break;
         }
 
+        case "suggest-compel": {
+          const suggester =
+            proposal.slot === null
+              ? undefined
+              : state.characters.find((c) => c.slot === proposal.slot);
+          const compelled =
+            proposal.targetSlot === null
+              ? undefined
+              : state.characters.find((c) => c.slot === proposal.targetSlot);
+          if (suggester && compelled) {
+            let characters = state.characters;
+            characters = await this.bumpFate(
+              characters,
+              suggester.slot,
+              SUGGEST_COMPEL_SUGGESTER_BOONS,
+            );
+            characters = await this.bumpFate(
+              characters,
+              compelled.slot,
+              SUGGEST_COMPEL_TARGET_BOONS,
+            );
+            state = {
+              ...state,
+              characters,
+              usedAbilities: markAbilityUsed(
+                state.usedAbilities,
+                suggester.slot,
+                "suggest-compel",
+              ),
+            };
+            logLine = `Compel suggested — ${characterLabel(
+              suggester,
+            )} +${SUGGEST_COMPEL_SUGGESTER_BOONS}, ${characterLabel(
+              compelled,
+            )} +${SUGGEST_COMPEL_TARGET_BOONS} boons`;
+          }
+          break;
+        }
+
         case "accept-compel": {
           const character =
             proposal.slot === null
               ? undefined
               : state.characters.find((c) => c.slot === proposal.slot);
           if (character) {
-            const fate = character.fate + ACCEPT_COMPEL_BOONS;
-            await this.env.DB.prepare(
-              `UPDATE characters SET fate = ?, updated_at = ? WHERE id = ?`,
-            )
-              .bind(fate, Date.now(), character.id)
-              .run();
             state = {
               ...state,
-              characters: state.characters.map((c) =>
-                c.slot === character.slot ? { ...c, fate } : c,
+              characters: await this.bumpFate(
+                state.characters,
+                character.slot,
+                ACCEPT_COMPEL_BOONS,
               ),
             };
             logLine = `Compel accepted — ${characterLabel(
@@ -978,6 +1046,28 @@ export class GameTable implements DurableObject {
       ...Array<StoneKind>(committed).fill("Boon"),
     ];
     return pickTwoRandom(bag);
+  }
+
+  /**
+   * Add `amount` boons to one character's `fate` in D1, and return the character
+   * list with that change folded in. `amount` may be negative; `fate` floors at
+   * zero.
+   */
+  private async bumpFate(
+    characters: CharacterSheet[],
+    slot: number,
+    amount: number,
+  ): Promise<CharacterSheet[]> {
+    const character = characters.find((c) => c.slot === slot);
+    if (!character || amount === 0) return characters;
+
+    const fate = Math.max(0, character.fate + amount);
+    await this.env.DB.prepare(
+      `UPDATE characters SET fate = ?, updated_at = ? WHERE id = ?`,
+    )
+      .bind(fate, Date.now(), character.id)
+      .run();
+    return characters.map((c) => (c.slot === slot ? { ...c, fate } : c));
   }
 
   /**

@@ -15,6 +15,7 @@ module Api exposing
     , postStartOvercome
     , postStartSession
     , postStones
+    , postSuggestCompel
     , postUseAbility
     , postUseFloatingBoon
     )
@@ -240,6 +241,29 @@ postAcceptCompelMove flags auth toMsg =
         }
 
 
+{-| Raise the Suggest Compel ability against the character in `targetSlot` — a
+once-per-session ability, queued like the others. Approved → 1 boon to the
+suggester, 2 to the compelled character.
+-}
+postSuggestCompel : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
+postSuggestCompel flags auth targetSlot toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth ++ [ jsonContentType ]
+        , url = tableUrl flags "/abilities/use"
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "kind", Encode.string "suggest-compel" )
+                    , ( "targetSlot", Encode.int targetSlot )
+                    ]
+                )
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
 {-| Ask to spend a floating boon on the roll; the facilitator approves it like a
 Highlight.
 -}
@@ -367,7 +391,7 @@ decodeCommittedBoon =
 
 decodeProposal : Decode.Decoder Proposal
 decodeProposal =
-    Decode.map7 Proposal
+    Decode.map8 Proposal
         (Decode.field "id" Decode.string)
         (Decode.field "kind" Decode.string)
         (Decode.field "proposerId" Decode.string)
@@ -375,6 +399,7 @@ decodeProposal =
         (Decode.field "slot" (Decode.nullable Decode.int))
         (Decode.field "delta" Decode.int)
         (Decode.field "floatingId" (Decode.nullable Decode.string))
+        (Decode.field "targetSlot" (Decode.nullable Decode.int))
 
 
 decodeFloatingBoon : Decode.Decoder FloatingBoon

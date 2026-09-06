@@ -241,6 +241,14 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
+        SuggestCompel targetSlot ->
+            case model.auth of
+                Just auth ->
+                    ( model, Api.postSuggestCompel model.flags auth targetSlot MoveRaised )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
         AcceptCompelMove ->
             case model.auth of
                 Just auth ->
