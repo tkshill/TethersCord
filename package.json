@@ -8,7 +8,9 @@
     "typecheck:client": "tsc -p client/tsconfig.json",
     "typecheck:worker": "tsc -p worker/tsconfig.json",
     "typecheck": "pnpm run typecheck:client && pnpm run typecheck:worker",
-    "build": "pnpm run build:client && pnpm run typecheck",
+    "test:client": "cd client && elm-test --compiler ../node_modules/elm/bin/elm",
+    "test": "pnpm run test:client",
+    "build": "pnpm run build:client && pnpm run typecheck && pnpm run test",
     "dev": "pnpm run build:client && concurrently -n client,worker -c cyan,magenta \"pnpm run watch:client\" \"wrangler dev\"",
     "deploy:dry-run": "pnpm run build && wrangler deploy --dry-run",
     "deploy": "pnpm run build && wrangler deploy",
@@ -26,6 +28,7 @@
     "@cloudflare/workers-types": "^5.20260903.1",
     "concurrently": "^10.0.5",
     "elm": "0.19.1-5",
+    "elm-test": "0.19.1-revision17",
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2",
     "wrangler": "^4.129.0"

@@ -1,17 +1,19 @@
-module Main exposing (main)
+module Main exposing (applyServerState, init, main, update)
 
 {-| Program wiring only: `init`, `update`, `subscriptions`, `main`. Domain types
 and `Model` / `Msg` live in `Types`; HTTP in `Api`; interop in `Ports`; the view
 in `View`.
+
+`update` returns `( Model, Effect )` — a pure value — and `Effect.perform` turns
+that into a `Cmd` once, here at the boundary.
+
 -}
 
 import Api
 import Browser
-import Browser.Dom
+import Effect exposing (Effect)
 import Json.Decode as Decode
 import Ports
-import Process
-import Task
 import Time
 import Types exposing (..)
 import View
@@ -22,6 +24,13 @@ import View
 maxGameStateAttempts : Int
 maxGameStateAttempts =
     3
+
+
+{-| Backoff before a retried game-state seed load, in milliseconds.
+-}
+gameStateRetryDelay : Float
+gameStateRetryDelay =
+    2000
 
 
 connectionFromString : String -> Connection
@@ -43,14 +52,21 @@ connectionFromString raw =
 main : Program Flags Model Msg
 main =
     Browser.element
-        { init = init
-        , update = update
+        { init = \flags -> init flags |> withPerform flags
+        , update = \msg model -> update msg model |> withPerform model.flags
         , view = View.view
         , subscriptions = subscriptions
         }
 
 
-init : Flags -> ( Model, Cmd Msg )
+{-| Run the `Effect` half of an `update` result through `Effect.perform`.
+-}
+withPerform : Flags -> ( Model, Effect ) -> ( Model, Cmd Msg )
+withPerform flags ( model, effect ) =
+    ( model, Effect.perform flags effect )
+
+
+init : Flags -> ( Model, Effect )
 init flags =
     ( { flags = flags
       , auth = Nothing
@@ -66,10 +82,7 @@ init flags =
       , gameStateAttempts = 0
       , timeZone = Time.utc
       }
-    , Cmd.batch
-        [ Ports.authorize [ "identify" ]
-        , Task.perform GotTimeZone Time.here
-        ]
+    , Effect.Batch [ Effect.Authorize, Effect.GetTimeZone ]
     )
 
 
@@ -86,7 +99,20 @@ subscriptions _ =
 -- UPDATE
 
 
-update : Msg -> Model -> ( Model, Cmd Msg )
+{-| Issue an effect that needs an authenticated user, or nothing if there is no
+auth yet. Covers the many branches that were `case model.auth of Just auth -> …`.
+-}
+withAuth : Model -> (Auth -> Effect) -> ( Model, Effect )
+withAuth model toEffect =
+    case model.auth of
+        Just auth ->
+            ( model, toEffect auth )
+
+        Nothing ->
+            ( model, Effect.None )
+
+
+update : Msg -> Model -> ( Model, Effect )
 update msg model =
     case msg of
         FromDiscordRaw value ->
@@ -98,15 +124,15 @@ update msg model =
                     update (AuthFailed message) model
 
                 Ports.UnknownInbound ->
-                    ( model, Cmd.none )
+                    ( model, Effect.None )
 
         GotBackendAuth (Ok auth) ->
             ( { model | auth = Just auth, status = "Loaded auth as " ++ auth.username }
-            , Api.getGameState model.flags auth GotGameState
+            , Effect.GetGameState auth
             )
 
         GotBackendAuth (Err _) ->
-            ( { model | status = "Failed to authorize with backend." }, Cmd.none )
+            ( { model | status = "Failed to authorize with backend." }, Effect.None )
 
         -- Seeds the board only. The socket is opened before this request is even
         -- issued, so its snapshot can already have arrived; taking this one on
@@ -114,7 +140,7 @@ update msg model =
         GotGameState (Ok gs) ->
             case model.gameState of
                 Just _ ->
-                    ( { model | status = "Connected.", gameStateAttempts = 0 }, Cmd.none )
+                    ( { model | status = "Connected.", gameStateAttempts = 0 }, Effect.None )
 
                 Nothing ->
                     ( { model
@@ -122,7 +148,7 @@ update msg model =
                         , status = "Connected."
                         , gameStateAttempts = 0
                       }
-                    , scrollLogToBottom
+                    , Effect.ScrollLogToBottom
                     )
 
         -- The live socket is the real source of state, so a failed seed load is
@@ -133,81 +159,76 @@ update msg model =
                     | status = "Reconnecting to the table…"
                     , gameStateAttempts = model.gameStateAttempts + 1
                   }
-                , Process.sleep 2000 |> Task.perform (\_ -> RetryGetGameState)
+                , Effect.RetryGetGameStateIn gameStateRetryDelay
                 )
 
             else
-                ( { model | status = "Failed to load game state." }, Cmd.none )
+                ( { model | status = "Failed to load game state." }, Effect.None )
 
         NewMessageChanged s ->
-            ( { model | newMessage = s }, Cmd.none )
+            ( { model | newMessage = s }, Effect.None )
 
         -- The log reports its scroll position as the viewer moves it; new
         -- messages only auto-scroll while this stays True.
         LogScrolled atBottom ->
-            ( { model | logAtBottom = atBottom }, Cmd.none )
+            ( { model | logAtBottom = atBottom }, Effect.None )
 
         SendMessage ->
             case ( model.auth, model.gameState ) of
                 ( Just auth, Just _ ) ->
                     if String.trim model.newMessage == "" then
-                        ( model, Cmd.none )
+                        ( model, Effect.None )
 
                     else
                         -- Posting a message is an intent to see it: snap back to
                         -- the bottom even if reading history a moment ago.
                         ( { model | newMessage = "", logAtBottom = True }
-                        , Api.postMessage model.flags auth model.newMessage MessagePosted
+                        , Effect.PostMessage auth model.newMessage
                         )
 
                 _ ->
-                    ( model, Cmd.none )
+                    ( model, Effect.None )
 
         -- Mutations acknowledge only; the resulting state arrives on the socket.
         MessagePosted (Ok ()) ->
-            ( model, Cmd.none )
+            ( model, Effect.None )
 
         MessagePosted (Err _) ->
-            ( { model | status = "Failed to post message." }, Cmd.none )
+            ( { model | status = "Failed to post message." }, Effect.None )
 
         ClearLog ->
-            case model.auth of
-                Just auth ->
-                    ( model, Api.postClearMessages model.flags auth LogCleared )
-
-                Nothing ->
-                    ( model, Cmd.none )
+            withAuth model Effect.PostClearMessages
 
         LogCleared (Ok ()) ->
-            ( model, Cmd.none )
+            ( model, Effect.None )
 
         LogCleared (Err _) ->
-            ( { model | status = "Failed to clear the log." }, Cmd.none )
+            ( { model | status = "Failed to clear the log." }, Effect.None )
 
         AddBoon ->
-            ( model, stonesCmd model "/stones/add-boon" )
+            withAuth model (\auth -> Effect.PostStones auth "/stones/add-boon")
 
         CommitBoonIncrement ->
-            ( model, commitCmd model 1 )
+            withAuth model (\auth -> Effect.PostCommitBoon auth 1)
 
         CommitBoonDecrement ->
-            ( model, commitCmd model -1 )
+            withAuth model (\auth -> Effect.PostCommitBoon auth -1)
 
         SelectSlot slot ->
-            ( { model | selectedSlot = slot }, Cmd.none )
+            ( { model | selectedSlot = slot }, Effect.None )
 
         ClaimSlot slot ->
             -- Bring the claimed sheet's tab to the front as well.
-            ( { model | selectedSlot = slot }, claimCmd model slot )
+            withAuth { model | selectedSlot = slot } (\auth -> Effect.PostClaimSlot auth slot)
 
         ReleaseSlot slot ->
-            ( model, releaseCmd model slot )
+            withAuth model (\auth -> Effect.PostReleaseSlot auth slot)
 
         SlotClaimed (Ok ()) ->
-            ( model, Cmd.none )
+            ( model, Effect.None )
 
         SlotClaimed (Err _) ->
-            ( { model | status = "Couldn't claim that character sheet." }, Cmd.none )
+            ( { model | status = "Couldn't claim that character sheet." }, Effect.None )
 
         AcceptProposal id ->
             let
@@ -219,132 +240,97 @@ update msg model =
                         text ->
                             Just text
             in
-            ( model, proposalCmd model id "accept" context )
+            withAuth model (\auth -> Effect.PostProposalDecision auth id "accept" context)
 
         RejectProposal id ->
-            ( model, proposalCmd model id "reject" Nothing )
+            withAuth model (\auth -> Effect.PostProposalDecision auth id "reject" Nothing)
 
         ProposalDraftChanged s ->
-            ( { model | proposalDraft = s }, Cmd.none )
+            ( { model | proposalDraft = s }, Effect.None )
 
         ProposalResolved (Ok ()) ->
-            ( { model | proposalDraft = "" }, Cmd.none )
+            ( { model | proposalDraft = "" }, Effect.None )
 
         ProposalResolved (Err _) ->
-            ( { model | status = "Failed to resolve the proposal." }, Cmd.none )
+            ( { model | status = "Failed to resolve the proposal." }, Effect.None )
 
         UseAbility kind ->
-            case model.auth of
-                Just auth ->
-                    ( model, Api.postUseAbility model.flags auth kind MoveRaised )
-
-                Nothing ->
-                    ( model, Cmd.none )
+            withAuth model (\auth -> Effect.PostUseAbility auth kind)
 
         SuggestCompel targetSlot ->
-            case model.auth of
-                Just auth ->
-                    ( model, Api.postSuggestCompel model.flags auth targetSlot MoveRaised )
-
-                Nothing ->
-                    ( model, Cmd.none )
+            withAuth model (\auth -> Effect.PostSuggestCompel auth targetSlot)
 
         AcceptCompelMove ->
-            case model.auth of
-                Just auth ->
-                    ( model, Api.postAcceptCompelMove model.flags auth MoveRaised )
-
-                Nothing ->
-                    ( model, Cmd.none )
+            withAuth model Effect.PostAcceptCompelMove
 
         UseFloatingBoon floatingId ->
-            case model.auth of
-                Just auth ->
-                    ( model, Api.postUseFloatingBoon model.flags auth floatingId MoveRaised )
-
-                Nothing ->
-                    ( model, Cmd.none )
+            withAuth model (\auth -> Effect.PostUseFloatingBoon auth floatingId)
 
         MoveRaised (Ok ()) ->
-            ( model, Cmd.none )
+            ( model, Effect.None )
 
         MoveRaised (Err _) ->
-            ( { model | status = "Couldn't raise that move." }, Cmd.none )
+            ( { model | status = "Couldn't raise that move." }, Effect.None )
 
         SessionGoalChanged s ->
-            ( { model | newSessionGoal = s }, Cmd.none )
+            ( { model | newSessionGoal = s }, Effect.None )
 
         StartSession ->
             case ( model.auth, String.trim model.newSessionGoal == "" ) of
                 ( Just auth, False ) ->
                     ( { model | newSessionGoal = "" }
-                    , Api.postStartSession model.flags auth model.newSessionGoal SessionUpdated
+                    , Effect.PostStartSession auth model.newSessionGoal
                     )
 
                 _ ->
-                    ( model, Cmd.none )
+                    ( model, Effect.None )
 
         EndSession ->
-            case model.auth of
-                Just auth ->
-                    ( model, Api.postEndSession model.flags auth SessionUpdated )
-
-                Nothing ->
-                    ( model, Cmd.none )
+            withAuth model Effect.PostEndSession
 
         SessionUpdated (Ok ()) ->
-            ( model, Cmd.none )
+            ( model, Effect.None )
 
         SessionUpdated (Err _) ->
-            ( { model | status = "Failed to update the session." }, Cmd.none )
+            ( { model | status = "Failed to update the session." }, Effect.None )
 
         WsStatusChanged raw ->
-            ( { model | connection = connectionFromString raw }, Cmd.none )
+            ( { model | connection = connectionFromString raw }, Effect.None )
 
         RetryGetGameState ->
             case ( model.auth, model.gameState ) of
                 ( Just auth, Nothing ) ->
-                    ( model, Api.getGameState model.flags auth GotGameState )
+                    ( model, Effect.GetGameState auth )
 
                 _ ->
-                    ( model, Cmd.none )
+                    ( model, Effect.None )
 
         RollStones ->
-            ( model, stonesCmd model "/stones/roll" )
+            withAuth model (\auth -> Effect.PostStones auth "/stones/roll")
 
         RerollStones ->
-            ( model, stonesCmd model "/stones/reroll" )
+            withAuth model (\auth -> Effect.PostStones auth "/stones/reroll")
 
         AcceptRoll ->
-            ( model, stonesCmd model "/stones/accept" )
+            withAuth model (\auth -> Effect.PostStones auth "/stones/accept")
 
         StonesUpdated (Ok ()) ->
-            ( model, Cmd.none )
+            ( model, Effect.None )
 
         StonesUpdated (Err _) ->
-            ( { model | status = "Failed to update stones." }, Cmd.none )
+            ( { model | status = "Failed to update stones." }, Effect.None )
 
         StartOvercome slot ->
-            case model.auth of
-                Just auth ->
-                    ( model, Api.postStartOvercome model.flags auth slot OvercomeUpdated )
-
-                Nothing ->
-                    ( model, Cmd.none )
+            withAuth model (\auth -> Effect.PostStartOvercome auth slot)
 
         CancelOvercome ->
-            case model.auth of
-                Just auth ->
-                    ( model, Api.postCancelOvercome model.flags auth OvercomeUpdated )
-
-                Nothing ->
-                    ( model, Cmd.none )
+            withAuth model Effect.PostCancelOvercome
 
         OvercomeUpdated (Ok ()) ->
-            ( model, Cmd.none )
+            ( model, Effect.None )
 
         OvercomeUpdated (Err _) ->
-            ( { model | status = "Failed to update the overcome." }, Cmd.none )
+            ( { model | status = "Failed to update the overcome." }, Effect.None )
 
         CharacterFieldInput slot fieldTag value ->
             ( { model
@@ -352,7 +338,7 @@ update msg model =
                     Maybe.map (mapCharacterAtSlot slot (setCharacterField fieldTag value)) model.gameState
                 , editingSlot = Just slot
               }
-            , Cmd.none
+            , Effect.None
             )
 
         CharacterFieldBlur slot ->
@@ -366,24 +352,22 @@ update msg model =
             in
             case ( model.auth, model.gameState |> Maybe.andThen (findCharacterAtSlot slot) ) of
                 ( Just auth, Just character ) ->
-                    ( released
-                    , Api.postCharacterUpdate model.flags auth slot character CharacterUpdated
-                    )
+                    ( released, Effect.PostCharacterUpdate auth slot character )
 
                 _ ->
-                    ( released, Cmd.none )
+                    ( released, Effect.None )
 
         FateIncrement slot ->
-            ( model, fateCmd model slot 1 )
+            withAuth model (\auth -> Effect.PostFate auth slot 1)
 
         FateDecrement slot ->
-            ( model, fateCmd model slot -1 )
+            withAuth model (\auth -> Effect.PostFate auth slot -1)
 
         CharacterUpdated (Ok ()) ->
-            ( model, Cmd.none )
+            ( model, Effect.None )
 
         CharacterUpdated (Err _) ->
-            ( { model | status = "Failed to update character sheet." }, Cmd.none )
+            ( { model | status = "Failed to update character sheet." }, Effect.None )
 
         WsGameStateRaw value ->
             case Decode.decodeValue Api.decodeGameState value of
@@ -393,96 +377,23 @@ update msg model =
                         , connection = Connected
                       }
                     , if model.logAtBottom then
-                        scrollLogToBottom
+                        Effect.ScrollLogToBottom
 
                       else
-                        Cmd.none
+                        Effect.None
                     )
 
                 Err _ ->
-                    ( model, Cmd.none )
+                    ( model, Effect.None )
 
         AuthFailed message ->
-            ( { model | status = "Discord authorization failed: " ++ message }, Cmd.none )
+            ( { model | status = "Discord authorization failed: " ++ message }, Effect.None )
 
         GotTimeZone zone ->
-            ( { model | timeZone = zone }, Cmd.none )
+            ( { model | timeZone = zone }, Effect.None )
 
         NoOp ->
-            ( model, Cmd.none )
-
-
-
--- COMMANDS
-
-
-stonesCmd : Model -> String -> Cmd Msg
-stonesCmd model path =
-    case model.auth of
-        Just auth ->
-            Api.postStones model.flags auth path StonesUpdated
-
-        Nothing ->
-            Cmd.none
-
-
-fateCmd : Model -> Int -> Int -> Cmd Msg
-fateCmd model slot delta =
-    case model.auth of
-        Just auth ->
-            Api.postFate model.flags auth slot delta CharacterUpdated
-
-        Nothing ->
-            Cmd.none
-
-
-commitCmd : Model -> Int -> Cmd Msg
-commitCmd model delta =
-    case model.auth of
-        Just auth ->
-            Api.postCommitBoon model.flags auth delta StonesUpdated
-
-        Nothing ->
-            Cmd.none
-
-
-claimCmd : Model -> Int -> Cmd Msg
-claimCmd model slot =
-    case model.auth of
-        Just auth ->
-            Api.postClaimSlot model.flags auth slot SlotClaimed
-
-        Nothing ->
-            Cmd.none
-
-
-releaseCmd : Model -> Int -> Cmd Msg
-releaseCmd model slot =
-    case model.auth of
-        Just auth ->
-            Api.postReleaseSlot model.flags auth slot SlotClaimed
-
-        Nothing ->
-            Cmd.none
-
-
-proposalCmd : Model -> String -> String -> Maybe String -> Cmd Msg
-proposalCmd model id decision context =
-    case model.auth of
-        Just auth ->
-            Api.postProposalDecision model.flags auth id decision context ProposalResolved
-
-        Nothing ->
-            Cmd.none
-
-
-{-| Jump the message log to the bottom. Runs after the view has been patched;
-if the log is not on screen the task fails and is ignored.
--}
-scrollLogToBottom : Cmd Msg
-scrollLogToBottom =
-    Browser.Dom.setViewportOf View.logDomId 0 1.0e7
-        |> Task.attempt (\_ -> NoOp)
+            ( model, Effect.None )
 
 
 
