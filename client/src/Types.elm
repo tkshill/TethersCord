@@ -504,6 +504,10 @@ type alias Model =
     -- toggled by `ToggleGuide`, purely local view state.
     , guideExpanded : Bool
 
+    -- Which aspect field, if any, has its "see examples" list open on the
+    -- character sheet: `Just ( slot, aspect )`. One at a time; `ToggleAspectExamples`.
+    , aspectExamplesOpen : Maybe ( Int, Aspect )
+
     -- Backend WebSocket connection state, as last reported by the JS socket.
     , connection : Connection
 
@@ -579,6 +583,7 @@ type Msg
     | CancelConfirm
     | DismissError
     | ToggleGuide
+    | ToggleAspectExamples Int Aspect
     | WsStatusChanged String
     | RetryGetGameState
     | RollStones

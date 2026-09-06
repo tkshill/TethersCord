@@ -121,6 +121,7 @@ init flags =
       , loadingHistory = False
       , noMoreHistory = False
       , guideExpanded = False
+      , aspectExamplesOpen = Nothing
       , connection = Connected
       , gameStateAttempts = 0
       , timeZone = Time.utc
@@ -521,6 +522,17 @@ update msg model =
 
         ToggleGuide ->
             ( { model | guideExpanded = not model.guideExpanded }, Effect.None )
+
+        ToggleAspectExamples slot aspect ->
+            let
+                next =
+                    if model.aspectExamplesOpen == Just ( slot, aspect ) then
+                        Nothing
+
+                    else
+                        Just ( slot, aspect )
+            in
+            ( { model | aspectExamplesOpen = next }, Effect.None )
 
         WsStatusChanged raw ->
             ( { model | connection = connectionFromString raw }, Effect.None )

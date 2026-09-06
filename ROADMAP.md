@@ -785,19 +785,23 @@ rewrite changes what an aspect *means*; it never adds a rating (principle 5,
       aspect — all Banes clear, but does the character keep any marker of what
       they went through?
 
-## 21. Game text, tooltips, glossary, and aspect examples — *see also section 22*
+## 21. Game text, tooltips, glossary, and aspect examples — done — *see also section 22*
 
-The player-facing copy — move names, proposal descriptions, card titles, hint
-lines — is scattered through `client/src/View/*` as string literals, so tuning
-the game's wording means hunting through the view. The game also leans on terms
-(overcome, boon, bane, aspect, compel, highlight, floating boon, untether) that a
-player new to TTRPGs has no prior hook for. The near-term need is to run this
-game with **people unfamiliar with TTRPGs**, so this section pulls the copy into
-one place, teaches the terms where players meet them, and gives a reference for
-writing aspects at character creation.
+**Built.** The player-facing copy was scattered through `client/src/View/*` as
+string literals, and the game leans on terms (overcome, boon, bane, aspect,
+compel, highlight, floating boon, untether) that a player new to TTRPGs has no
+prior hook for. The near-term need was to run this game with **people unfamiliar
+with TTRPGs**, so this section pulled the copy into one place, taught the terms
+where players meet them, and gave a reference for writing aspects at character
+creation.
 
-Do it after section 22 step 4 (the `View/` split), which is done — step 4's
-record-props layout is what the tooltip and glossary work builds on.
+Shipped across five branches off `main`: `Copy.elm` (21.1), `Copy/Terms.elm`
+(21.2), `Ui.withTip` and the `View.Helpers` tooltip helpers (21.3), `View.Guide`
+(21.4), and `ASPECTS.md` plus `Copy.aspectExamples` with an in-app expander
+(21.5). No wire-format, D1, or `KEY_STONES` change anywhere in it.
+
+Done after section 22 step 4 (the `View/` split) — step 4's record-props layout
+is what the tooltip and glossary work built on.
 
 ### 21.1 — One editable copy source — `Copy.elm` — done
 
@@ -864,23 +868,22 @@ record-props layout is what the tooltip and glossary work builds on.
       `UpdateTest` pins the toggle.
 - [x] Slotted last in `View.view`'s section list, after the Log.
 
-### 21.5 — Aspect examples
+### 21.5 — Aspect examples — done
 
-- [ ] **`ASPECTS.md`** at the repo root (beside `DESIGN_PRINCIPLES.md`) — the
-      canonical collection: what makes a strong aspect (true now, at odds with
-      the world as it is, something the table can pull on — per section 19), then
-      generous lists under **Archetype**, **Desire**, **Quest**, plus a handful
-      of fully-worked characters showing all three together. A prose reference
-      readable outside the app.
-- [ ] **`Copy.aspectExamples : Aspect -> List String`** — a curated subset (~6
-      per aspect) of `ASPECTS.md`.
-- [ ] **`View/Characters.elm` `aspectField`** — a "see examples" text toggle
-      beneath each aspect input, expanding an inline bulleted list from
-      `aspectExamples`. Shown only when the field is `editable` (owner /
-      unclaimed / facilitator), i.e. during creation and revision — it also
-      helps the section 19 forced rewrite after an untether.
-- [ ] `Model.aspectExamplesOpen : Maybe ( Int, Aspect )` (one open at a time)
-      and a `ToggleAspectExamples Int Aspect` message; pure `update` arm.
+- [x] **`ASPECTS.md`** at the repo root (beside `DESIGN_PRINCIPLES.md`) — what
+      makes a strong aspect (true now, at odds with the world as it is,
+      something the table can pull on — per section 19), generous lists under
+      **Archetype**, **Desire**, **Quest**, worked characters showing all three
+      together, and a note on rewriting an aspect after an untether.
+- [x] **`Copy.aspectExamples : Aspect -> List String`** — a curated six per
+      aspect, a subset of `ASPECTS.md`.
+- [x] **`View/Characters.elm` `aspectField`** — a "see examples" / "hide
+      examples" toggle beneath each aspect input, expanding an indented bulleted
+      list from `aspectExamples`. Shown only when the field is `editable`, so it
+      is there for creation, revision, and the section 19 forced rewrite.
+- [x] `Model.aspectExamplesOpen : Maybe ( Int, Aspect )` (one open at a time)
+      and a `ToggleAspectExamples Int Aspect` message; pure `update` arm, pinned
+      by `UpdateTest`.
 
 ### Sequencing
 

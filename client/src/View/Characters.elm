@@ -30,7 +30,9 @@ import View.Helpers
 
 
 type alias Props =
-    { selectedSlot : Int }
+    { selectedSlot : Int
+    , aspectExamplesOpen : Maybe ( Int, Aspect )
+    }
 
 
 view : ViewContext -> Props -> GameState -> Element Msg
@@ -50,7 +52,7 @@ view ctx props gs =
             [ tabStrip ctx.myId props.selectedSlot gs.characters
             , case selected of
                 Just ch ->
-                    characterSheet ctx.facilitator ctx.myId gs ch
+                    characterSheet ctx.facilitator ctx.myId props.aspectExamplesOpen gs ch
 
                 Nothing ->
                     placeholder Copy.noCharacterSheets
@@ -79,8 +81,8 @@ tabLabel myId ch =
         characterLabel ch
 
 
-characterSheet : Bool -> Maybe String -> GameState -> CharacterSheet -> Element Msg
-characterSheet facilitator myId gs ch =
+characterSheet : Bool -> Maybe String -> Maybe ( Int, Aspect ) -> GameState -> CharacterSheet -> Element Msg
+characterSheet facilitator myId aspectExamplesOpen gs ch =
     let
         mine =
             ch.ownerId /= Nothing && ch.ownerId == myId
@@ -114,20 +116,21 @@ characterSheet facilitator myId gs ch =
         , boonsBlock facilitator mine ch (committedBoonsForSlot ch.slot gs.committedBoons) pendingPledges pendingPledgeId
         , field editable ch NameField "" "Name" ch.name
         , field editable ch NotableFeaturesField "" Copy.notableFeaturesLabel ch.notableFeatures
-        , aspectField editable ch gs.untether Archetype ArchetypeField ch.archetype
-        , aspectField editable ch gs.untether Desire DesireField ch.desire
-        , aspectField editable ch gs.untether Quest QuestField ch.quest
+        , aspectField editable aspectExamplesOpen ch gs.untether Archetype ArchetypeField ch.archetype
+        , aspectField editable aspectExamplesOpen ch gs.untether Desire DesireField ch.desire
+        , aspectField editable aspectExamplesOpen ch gs.untether Quest QuestField ch.quest
         , field editable ch ConditionField "Condition" Copy.conditionLabel ch.condition
         , notesField editable ch
         ]
 
 
-{-| An aspect field with its accumulated Banes shown as dots beneath it, or an
-"untethered" flag when this is the aspect a failed session goal broke
-(section 19).
+{-| An aspect field: the input, its accumulated Banes as dots beneath (or an
+"untethered" flag when a failed session goal broke this one, section 19), and —
+while the sheet is editable — a "see examples" toggle that opens a short list of
+sample aspects from `ASPECTS.md` to write against.
 -}
-aspectField : Bool -> CharacterSheet -> Maybe Untether -> Aspect -> CharacterField -> String -> Element Msg
-aspectField editable ch untether aspect fieldTag value =
+aspectField : Bool -> Maybe ( Int, Aspect ) -> CharacterSheet -> Maybe Untether -> Aspect -> CharacterField -> String -> Element Msg
+aspectField editable examplesOpen ch untether aspect fieldTag value =
     let
         count =
             aspectBaneCount aspect ch.aspectBanes
@@ -159,7 +162,59 @@ aspectField editable ch untether aspect fieldTag value =
                 []
     in
     Element.column [ spacing Ui.xs, width fill ]
-        (field editable ch fieldTag (aspectLabel aspect) (aspectLabel aspect) value :: extras)
+        (field editable ch fieldTag (aspectLabel aspect) (aspectLabel aspect) value
+            :: extras
+            ++ aspectExamplesBlock editable examplesOpen ch.slot aspect
+        )
+
+
+{-| The "see examples" affordance under an aspect field. Nothing on a read-only
+sheet; a toggle link otherwise, expanding an indented bulleted list when this is
+the open one.
+-}
+aspectExamplesBlock : Bool -> Maybe ( Int, Aspect ) -> Int -> Aspect -> List (Element Msg)
+aspectExamplesBlock editable examplesOpen slot aspect =
+    if not editable then
+        []
+
+    else
+        let
+            open =
+                examplesOpen == Just ( slot, aspect )
+        in
+        Input.button
+            [ Font.size 11
+            , Font.color Ui.inkSoft
+            , Font.underline
+            , Element.mouseOver [ Font.color Ui.accent ]
+            ]
+            { onPress = Just (ToggleAspectExamples slot aspect)
+            , label =
+                text
+                    (if open then
+                        Copy.aspectExamplesHideLabel
+
+                     else
+                        Copy.aspectExamplesLabel
+                    )
+            }
+            :: (if open then
+                    [ Element.column
+                        [ spacing Ui.xs
+                        , Element.paddingEach { top = Ui.xs, right = 0, bottom = Ui.xs, left = Ui.sm }
+                        ]
+                        (List.map exampleRow (Copy.aspectExamples aspect))
+                    ]
+
+                else
+                    []
+               )
+
+
+exampleRow : String -> Element Msg
+exampleRow example =
+    Element.paragraph [ Font.size 12, Font.color Ui.inkSoft, spacing 2 ]
+        [ text ("· " ++ example) ]
 
 
 {-| Who holds this sheet, and the claim / release control. Players claim an

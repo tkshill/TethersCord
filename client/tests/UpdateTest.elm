@@ -254,6 +254,26 @@ suite =
                     , Main.update ToggleGuide opened
                     )
                         |> Expect.equal ( True, ( ready, Effect.None ) )
+            , test "ToggleAspectExamples opens one aspect's list, then closes it" <|
+                \_ ->
+                    let
+                        opened =
+                            Main.update (ToggleAspectExamples 0 Types.Archetype) ready |> Tuple.first
+                    in
+                    ( opened.aspectExamplesOpen
+                    , Main.update (ToggleAspectExamples 0 Types.Archetype) opened
+                    )
+                        |> Expect.equal ( Just ( 0, Types.Archetype ), ( ready, Effect.None ) )
+            , test "ToggleAspectExamples on a different aspect replaces the open one" <|
+                \_ ->
+                    let
+                        opened =
+                            Main.update (ToggleAspectExamples 0 Types.Archetype) ready |> Tuple.first
+                    in
+                    Main.update (ToggleAspectExamples 1 Types.Desire) opened
+                        |> Tuple.first
+                        |> .aspectExamplesOpen
+                        |> Expect.equal (Just ( 1, Types.Desire ))
             , test "CharacterFieldInput edits local state, marks the slot dirty, and arms the debounced save" <|
                 \_ ->
                     Main.update (CharacterFieldInput 1 Types.NameField "Bea") ready
