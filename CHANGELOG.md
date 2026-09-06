@@ -86,6 +86,17 @@ version yet, so headings are dates.
   client decodes it to a `SessionOutcome` type and `View.verdictWord` /
   `verdictColor` switch on it instead of parsing the prose with
   `String.contains`. No behaviour change.
+- Maintainability pass — `GameTable.ts` trailer and accessor cleanup (roadmap
+  section 22, step 6 part 1). No behaviour change; the module reshaping (a
+  route table, `worker/src/handlers/*`) is deferred to its own effort.
+  - **`private get game()`** replaces the ~85 `this.gameState!` non-null
+    assertions with one.
+  - **`commit(next, logLine?)`** folds the shared handler trailer
+    (`gameState = …` → `saveStoneState` → optional `appendMessage` →
+    `broadcast` → `204`); every mutating handler now ends in one
+    `return this.commit(…)`.
+  - **`loadInitialState` runs its six independent cold-start reads through
+    `Promise.all`** instead of in series — the Free-tier cold path.
 - Maintainability pass — worker pure-logic extraction (roadmap section 22,
   step 5). `GameTable.ts` sheds three files' worth of code with no behaviour
   change:
