@@ -3,23 +3,9 @@
 import { DiscordSDK, type Types } from "@discord/embedded-app-sdk";
 import type { BackendAuthResult } from "../../worker/src/types";
 import { connectGameSocket, type GameSocketHandle } from "./GameSocket";
+import type { ElmPorts } from "./ports";
 
 type OAuthScopes = Types.OAuthScopes;
-
-type ElmPorts = {
-  toDiscord: {
-    subscribe: (handler: (msg: any) => void) => void;
-  };
-  fromDiscord: {
-    send: (msg: any) => void;
-  };
-  wsGameState: {
-    send: (msg: unknown) => void;
-  };
-  wsStatus: {
-    send: (status: string) => void;
-  };
-};
 
 export async function initDiscordBridge(
   discordSdk: DiscordSDK,
@@ -92,7 +78,7 @@ async function runDiscordAuthorize(
   scopes: OAuthScopes[],
 ): Promise<string> {
   const response = await discordSdk.commands.authorize({
-    client_id: (window as any).DISCORD_CLIENT_ID,
+    client_id: window.DISCORD_CLIENT_ID,
     response_type: "code",
     state: "",
     scope: scopes,

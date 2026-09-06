@@ -963,13 +963,15 @@ needs (the existing suite does not touch every handler path):
       after part 1 — the `!` and trailer noise is gone but the reshaping is
       what shrinks it.)
 
-### Step 7 — smaller TS cleanup
+### Step 7 — smaller TS cleanup — done
 
-- [ ] Consolidate the three hand-maintained Elm-port shapes (`ElmPorts` in
+- [x] The three hand-maintained Elm-port shapes (`ElmPorts` in
       `DiscordBridge.ts`, `GameSocketPorts` in `GameSocket.ts`, the inline shape
-      in `main.ts`) into one `client/src/ports.ts`.
-- [ ] A typed `declare global { interface Window }` for `DISCORD_CLIENT_ID` /
-      `BACKEND_BASE_URL` in place of the repeated `(window as any)`.
+      in `main.ts`) are one `client/src/ports.ts` — `ElmPorts` plus a
+      `SocketPorts = Pick<…>` for `GameSocket`.
+- [x] `ports.ts` also carries a `declare global { interface Window }` for
+      `DISCORD_CLIENT_ID` / `BACKEND_BASE_URL`, so the three `(window as any)`
+      reads are now typed `window.` accesses.
 
 ### Relates to
 
