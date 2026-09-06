@@ -5,6 +5,7 @@ composer) plus the ordered list of section cards, each of which lives in its own
 `View.*` module and is handed a `ViewContext` computed once here.
 -}
 
+import Copy
 import Element exposing (Element, el, fill, none, spacing, text, width)
 import Element.Font as Font
 import Element.Input as Input
@@ -52,7 +53,7 @@ view model =
     in
     case model.gameState of
         Nothing ->
-            shell [ placeholder "Loading the table…" ]
+            shell [ placeholder Copy.loadingTable ]
 
         Just gs ->
             shell
@@ -88,13 +89,13 @@ connectionNote conn =
             none
 
         Reconnecting ->
-            note Ui.inkSoft "Reconnecting to the table…"
+            note Ui.inkSoft Copy.reconnecting
 
         Offline ->
-            note Ui.danger "Connection lost. Reload the Activity to reconnect."
+            note Ui.danger Copy.connectionLost
 
         Rejected ->
-            note Ui.danger "Session rejected — reload the Activity to sign in again."
+            note Ui.danger Copy.sessionRejected
 
 
 isFacilitator : Model -> Bool
@@ -110,7 +111,7 @@ isFacilitator model =
 header : Model -> Element Msg
 header model =
     Element.row [ width fill, spacing Ui.md ]
-        [ el [ Font.size 20, Font.semiBold ] (text "Shared Table")
+        [ el [ Font.size 20, Font.semiBold ] (text Copy.appTitle)
         , case model.auth of
             Just auth ->
                 el
@@ -129,7 +130,7 @@ composer : Model -> Element Msg
 composer model =
     case model.auth of
         Nothing ->
-            placeholder "Waiting for authentication…"
+            placeholder Copy.waitingForAuth
 
         Just _ ->
             Element.row [ spacing Ui.sm, width fill ]
@@ -137,8 +138,8 @@ composer model =
                     (inputAttrs ++ [ width fill, Ui.onEnter SendMessage ])
                     { onChange = NewMessageChanged
                     , text = model.newMessage
-                    , placeholder = Just (Input.placeholder [] (text "Write a message…"))
+                    , placeholder = Just (Input.placeholder [] (text Copy.messagePlaceholder))
                     , label = Input.labelHidden "Message"
                     }
-                , Ui.primaryButton { onPress = Just SendMessage, label = "Send" }
+                , Ui.primaryButton { onPress = Just SendMessage, label = Copy.send }
                 ]

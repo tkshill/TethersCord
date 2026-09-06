@@ -5,6 +5,7 @@ boons, the roll / reroll / accept lifecycle, and the facilitator's proposal
 queue.
 -}
 
+import Copy
 import Dict exposing (Dict)
 import Element exposing (Element, el, fill, none, spacing, text, width)
 import Element.Font as Font
@@ -76,42 +77,42 @@ view ctx props gs =
                     True
 
         costSuffix =
-            " (" ++ String.fromInt overcomeRerollCost ++ " boons)"
+            Copy.boonsCostSuffix overcomeRerollCost
 
         rerollLabel =
             if gs.overcome == Nothing then
-                "Reroll"
+                Copy.reroll
 
             else if amTarget then
                 -- Press Fate: the target buying their own reroll.
-                "Press Fate" ++ costSuffix
+                Copy.pressFate ++ costSuffix
 
             else
-                "Reroll" ++ costSuffix
+                Copy.reroll ++ costSuffix
     in
     Ui.card
-        [ Ui.sectionTitle "Stones"
+        [ Ui.sectionTitle Copy.stonesTitle
         , Element.column [ spacing Ui.md, width fill ]
             [ overcomeBlock ctx.facilitator target gs.characters
             , Element.wrappedRow [ spacing Ui.xs ]
                 (List.map stoneChip gs.stonePool
-                    ++ List.repeat committed (Ui.pledgedStoneChip Ui.boonFill "Pledged")
+                    ++ List.repeat committed (Ui.pledgedStoneChip Ui.boonFill Copy.pledgedChip)
                 )
             , el [ Font.size 12, Font.color Ui.inkSoft ]
-                (text ("Bag of " ++ String.fromInt (List.length gs.stonePool + committed)))
+                (text (Copy.bagOf (List.length gs.stonePool + committed)))
             , floatingBoonsBlock ctx.facilitator ctx.myId gs
             , case gs.pendingRoll of
                 Nothing ->
                     Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
                         (Ui.ghostButton
                             { onPress = Ui.press props.inflight "stones:add-boon" AddBoon
-                            , label = "Add boon"
+                            , label = Copy.addBoon
                             }
                             :: pendingHint myAddBoons (latestProposalId ctx.myId Kind.AddBoon gs.proposals)
                             ++ Ui.onlyWhen canRoll
                                 [ Ui.primaryButton
                                     { onPress = Ui.press props.inflight "stones:roll" RollStones
-                                    , label = "Roll"
+                                    , label = Copy.roll
                                     }
                                 ]
                         )
@@ -119,7 +120,7 @@ view ctx props gs =
                 Just pending ->
                     Element.column [ spacing Ui.sm, width fill ]
                         [ Element.wrappedRow [ spacing Ui.xs ]
-                            (el [ Font.size 12, Font.color Ui.inkSoft ] (text "Rolled")
+                            (el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.rolled)
                                 :: List.map stoneChip pending.chosen
                             )
                         , Element.wrappedRow [ spacing Ui.sm ]
@@ -137,7 +138,7 @@ view ctx props gs =
                                 ++ Ui.onlyWhen ctx.facilitator
                                     [ Ui.primaryButton
                                         { onPress = Ui.press props.inflight "stones:accept" AcceptRoll
-                                        , label = "Accept"
+                                        , label = Copy.accept
                                         }
                                     ]
                             )
@@ -169,21 +170,21 @@ floatingBoonsBlock facilitator myId gs =
                             gs.proposals
                 in
                 Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
-                    [ Ui.pledgedStoneChip Ui.boonFill "Floating"
+                    [ Ui.pledgedStoneChip Ui.boonFill Copy.floatingChip
                     , Element.paragraph [ Font.size 12 ] [ text fb.text ]
                     , if queued then
-                        el [ Font.size 11, Font.color Ui.inkSoft, Element.alignRight ] (text "(requested)")
+                        el [ Font.size 11, Font.color Ui.inkSoft, Element.alignRight ] (text Copy.floatingBoonRequested)
 
                       else if iOwnASheet && not facilitator then
                         el [ Element.alignRight ]
-                            (Ui.ghostButton { onPress = Just (UseFloatingBoon fb.id), label = "Use" })
+                            (Ui.ghostButton { onPress = Just (UseFloatingBoon fb.id), label = Copy.floatingBoonUse })
 
                       else
                         none
                     ]
         in
         Element.column [ spacing Ui.xs, width fill ]
-            (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Floating boons")
+            (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.floatingBoons)
                 :: List.map row gs.floatingBoons
             )
 
@@ -198,15 +199,15 @@ overcomeBlock facilitator target characters =
         Just t ->
             Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
                 (el [ Font.size 12, Font.semiBold ]
-                    (text ("Overcome — " ++ characterLabel t))
+                    (text (Copy.overcomeWith (characterLabel t)))
                     :: Ui.onlyWhen facilitator
-                        [ Ui.ghostButton { onPress = Just CancelOvercome, label = "Call off" } ]
+                        [ Ui.ghostButton { onPress = Just CancelOvercome, label = Copy.callOffOvercome } ]
                 )
 
         Nothing ->
             if facilitator then
                 Element.wrappedRow [ spacing Ui.xs, Element.centerY ]
-                    (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Start overcome")
+                    (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.startOvercome)
                         :: List.map
                             (\c ->
                                 Ui.ghostButton
@@ -233,7 +234,7 @@ proposalsPanel facilitator inflight drafts characters proposals =
 
     else
         Element.column [ spacing Ui.sm, width fill ]
-            (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Proposals")
+            (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.proposalsTitle)
                 :: List.map (proposalRow inflight drafts characters) proposals
             )
 
@@ -263,7 +264,7 @@ proposalRow inflight drafts characters p =
 
                         else
                             Just (RejectProposal p.id)
-                    , label = "Reject"
+                    , label = Copy.reject
                     }
                 , Ui.primaryButton
                     { onPress =
@@ -272,7 +273,7 @@ proposalRow inflight drafts characters p =
 
                         else
                             Nothing
-                    , label = "Accept"
+                    , label = Copy.accept
                     }
                 ]
     in
@@ -287,7 +288,7 @@ proposalRow inflight drafts characters p =
                 (inputAttrs ++ [ width fill ])
                 { onChange = ProposalDraftChanged p.id
                 , text = draft
-                , placeholder = Just (Input.placeholder [] (text "Context this boon represents…"))
+                , placeholder = Just (Input.placeholder [] (text Copy.floatingBoonContextPlaceholder))
                 , label = Input.labelHidden "Floating boon context"
                 }
 
@@ -300,35 +301,34 @@ describeProposal : List CharacterSheet -> Proposal -> String
 describeProposal characters p =
     case p.kind of
         Kind.AddBoon ->
-            "add a boon to the pool"
+            Copy.proposalAddBoon
 
         Kind.Pledge ->
             if p.delta >= 0 then
-                "highlight an aspect (pledge a boon)"
+                Copy.proposalPledge
 
             else
-                "withdraw a highlighted boon"
+                Copy.proposalPledgeWithdraw
 
         Kind.AbilityProposal Kind.HelpOut ->
-            "Help Out — reroll the overcome"
+            Copy.proposalHelpOut
 
         Kind.AbilityProposal Kind.AddDetail ->
-            "Add a Detail — a floating boon"
+            Copy.proposalAddDetail
 
         Kind.AbilityProposal Kind.GainInsight ->
-            "Gain Insight — a floating boon"
+            Copy.proposalGainInsight
 
         Kind.AbilityProposal Kind.SuggestCompel ->
-            "Suggest Compel on "
-                ++ (p.targetSlot
-                        |> Maybe.andThen (\s -> characterAtSlot s characters)
-                        |> Maybe.map characterLabel
-                        |> Maybe.withDefault "another character"
-                   )
-                ++ " (+1 / +2 boons)"
+            Copy.proposalSuggestCompelOn
+                (p.targetSlot
+                    |> Maybe.andThen (\s -> characterAtSlot s characters)
+                    |> Maybe.map characterLabel
+                    |> Maybe.withDefault Copy.proposalSuggestCompelFallback
+                )
 
         Kind.AcceptCompel ->
-            "Accept Compel — take a complication for 2 boons"
+            Copy.proposalAcceptCompel
 
         Kind.UseFloating ->
-            "spend a floating boon on the roll"
+            Copy.proposalUseFloating
