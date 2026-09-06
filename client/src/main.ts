@@ -1,19 +1,13 @@
 import { DiscordSDK } from "@discord/embedded-app-sdk";
 import { initDiscordBridge } from "./DiscordBridge";
+import type { ElmPorts } from "./ports";
 
 declare const Elm: {
   Main: {
     init(options: {
       node: HTMLElement;
       flags: { apiBaseUrl: string; tableId: string };
-    }): {
-      ports: {
-        toDiscord: { subscribe: (handler: (message: unknown) => void) => void };
-        fromDiscord: { send: (message: unknown) => void };
-        wsGameState: { send: (message: unknown) => void };
-        wsStatus: { send: (status: string) => void };
-      };
-    };
+    }): { ports: ElmPorts };
   };
 };
 
@@ -48,14 +42,14 @@ function resolveTableId(
 }
 
 async function main() {
-  const discordSdk = new DiscordSDK((window as any).DISCORD_CLIENT_ID);
+  const discordSdk = new DiscordSDK(window.DISCORD_CLIENT_ID);
   await discordSdk.ready();
 
   const queryParams = getQueryParams();
 
   // `||` not `??`: BACKEND_BASE_URL is injected as "", which is not nullish, so
   // `??` would never reach the fallback.
-  const apiBaseUrl = (window as any).BACKEND_BASE_URL || window.location.origin;
+  const apiBaseUrl = window.BACKEND_BASE_URL || window.location.origin;
   const tableId = resolveTableId(discordSdk, queryParams);
   const root = document.getElementById("root");
 

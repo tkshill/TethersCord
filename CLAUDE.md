@@ -100,6 +100,7 @@ TypeScript (`client/src/`):
 - **`main.ts`** — boots the Discord SDK, resolves `tableId`, `Elm.Main.init`, then wires the bridge and socket.
 - **`DiscordBridge.ts`** — the Authorize flow and OAuth exchange. Imports `BackendAuthResult` from `worker/src/types.ts`, so the auth payload shape is shared across the client/worker boundary.
 - **`GameSocket.ts`** — the reconnecting WebSocket feeding the `wsGameState` port. Gives up on close code `1008` (credentials rejected); exponential backoff otherwise.
+- **`ports.ts`** — the one description of the Elm `app.ports` surface (`ElmPorts`, plus a `SocketPorts` pick for `GameSocket`), and the `Window.DISCORD_CLIENT_ID` / `Window.BACKEND_BASE_URL` global declarations. Imported by the three files above instead of each hand-copying the shape.
 
 `client/scripts/build.mjs` calls `node_modules/elm/bin/elm` directly rather than the `.bin` shim, which breaks under pnpm.
 

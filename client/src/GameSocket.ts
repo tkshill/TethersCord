@@ -1,9 +1,6 @@
 // client/src/GameSocket.ts
 
-type GameSocketPorts = {
-  wsGameState: { send: (message: unknown) => void };
-  wsStatus: { send: (status: string) => void };
-};
+import type { SocketPorts } from "./ports";
 
 const MAX_RECONNECT_DELAY_MS = 10000;
 const MAX_RECONNECT_ATTEMPTS = 8;
@@ -19,7 +16,7 @@ export function connectGameSocket(
   backendBaseUrl: string,
   tableId: string,
   sessionToken: string,
-  ports: GameSocketPorts,
+  ports: SocketPorts,
 ): GameSocketHandle {
   const url = buildWsUrl(backendBaseUrl, tableId);
   let attempt = 0;

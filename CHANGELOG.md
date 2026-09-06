@@ -86,6 +86,12 @@ version yet, so headings are dates.
   client decodes it to a `SessionOutcome` type and `View.verdictWord` /
   `verdictColor` switch on it instead of parsing the prose with
   `String.contains`. No behaviour change.
+- Maintainability pass — client TS tidy-up (roadmap section 22, step 7). The
+  three hand-copied Elm-port shapes (`DiscordBridge.ts`, `GameSocket.ts`,
+  `main.ts`) are one `client/src/ports.ts` (`ElmPorts` + a `SocketPorts`
+  pick), which also declares `Window.DISCORD_CLIENT_ID` /
+  `Window.BACKEND_BASE_URL` so the `(window as any)` reads are typed. No
+  behaviour change.
 - Maintainability pass — `GameTable.ts` trailer and accessor cleanup (roadmap
   section 22, step 6 part 1). No behaviour change; the module reshaping (a
   route table, `worker/src/handlers/*`) is deferred to its own effort.
