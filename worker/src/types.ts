@@ -39,12 +39,29 @@ export type CommittedBoon = {
   count: number;
 };
 
-export type ProposalKind = "add-boon" | "pledge";
+/**
+ * Every player-initiated request the facilitator resolves through the one
+ * accept / reject queue:
+ * - `add-boon` — add a Boon to the shared pool.
+ * - `pledge` — Highlight an Aspect: pledge (`delta` +1) or withdraw (-1) one of
+ *   the proposer's own boons on the next roll.
+ * - `help-out`, `add-detail`, `gain-insight` — the once-per-session abilities.
+ * - `accept-compel` — the move: take on a complication for 2 boons.
+ * - `use-floating` — spend a floating boon (named by `floatingId`) on the roll.
+ */
+export type ProposalKind =
+  | "add-boon"
+  | "pledge"
+  | "help-out"
+  | "add-detail"
+  | "gain-insight"
+  | "accept-compel"
+  | "use-floating";
 
 /**
- * A player-initiated change to shared stone state, waiting on the facilitator.
- * One per click — `delta` is +1 / -1. `slot` is the proposer's claimed sheet
- * for a pledge, null for add-boon.
+ * A player-initiated change to shared state, waiting on the facilitator. One per
+ * click. `delta` is +1 / -1 for a pledge. `slot` is the proposer's claimed sheet
+ * (null only for `add-boon`). `floatingId` names the boon for `use-floating`.
  */
 export type Proposal = {
   id: string;
@@ -53,7 +70,30 @@ export type Proposal = {
   proposerName: string;
   slot: number | null;
   delta: number;
+  floatingId: string | null;
   createdAt: number;
+};
+
+/** Once-per-session abilities a player calls on, each gated by facilitator approval. */
+export type AbilityKind = "help-out" | "add-detail" | "gain-insight";
+
+/**
+ * A boon owned by no character. The facilitator creates one — with a note of the
+ * context it stands for — by approving an Add a Detail or Gain Insight ability.
+ * It waits in `gameState.floatingBoons` until a player spends it on a roll (also
+ * facilitator-approved), and is discarded when the session ends.
+ */
+export type FloatingBoon = {
+  id: string;
+  text: string;
+  createdByName: string;
+  createdAt: number;
+};
+
+/** Which once-per-session abilities a character has already spent this session. */
+export type UsedAbilities = {
+  slot: number;
+  kinds: AbilityKind[];
 };
 
 export type CharacterSheet = {
@@ -117,6 +157,8 @@ export type GameState = {
   pendingRoll: PendingRoll | null;
   overcome: Overcome | null;
   committedBoons: CommittedBoon[];
+  floatingBoons: FloatingBoon[];
+  usedAbilities: UsedAbilities[];
   proposals: Proposal[];
   session: SessionState | null;
   sessionHistory: SessionSummary[];
@@ -143,6 +185,19 @@ export type StartSessionInput = {
 
 export type StartOvercomeInput = {
   slot: number;
+};
+
+export type UseAbilityInput = {
+  kind: AbilityKind;
+};
+
+export type UseFloatingBoonInput = {
+  floatingId: string;
+};
+
+export type ProposalDecisionInput = {
+  /** The facilitator's context note, when accepting an Add a Detail / Gain Insight. */
+  text?: string;
 };
 
 export type BackendAuthResult = {

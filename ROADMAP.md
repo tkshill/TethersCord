@@ -255,41 +255,44 @@ something risky; everything else here is how the other players feed into it.
 
 ### Special abilities — once per session each
 
-Per character, reset when a session starts (section 7). Each needs facilitator
-approval, so this depends on an approve/deny request flow in the facilitator
-interface (section 5).
+Per character, reset when a session starts (section 7). Each is queued as a
+proposal (section 5) and only marked used when the facilitator accepts;
+`gameState.usedAbilities` holds the per-slot flags. All three below need a
+running session. Raised from the **Moves** card once a player holds a sheet.
 
-- [ ] **Help Out** — the player says how they help someone who failed a roll.
-      Approved → the overcome is rerolled. (Shared consequences come later.)
-- [ ] **Add a Detail** — the player adds a detail or piece of context to the
-      scene. Approved → a **floating boon** enters the pool, usable by anyone on
-      a later roll (a boon owned by no character; a new pool concept alongside
-      per-character pledges).
-- [ ] **Gain Insight** — as Add a Detail (a floating boon), but the player asks
-      the facilitator a question and the facilitator supplies the context.
-- [ ] **Suggest Compel** — the player offers a complication to another player.
-      If that player accepts *and* the facilitator approves → the suggester
-      gains 1 boon and the accepting player gains 2.
+- [x] **Help Out** — approved → the open overcome roll is rerolled for free
+      (`drawFromBag`, no Press Fate cost). Available only while an overcome roll
+      is on the table.
+- [x] **Add a Detail** — approved with a context note the facilitator types →
+      a `FloatingBoon` enters `gameState.floatingBoons`.
+- [x] **Gain Insight** — same effect and note as Add a Detail; the "ask the
+      facilitator a question" part is table talk.
+- [ ] **Suggest Compel** — deferred to its own branch with the compel handshake
+      below (suggest → target accepts → facilitator approves → 1 boon to the
+      suggester, 2 to the target).
 
 ### Moves — no per-session limit
 
-- [ ] **Accept Compel** — the player takes on a complication (self-proposed or
-      facilitator-offered). Approved → 2 boons.
-- [ ] **Highlight an Aspect** — pledge a boon to the current overcome roll. This
-      is section 4's pledge / `committedBoons` mechanic under its player-facing
-      name.
-- [ ] **Press Fate** — reroll your own failed roll for 2 boons. Same cost and
-      effect as the target-player Reroll above; this is the move that names it.
+- [x] **Accept Compel** — `/moves/accept-compel`, queued as a proposal;
+      approved → `ACCEPT_COMPEL_BOONS` (2) boons to the proposer.
+- [x] **Highlight an Aspect** — section 4's pledge / `committedBoons` mechanic;
+      the sheet control is now labelled "Highlight".
+- [x] **Press Fate** — the overcome target's own Reroll, costing 2 boons
+      (section "The overcome"); the target's reroll button now names it.
 
 ### What this needs in the model
 
-- [ ] Per-character, per-session ability-usage tracking (four flags), cleared on
-      session start.
-- [ ] Floating boons in the pool, distinct from `committedBoons`.
-- [ ] The section 5 proposal flow (player proposes → facilitator accepts /
-      rejects), reused by every ability and the compel moves.
+- [x] Per-character, per-session ability-usage tracking. `gameState.usedAbilities`
+      (`{ slot, kinds }[]`) in `KEY_STONES`, cleared on session start and end.
+      Three flags, not four — the fourth (Suggest Compel) lands with the
+      handshake.
+- [x] Floating boons — `gameState.floatingBoons`, a `FloatingBoon` list distinct
+      from `committedBoons`; each carries the facilitator's context note, is
+      spent via a `use-floating` proposal, and is discarded at session end.
+- [x] The section 5 proposal flow, extended with the `help-out`, `add-detail`,
+      `gain-insight`, `accept-compel`, and `use-floating` kinds.
 - [ ] A compel handshake: suggest → target accepts → facilitator approves, then
-      the boon payouts.
+      the boon payouts. Deferred to its own branch.
 
 ## 11. Effect pattern + tests
 

@@ -4,6 +4,7 @@ module Types exposing
     , CharacterSheet
     , CommittedBoon
     , Connection(..)
+    , FloatingBoon
     , Flags
     , GameState
     , Message
@@ -15,6 +16,8 @@ module Types exposing
     , Role(..)
     , Session
     , SessionSummary
+    , UsedAbility
+    , abilityUsed
     , committedBoonsForSlot
     , decodeRole
     , roleLabel
@@ -114,8 +117,11 @@ committedBoonsForSlot slot committed =
         |> Maybe.withDefault 0
 
 
-{-| A player-initiated change to shared stone state awaiting the facilitator.
-`kind` is `"add-boon"` or `"pledge"`; `delta` is `1` or `-1`.
+{-| A player-initiated request the facilitator resolves through the accept /
+reject queue. `kind` is `"add-boon"`, `"pledge"`, one of the ability kinds
+(`"help-out"`, `"add-detail"`, `"gain-insight"`), `"accept-compel"`, or
+`"use-floating"`. `delta` is `±1` for a pledge; `floatingId` names the boon for
+`use-floating`.
 -}
 type alias Proposal =
     { id : String
@@ -124,7 +130,40 @@ type alias Proposal =
     , proposerName : String
     , slot : Maybe Int
     , delta : Int
+    , floatingId : Maybe String
     }
+
+
+{-| A boon owned by no character, created when the facilitator approves an
+Add a Detail / Gain Insight. `text` is the facilitator's note of the context it
+stands for. Any player can ask to spend it on a roll.
+-}
+type alias FloatingBoon =
+    { id : String
+    , text : String
+    , createdByName : String
+    }
+
+
+{-| Which once-per-session abilities a character has already spent this session
+(`kinds` holds the ability-kind strings).
+-}
+type alias UsedAbility =
+    { slot : Int
+    , kinds : List String
+    }
+
+
+{-| Whether the character in `slot` has already used the ability `kind` this
+session.
+-}
+abilityUsed : Int -> String -> List UsedAbility -> Bool
+abilityUsed slot kind used =
+    used
+        |> List.filter (\u -> u.slot == slot)
+        |> List.head
+        |> Maybe.map (\u -> List.member kind u.kinds)
+        |> Maybe.withDefault False
 
 
 {-| The running game session. `pool` is the session stone pool, which grows one
@@ -212,6 +251,8 @@ type alias GameState =
     , characters : List CharacterSheet
     , sessionHistory : List SessionSummary
     , overcome : Maybe Overcome
+    , floatingBoons : List FloatingBoon
+    , usedAbilities : List UsedAbility
     }
 
 
@@ -240,6 +281,11 @@ type alias Model =
 
     -- Draft goal in the facilitator's "start session" field.
     , newSessionGoal : String
+
+    -- Draft context note the facilitator types when approving an Add a Detail
+    -- or Gain Insight proposal (the text attached to the resulting floating
+    -- boon).
+    , proposalDraft : String
 
     -- Backend WebSocket connection state, as last reported by the JS socket.
     , connection : Connection
@@ -288,6 +334,11 @@ type Msg
     | AcceptProposal String
     | RejectProposal String
     | ProposalResolved (Result Http.Error ())
+    | ProposalDraftChanged String
+    | UseAbility String
+    | AcceptCompelMove
+    | UseFloatingBoon String
+    | MoveRaised (Result Http.Error ())
     | SessionGoalChanged String
     | StartSession
     | EndSession

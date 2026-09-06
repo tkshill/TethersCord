@@ -52,7 +52,8 @@ view model =
         , connectionNote model.connection
         , Ui.banner model.status
         , sessionPanel facilitator model.timeZone model.newSessionGoal model.gameState
-        , rollPanel facilitator myId model.gameState
+        , rollPanel facilitator myId model.proposalDraft model.gameState
+        , movesCard myId model.gameState
         , characterSheets facilitator myId model.selectedSlot model.gameState
         , messageLog facilitator model.timeZone model.gameState
         , composer model
@@ -213,8 +214,8 @@ verdictColor outcome =
 -- STONES
 
 
-rollPanel : Bool -> Maybe String -> Maybe GameState -> Element Msg
-rollPanel facilitator myId maybeGs =
+rollPanel : Bool -> Maybe String -> String -> Maybe GameState -> Element Msg
+rollPanel facilitator myId draft maybeGs =
     Ui.card
         [ Ui.sectionTitle "Stones"
         , case maybeGs of
@@ -257,12 +258,19 @@ rollPanel facilitator myId maybeGs =
                             Nothing ->
                                 True
 
+                    costSuffix =
+                        " (" ++ String.fromInt overcomeRerollCost ++ " boons)"
+
                     rerollLabel =
                         if gs.overcome == Nothing then
                             "Reroll"
 
+                        else if amTarget then
+                            -- Press Fate: the target buying their own reroll.
+                            "Press Fate" ++ costSuffix
+
                         else
-                            "Reroll (" ++ String.fromInt overcomeRerollCost ++ " boons)"
+                            "Reroll" ++ costSuffix
                 in
                 Element.column [ spacing Ui.md, width fill ]
                     [ overcomeBlock facilitator target gs.characters
@@ -273,6 +281,7 @@ rollPanel facilitator myId maybeGs =
                         )
                     , el [ Font.size 12, Font.color Ui.inkSoft ]
                         (text ("Bag of " ++ String.fromInt (List.length gs.stonePool + committed)))
+                    , floatingBoonsBlock facilitator myId gs
                     , case gs.pendingRoll of
                         Nothing ->
                             Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
@@ -304,9 +313,49 @@ rollPanel facilitator myId maybeGs =
                                             [ Ui.primaryButton { onPress = Just AcceptRoll, label = "Accept" } ]
                                     )
                                 ]
-                    , proposalsPanel facilitator gs.proposals
+                    , proposalsPanel facilitator draft gs.proposals
                     ]
         ]
+
+
+{-| The session's floating boons — context the facilitator has approved that
+belongs to no one. Any player can ask to spend one on the roll (a Highlight the
+facilitator then approves); the button is muted once that request is queued. -}
+floatingBoonsBlock : Bool -> Maybe String -> GameState -> Element Msg
+floatingBoonsBlock facilitator myId gs =
+    if List.isEmpty gs.floatingBoons then
+        none
+
+    else
+        let
+            iOwnASheet =
+                List.any (\c -> c.ownerId /= Nothing && c.ownerId == myId) gs.characters
+
+            row fb =
+                let
+                    queued =
+                        List.any
+                            (\p -> p.kind == "use-floating" && p.floatingId == Just fb.id)
+                            gs.proposals
+                in
+                Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
+                    [ Ui.pledgedStoneChip Ui.boonFill "Floating"
+                    , Element.paragraph [ Font.size 12 ] [ text fb.text ]
+                    , if queued then
+                        el [ Font.size 11, Font.color Ui.inkSoft, Element.alignRight ] (text "(requested)")
+
+                      else if iOwnASheet && not facilitator then
+                        el [ Element.alignRight ]
+                            (Ui.ghostButton { onPress = Just (UseFloatingBoon fb.id), label = "Use" })
+
+                      else
+                        none
+                    ]
+        in
+        Element.column [ spacing Ui.xs, width fill ]
+            (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Floating boons")
+                :: List.map row gs.floatingBoons
+            )
 
 
 {-| The overcome line. When one is open it names the target and, for the
@@ -346,29 +395,61 @@ characterAtSlot slot characters =
     characters |> List.filter (\c -> c.slot == slot) |> List.head
 
 
-{-| Facilitator's queue of player-initiated stone changes awaiting a decision.
-Hidden for players and when empty.
--}
-proposalsPanel : Bool -> List Proposal -> Element Msg
-proposalsPanel facilitator proposals =
+{-| Facilitator's queue of player-initiated requests awaiting a decision. Hidden
+for players and when empty. `draft` is the context note typed for whichever
+Add a Detail / Gain Insight is being approved. -}
+proposalsPanel : Bool -> String -> List Proposal -> Element Msg
+proposalsPanel facilitator draft proposals =
     if not facilitator || List.isEmpty proposals then
         none
 
     else
         Element.column [ spacing Ui.sm, width fill ]
             (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Proposals")
-                :: List.map proposalRow proposals
+                :: List.map (proposalRow draft) proposals
             )
 
 
-proposalRow : Proposal -> Element Msg
-proposalRow p =
-    Element.row [ width fill, spacing Ui.sm, Element.centerY ]
-        [ Element.paragraph [ Font.size 12 ]
-            [ text (p.proposerName ++ " — " ++ describeProposal p) ]
-        , el [ Element.alignRight ]
-            (Ui.ghostButton { onPress = Just (RejectProposal p.id), label = "Reject" })
-        , Ui.primaryButton { onPress = Just (AcceptProposal p.id), label = "Accept" }
+proposalRow : String -> Proposal -> Element Msg
+proposalRow draft p =
+    let
+        needsContext =
+            p.kind == "add-detail" || p.kind == "gain-insight"
+
+        acceptEnabled =
+            not needsContext || String.trim draft /= ""
+
+        controls =
+            Element.row [ spacing Ui.sm, Element.centerY, Element.alignRight ]
+                [ Ui.ghostButton { onPress = Just (RejectProposal p.id), label = "Reject" }
+                , Ui.primaryButton
+                    { onPress =
+                        if acceptEnabled then
+                            Just (AcceptProposal p.id)
+
+                        else
+                            Nothing
+                    , label = "Accept"
+                    }
+                ]
+    in
+    Element.column [ width fill, spacing Ui.xs ]
+        [ Element.wrappedRow [ width fill, spacing Ui.sm, Element.centerY ]
+            [ Element.paragraph [ Font.size 12 ]
+                [ text (p.proposerName ++ " — " ++ describeProposal p) ]
+            , controls
+            ]
+        , if needsContext then
+            Input.text
+                (inputAttrs ++ [ width fill ])
+                { onChange = ProposalDraftChanged
+                , text = draft
+                , placeholder = Just (Input.placeholder [] (text "Context this boon represents…"))
+                , label = Input.labelHidden "Floating boon context"
+                }
+
+          else
+            none
         ]
 
 
@@ -379,10 +460,25 @@ describeProposal p =
             "add a boon to the pool"
 
         ( "pledge", True ) ->
-            "pledge a boon"
+            "highlight an aspect (pledge a boon)"
 
         ( "pledge", False ) ->
-            "withdraw a boon"
+            "withdraw a highlighted boon"
+
+        ( "help-out", _ ) ->
+            "Help Out — reroll the overcome"
+
+        ( "add-detail", _ ) ->
+            "Add a Detail — a floating boon"
+
+        ( "gain-insight", _ ) ->
+            "Gain Insight — a floating boon"
+
+        ( "accept-compel", _ ) ->
+            "Accept Compel — take a complication for 2 boons"
+
+        ( "use-floating", _ ) ->
+            "spend a floating boon on the roll"
 
         _ ->
             p.kind
@@ -439,6 +535,93 @@ stoneChip stone =
 
         Bane ->
             Ui.stoneChip Ui.baneFill "Bane"
+
+
+
+-- MOVES
+
+
+{-| The player's own abilities and moves, shown once they hold a sheet. Every
+one is a request the facilitator approves; a button mutes to "(pending)" once
+raised and, for the once-per-session abilities, "(used)" after approval. -}
+movesCard : Maybe String -> Maybe GameState -> Element Msg
+movesCard myId maybeGs =
+    case maybeGs |> Maybe.andThen (\gs -> Maybe.map (Tuple.pair gs) (myOwnedSheet myId gs)) of
+        Nothing ->
+            none
+
+        Just ( gs, ch ) ->
+            Ui.card
+                [ Ui.sectionTitle "Moves"
+                , abilityRow myId gs ch
+                , Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
+                    [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Any time")
+                    , moveButton
+                        (countProposals myId "accept-compel" gs.proposals > 0)
+                        "Accept Compel"
+                        AcceptCompelMove
+                    ]
+                ]
+
+
+myOwnedSheet : Maybe String -> GameState -> Maybe CharacterSheet
+myOwnedSheet myId gs =
+    gs.characters
+        |> List.filter (\c -> c.ownerId /= Nothing && c.ownerId == myId)
+        |> List.head
+
+
+abilityRow : Maybe String -> GameState -> CharacterSheet -> Element Msg
+abilityRow myId gs ch =
+    if gs.session == Nothing then
+        el [ Font.size 12, Font.color Ui.inkSoft ]
+            (text "Abilities open once a session is running.")
+
+    else
+        let
+            overcomeRoll =
+                gs.overcome /= Nothing && gs.pendingRoll /= Nothing
+
+            button kind label available =
+                let
+                    used =
+                        abilityUsed ch.slot kind gs.usedAbilities
+
+                    pending =
+                        countProposals myId kind gs.proposals > 0
+
+                    suffix =
+                        if used then
+                            " (used)"
+
+                        else if pending then
+                            " (pending)"
+
+                        else
+                            ""
+                in
+                moveButton (used || pending || not available) (label ++ suffix) (UseAbility kind)
+        in
+        Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
+            [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Once per session")
+            , button "help-out" "Help Out" overcomeRoll
+            , button "add-detail" "Add a Detail" True
+            , button "gain-insight" "Gain Insight" True
+            ]
+
+
+{-| A ghost button that goes inert (no `onPress`) when `disabled`. -}
+moveButton : Bool -> String -> Msg -> Element Msg
+moveButton disabled label msg =
+    Ui.ghostButton
+        { onPress =
+            if disabled then
+                Nothing
+
+            else
+                Just msg
+        , label = label
+        }
 
 
 
@@ -669,7 +852,8 @@ grantControls facilitator ch =
 pledgeControls : Bool -> Int -> List (Element Msg)
 pledgeControls mine pending =
     if mine then
-        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Pledge")
+        -- "Highlight" is the player-facing name for pledging a boon to the roll.
+        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Highlight")
         , Ui.ghostButton { onPress = Just CommitBoonDecrement, label = "−" }
         , Ui.ghostButton { onPress = Just CommitBoonIncrement, label = "+" }
         ]

@@ -1,19 +1,22 @@
 module Api exposing
     ( decodeGameState
     , getGameState
+    , postAcceptCompelMove
+    , postCancelOvercome
     , postCharacterUpdate
     , postClaimSlot
     , postClearMessages
     , postCommitBoon
-    , postFate
     , postEndSession
+    , postFate
     , postMessage
-    , postCancelOvercome
     , postProposalDecision
     , postReleaseSlot
     , postStartOvercome
     , postStartSession
     , postStones
+    , postUseAbility
+    , postUseFloatingBoon
     )
 
 {-| Every call the client makes to the Worker backend, plus the JSON decoders
@@ -30,7 +33,7 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 import Roll exposing (Stone(..))
 import Time
-import Types exposing (Auth, CharacterSheet, CommittedBoon, Flags, GameState, Overcome, PendingRoll, Proposal, Session, SessionSummary, decodeRole)
+import Types exposing (Auth, CharacterSheet, CommittedBoon, FloatingBoon, Flags, GameState, Overcome, PendingRoll, Proposal, Session, SessionSummary, UsedAbility, decodeRole)
 
 
 
@@ -183,14 +186,70 @@ slotAction flags auth slot action toMsg =
 
 
 {-| Facilitator-only: `decision` is `"accept"` or `"reject"` for the proposal.
+`context` carries the facilitator's note when accepting an Add a Detail /
+Gain Insight; it is ignored for every other kind and for a reject.
 -}
-postProposalDecision : Flags -> Auth -> String -> String -> (Result Http.Error () -> msg) -> Cmd msg
-postProposalDecision flags auth proposalId decision toMsg =
+postProposalDecision : Flags -> Auth -> String -> String -> Maybe String -> (Result Http.Error () -> msg) -> Cmd msg
+postProposalDecision flags auth proposalId decision context toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth ++ [ jsonContentType ]
+        , url = tableUrl flags ("/proposals/" ++ proposalId ++ "/" ++ decision)
+        , body =
+            case context of
+                Just text ->
+                    Http.jsonBody (Encode.object [ ( "text", Encode.string text ) ])
+
+                Nothing ->
+                    Http.emptyBody
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+{-| Raise a once-per-session ability: `kind` is `"help-out"`, `"add-detail"`, or
+`"gain-insight"`. Queued for the facilitator like any other proposal.
+-}
+postUseAbility : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postUseAbility flags auth kind toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth ++ [ jsonContentType ]
+        , url = tableUrl flags "/abilities/use"
+        , body = Http.jsonBody (Encode.object [ ( "kind", Encode.string kind ) ])
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+{-| Raise the Accept Compel move — take on a complication for 2 boons on
+facilitator approval.
+-}
+postAcceptCompelMove : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
+postAcceptCompelMove flags auth toMsg =
     Http.request
         { method = "POST"
         , headers = authHeaders auth
-        , url = tableUrl flags ("/proposals/" ++ proposalId ++ "/" ++ decision)
+        , url = tableUrl flags "/moves/accept-compel"
         , body = Http.emptyBody
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+{-| Ask to spend a floating boon on the roll; the facilitator approves it like a
+Highlight.
+-}
+postUseFloatingBoon : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postUseFloatingBoon flags auth floatingId toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth ++ [ jsonContentType ]
+        , url = tableUrl flags "/stones/use-floating"
+        , body = Http.jsonBody (Encode.object [ ( "floatingId", Encode.string floatingId ) ])
         , expect = Http.expectWhatever toMsg
         , timeout = Nothing
         , tracker = Nothing
@@ -308,13 +367,29 @@ decodeCommittedBoon =
 
 decodeProposal : Decode.Decoder Proposal
 decodeProposal =
-    Decode.map6 Proposal
+    Decode.map7 Proposal
         (Decode.field "id" Decode.string)
         (Decode.field "kind" Decode.string)
         (Decode.field "proposerId" Decode.string)
         (Decode.field "proposerName" Decode.string)
         (Decode.field "slot" (Decode.nullable Decode.int))
         (Decode.field "delta" Decode.int)
+        (Decode.field "floatingId" (Decode.nullable Decode.string))
+
+
+decodeFloatingBoon : Decode.Decoder FloatingBoon
+decodeFloatingBoon =
+    Decode.map3 FloatingBoon
+        (Decode.field "id" Decode.string)
+        (Decode.field "text" Decode.string)
+        (Decode.field "createdByName" Decode.string)
+
+
+decodeUsedAbility : Decode.Decoder UsedAbility
+decodeUsedAbility =
+    Decode.map2 UsedAbility
+        (Decode.field "slot" Decode.int)
+        (Decode.field "kinds" (Decode.list Decode.string))
 
 
 decodeSession : Decode.Decoder Session
@@ -396,3 +471,5 @@ decodeGameState =
         (Decode.field "characters" (Decode.list decodeCharacterSheet))
         |> andMap (Decode.field "sessionHistory" (Decode.list decodeSessionSummary))
         |> andMap (Decode.field "overcome" (Decode.nullable decodeOvercome))
+        |> andMap (Decode.field "floatingBoons" (Decode.list decodeFloatingBoon))
+        |> andMap (Decode.field "usedAbilities" (Decode.list decodeUsedAbility))
