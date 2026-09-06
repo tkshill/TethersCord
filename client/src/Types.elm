@@ -1,5 +1,7 @@
 module Types exposing
-    ( Auth
+    ( Aspect(..)
+    , AspectBanes
+    , Auth
     , CharacterField(..)
     , CharacterSheet
     , CommittedBoon
@@ -19,9 +21,12 @@ module Types exposing
     , Session
     , SessionSummary
     , TableEntity
+    , Untether
     , UsedAbility
     , abilityUsed
     , actionPending
+    , aspectBaneCount
+    , aspectLabel
     , committedBoonsForSlot
     , decodeRole
     , entitiesForKind
@@ -108,6 +113,16 @@ type alias Overcome =
     { targetSlot : Int }
 
 
+{-| A character whose reckoning is in progress (section 19): a failed session
+goal drew one Bane at random from every aspect Bane on every sheet, and this is
+whose it was. Cleared by the facilitator once the scene concludes.
+-}
+type alias Untether =
+    { slot : Int
+    , aspect : Aspect
+    }
+
+
 {-| Boons a character has pledged into the next roll. Spent from their `fate`
 stock when the roll is accepted; only slots with a non-zero pledge appear.
 -}
@@ -192,6 +207,10 @@ type alias Session =
     { id : String
     , goal : String
     , pool : List Stone
+
+    -- Banes this session's pool started with beyond the base four, carried from
+    -- the previous session (section 19).
+    , carriedBanes : Int
     }
 
 
@@ -207,6 +226,51 @@ type alias SessionSummary =
     }
 
 
+{-| The three fixed aspects a character is written around. An aspect only ever
+accumulates Banes (section 19).
+-}
+type Aspect
+    = Archetype
+    | Desire
+    | Quest
+
+
+aspectLabel : Aspect -> String
+aspectLabel aspect =
+    case aspect of
+        Archetype ->
+            "Archetype"
+
+        Desire ->
+            "Desire"
+
+        Quest ->
+            "Quest"
+
+
+{-| Bane counts for a character's three aspects. Carried between sessions; all
+three clear together when a failed session goal untethers the character.
+-}
+type alias AspectBanes =
+    { archetype : Int
+    , desire : Int
+    , quest : Int
+    }
+
+
+aspectBaneCount : Aspect -> AspectBanes -> Int
+aspectBaneCount aspect banes =
+    case aspect of
+        Archetype ->
+            banes.archetype
+
+        Desire ->
+            banes.desire
+
+        Quest ->
+            banes.quest
+
+
 type alias CharacterSheet =
     { id : String
     , slot : Int
@@ -218,6 +282,7 @@ type alias CharacterSheet =
     , condition : String
     , notes : String
     , fate : Int
+    , aspectBanes : AspectBanes
 
     -- Discord user id of the player who claimed this sheet, if any.
     , ownerId : Maybe String
@@ -327,6 +392,7 @@ type alias GameState =
     , usedAbilities : List UsedAbility
     , npcs : List TableEntity
     , locations : List TableEntity
+    , untether : Maybe Untether
     }
 
 
@@ -473,6 +539,8 @@ type Msg
     | StartSession
     | EndSession
     | SessionUpdated (Result Http.Error ())
+    | ResolveUntether
+    | UntetherResolved (Result Http.Error ())
     | RequestConfirm String
     | CancelConfirm
     | DismissError

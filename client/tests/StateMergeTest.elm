@@ -17,24 +17,17 @@ import Types exposing (CharacterSheet, GameState)
 -}
 incoming : GameState
 incoming =
-    { sessionId = "sess-1"
-    , messages = []
-    , stonePool = []
-    , pendingRoll = Nothing
-    , committedBoons = []
-    , proposals = []
-    , session = Nothing
-    , characters =
-        [ { sheet | slot = 1, name = "server name" }
-        , { sheet | slot = 2, name = "other" }
-        ]
-    , sessionHistory = []
-    , overcome = Nothing
-    , floatingBoons = []
-    , usedAbilities = []
-    , npcs = []
-    , locations = []
+    { gs
+        | characters =
+            [ { sheet | slot = 1, name = "server name" }
+            , { sheet | slot = 2, name = "other" }
+            ]
     }
+
+
+gs : GameState
+gs =
+    Fixtures.gameState
 
 
 sheet : CharacterSheet

@@ -61,6 +61,7 @@ character =
     , condition = ""
     , notes = ""
     , fate = 0
+    , aspectBanes = { archetype = 0, desire = 0, quest = 0 }
     , ownerId = Nothing
     }
 
@@ -81,6 +82,7 @@ gameState =
     , usedAbilities = []
     , npcs = []
     , locations = []
+    , untether = Nothing
     }
 
 
@@ -144,17 +146,19 @@ snapshotJson =
         , { "id": "p4", "kind": "use-floating", "proposerId": "u1", "proposerName": "Ada"
           , "slot": 1, "delta": 0, "floatingId": "f1", "targetSlot": null }
         ]
-    , "session": { "id": "s1", "goal": "Escape the vault", "pool": ["Boon", "Bane"] }
+    , "session": { "id": "s1", "goal": "Escape the vault", "pool": ["Boon", "Bane"], "carriedBanes": 1 }
     , "characters":
         [ { "id": "char-1", "slot": 1, "name": "Ada", "notableFeatures": "quick"
           , "archetype": "rogue", "desire": "out", "quest": "the map", "condition": ""
-          , "notes": "n", "fate": 3, "ownerId": "u1" }
+          , "notes": "n", "fate": 3, "ownerId": "u1"
+          , "aspectBanes": { "archetype": 2, "desire": 0, "quest": 1 } }
         ]
     , "sessionHistory":
         [ { "id": "s0", "goal": "The bridge", "startedAt": 1699000000000
-          , "endedAt": 1699000900000, "outcome": "mixed" }
+          , "endedAt": 1699000900000, "outcome": "goal failed — drew Bane (pool flushed)" }
         ]
     , "overcome": { "targetSlot": 1 }
+    , "untether": { "slot": 1, "aspect": "quest" }
     , "floatingBoons":
         [ { "id": "f1", "text": "the rope still holds", "createdByName": "Gm"
           , "createdAt": 1700000002000 }

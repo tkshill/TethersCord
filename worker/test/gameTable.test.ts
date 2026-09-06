@@ -561,3 +561,172 @@ describe("GameTable state machine", () => {
     });
   });
 });
+
+/** Sum of a character's three aspect Bane counts. */
+function aspectBaneTotal(
+  state: import("../src/types").GameState,
+  slot: number,
+): number {
+  const c = state.characters.find((c) => c.slot === slot)!;
+  return c.aspectBanes.archetype + c.aspectBanes.desire + c.aspectBanes.quest;
+}
+
+describe("section 19 — the overcome aftermath", () => {
+  it("routes an accepted overcome roll: a mixed draw marks an aspect, two of a kind feeds the pool", async () => {
+    const table = "gt19-route";
+    const { token: fac } = await seedAuth(undefined, { facilitator: true });
+    await call(table, "/session/start", { token: fac, body: { goal: "escalate" } });
+
+    let sawAspect = false;
+    let sawPoolOnly = false;
+
+    for (let i = 0; i < 40 && !(sawAspect && sawPoolOnly); i++) {
+      const before = await readState(table, fac);
+      await call(table, "/overcome/start", { token: fac, body: { slot: 0 } });
+      await call(table, "/stones/roll", { token: fac });
+      await call(table, "/stones/accept", { token: fac });
+      const after = await readState(table, fac);
+
+      const aspectDelta = aspectBaneTotal(after, 0) - aspectBaneTotal(before, 0);
+      const poolDelta =
+        (after.session?.pool.length ?? 0) - (before.session?.pool.length ?? 0);
+
+      // Every drawn stone lands in exactly one place.
+      expect(aspectDelta + poolDelta).toBe(2);
+      expect([0, 1]).toContain(aspectDelta);
+      expect(after.overcome).toBeNull();
+
+      if (aspectDelta === 1) sawAspect = true;
+      if (aspectDelta === 0) sawPoolOnly = true;
+    }
+
+    expect(sawAspect).toBe(true);
+    expect(sawPoolOnly).toBe(true);
+  });
+
+  it("session end draws one stone: a Boon carries the pool's Banes, a Bane fails and flushes the carry", async () => {
+    const table = "gt19-verdict";
+    const { token: fac } = await seedAuth(undefined, { facilitator: true });
+
+    let sawMet = false;
+    let sawFailed = false;
+
+    for (let i = 0; i < 50 && !(sawMet && sawFailed); i++) {
+      await call(table, "/session/start", { token: fac, body: { goal: `g${i}` } });
+      // Feed the pool a few stones through overcomes so the carry is non-trivial.
+      for (let r = 0; r < 3; r++) {
+        await call(table, "/overcome/start", { token: fac, body: { slot: 0 } });
+        await call(table, "/stones/roll", { token: fac });
+        await call(table, "/stones/accept", { token: fac });
+      }
+      const running = await readState(table, fac);
+      const banesInPool =
+        running.session?.pool.filter((s) => s === "Bane").length ?? 0;
+
+      await call(table, "/session/end", { token: fac });
+      const ended = await readState(table, fac);
+      const outcome = ended.sessionHistory[0].outcome;
+
+      await call(table, "/session/start", { token: fac, body: { goal: "next" } });
+      const next = await readState(table, fac);
+      const carried = next.session?.carriedBanes ?? -1;
+
+      if (outcome.includes("met")) {
+        expect(carried).toBe(banesInPool);
+        sawMet = true;
+      } else {
+        expect(outcome).toContain("failed");
+        expect(carried).toBe(0);
+        sawFailed = true;
+      }
+      await call(table, "/session/end", { token: fac });
+    }
+
+    expect(sawMet).toBe(true);
+    expect(sawFailed).toBe(true);
+  });
+
+  it("a failed goal untethers the character carrying an aspect Bane, clears their aspect Banes, and stays put until resolved", async () => {
+    const table = "gt19-untether";
+    const { token: fac } = await seedAuth(undefined, { facilitator: true });
+    const { token: player } = await seedAuth();
+
+    // Give slot 0 at least one aspect Bane by running overcomes until one lands.
+    await call(table, "/session/start", { token: fac, body: { goal: "seed" } });
+    for (let i = 0; i < 60 && (await readState(table, fac)) && true; i++) {
+      if (aspectBaneTotal(await readState(table, fac), 0) > 0) break;
+      await call(table, "/overcome/start", { token: fac, body: { slot: 0 } });
+      await call(table, "/stones/roll", { token: fac });
+      await call(table, "/stones/accept", { token: fac });
+    }
+    expect(aspectBaneTotal(await readState(table, fac), 0)).toBeGreaterThan(0);
+
+    // End sessions until a failed goal triggers the untether.
+    let state = await readState(table, fac);
+    for (let i = 0; i < 60 && state.untether === null; i++) {
+      if (state.session === null) {
+        await call(table, "/session/start", { token: fac, body: { goal: `s${i}` } });
+      }
+      await call(table, "/session/end", { token: fac });
+      state = await readState(table, fac);
+    }
+
+    expect(state.untether).not.toBeNull();
+    expect(state.untether!.slot).toBe(0); // only slot 0 carried a Bane
+    expect(["archetype", "desire", "quest"]).toContain(state.untether!.aspect);
+    expect(aspectBaneTotal(state, 0)).toBe(0); // that character's aspect Banes cleared
+
+    // While a reckoning is open, further failed goals do not start a new one.
+    const held = state.untether!;
+    for (let i = 0; i < 6; i++) {
+      if ((await readState(table, fac)).session === null) {
+        await call(table, "/session/start", { token: fac, body: { goal: "hold" } });
+      }
+      await call(table, "/session/end", { token: fac });
+    }
+    const stillHeld = (await readState(table, fac)).untether!;
+    expect(stillHeld).toEqual(held);
+
+    // Resolution is facilitator-only and one-shot.
+    expect((await call(table, "/untether/resolve", { token: player })).status).toBe(403);
+    expect((await call(table, "/untether/resolve", { token: fac })).status).toBe(204);
+    expect((await readState(table, fac)).untether).toBeNull();
+    expect((await call(table, "/untether/resolve", { token: fac })).status).toBe(400);
+  });
+
+  it("an untethered character accrues no new aspect Bane from their own overcome (the frenzy)", async () => {
+    const table = "gt19-frenzy";
+    const { token: fac } = await seedAuth(undefined, { facilitator: true });
+
+    // Reach an untether on slot 0, as above.
+    await call(table, "/session/start", { token: fac, body: { goal: "seed" } });
+    for (let i = 0; i < 60; i++) {
+      if (aspectBaneTotal(await readState(table, fac), 0) > 0) break;
+      await call(table, "/overcome/start", { token: fac, body: { slot: 0 } });
+      await call(table, "/stones/roll", { token: fac });
+      await call(table, "/stones/accept", { token: fac });
+    }
+    let state = await readState(table, fac);
+    for (let i = 0; i < 60 && state.untether === null; i++) {
+      if (state.session === null) {
+        await call(table, "/session/start", { token: fac, body: { goal: `s${i}` } });
+      }
+      await call(table, "/session/end", { token: fac });
+      state = await readState(table, fac);
+    }
+    expect(state.untether?.slot).toBe(0);
+
+    // With slot 0 untethered, every overcome it runs sends both stones to the
+    // pool — its aspect Banes (all zero after the clear) never move.
+    await call(table, "/session/start", { token: fac, body: { goal: "frenzy" } });
+    for (let i = 0; i < 20; i++) {
+      const before = await readState(table, fac);
+      await call(table, "/overcome/start", { token: fac, body: { slot: 0 } });
+      await call(table, "/stones/roll", { token: fac });
+      await call(table, "/stones/accept", { token: fac });
+      const after = await readState(table, fac);
+      expect(aspectBaneTotal(after, 0)).toBe(0);
+      expect((after.session?.pool.length ?? 0) - (before.session?.pool.length ?? 0)).toBe(2);
+    }
+  });
+});

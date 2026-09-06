@@ -55,6 +55,7 @@ view model =
         , Ui.banner model.status
         , Ui.errorNote model.error
         , sessionPanel facilitator model.confirming model.newSessionGoal model.goalEdit model.timeZone model.gameState
+        , untetherBanner facilitator model.confirming model.gameState
         , rollPanel facilitator myId model.inflight model.proposalDrafts model.gameState
         , movesCard myId model.gameState
         , characterSheets facilitator myId model.selectedSlot model.gameState
@@ -140,6 +141,24 @@ sessionPanel facilitator confirming draftGoal goalEdit zone maybeGs =
                         (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Session pool")
                             :: List.map stoneChip s.pool
                         )
+                    , if s.carriedBanes > 0 then
+                        el [ Font.size 11, Font.color Ui.inkSoft ]
+                            (text
+                                ("Carrying "
+                                    ++ String.fromInt s.carriedBanes
+                                    ++ " Bane"
+                                    ++ (if s.carriedBanes == 1 then
+                                            ""
+
+                                        else
+                                            "s"
+                                       )
+                                    ++ " in from the last session"
+                                )
+                            )
+
+                      else
+                        none
                     , if facilitator then
                         Ui.confirmButton
                             { armed = confirming == Just "end-session"
@@ -213,6 +232,56 @@ goalEditor confirming goalEdit currentGoal =
         ]
 
 
+{-| The reckoning line (section 19). While a character is untethered it shows
+above the roll panel for the whole table; the facilitator gets a confirm-gated
+"Resolve untether" that closes it once the scene has played out. -}
+untetherBanner : Bool -> Maybe String -> Maybe GameState -> Element Msg
+untetherBanner facilitator confirming maybeGs =
+    case maybeGs |> Maybe.andThen .untether of
+        Nothing ->
+            none
+
+        Just u ->
+            let
+                who =
+                    maybeGs
+                        |> Maybe.map .characters
+                        |> Maybe.withDefault []
+                        |> characterAtSlot u.slot
+                        |> Maybe.map characterLabel
+                        |> Maybe.withDefault ("Character " ++ String.fromInt (u.slot + 1))
+            in
+            Element.column
+                [ width fill
+                , spacing Ui.sm
+                , padding Ui.md
+                , Border.color Ui.danger
+                , Border.width 1
+                , Border.rounded 6
+                ]
+                [ Element.paragraph [ Font.size 13 ]
+                    [ el [ Font.semiBold, Font.color Ui.danger ] (text (who ++ " is untethered"))
+                    , text
+                        (" on their "
+                            ++ String.toLower (Types.aspectLabel u.aspect)
+                            ++ " — the reckoning resolves by the end of the following session, and afterward the aspect is rewritten or replaced."
+                        )
+                    ]
+                , if facilitator then
+                    Ui.confirmButton
+                        { armed = confirming == Just "resolve-untether"
+                        , idle = "Resolve untether"
+                        , confirm = "Resolve untether"
+                        , onArm = RequestConfirm "resolve-untether"
+                        , onConfirm = ResolveUntether
+                        , onCancel = CancelConfirm
+                        }
+
+                  else
+                    none
+                ]
+
+
 {-| The table's completed sessions, newest first: each one's start date, goal,
 and how it landed. Hidden until a session has ended. -}
 sessionHistoryView : Time.Zone -> List SessionSummary -> Element msg
@@ -246,10 +315,22 @@ pastSessionRow zone s =
         ]
 
 
-{-| The leading word of a stored outcome string ("met (Boon, Boon)" → "met"). -}
+{-| A one-word verdict from a stored outcome string. Section 19 writes
+"goal met — …" / "goal failed — …"; older rows read "met (…)" / "partial (…)" /
+"failed (…)". -}
 verdictWord : String -> String
 verdictWord outcome =
-    outcome |> String.words |> List.head |> Maybe.withDefault outcome
+    if String.contains "failed" outcome then
+        "failed"
+
+    else if String.contains "met" outcome then
+        "met"
+
+    else if String.contains "partial" outcome then
+        "partial"
+
+    else
+        outcome
 
 
 verdictColor : String -> Element.Color
@@ -941,12 +1022,61 @@ characterSheet facilitator myId gs ch =
         , boonsBlock facilitator mine ch (committedBoonsForSlot ch.slot gs.committedBoons) pendingPledges pendingPledgeId
         , field editable ch NameField "Name" ch.name
         , field editable ch NotableFeaturesField "Notable features" ch.notableFeatures
-        , field editable ch ArchetypeField "Archetype" ch.archetype
-        , field editable ch DesireField "Desire" ch.desire
-        , field editable ch QuestField "Quest" ch.quest
+        , aspectField editable ch gs.untether Archetype ArchetypeField ch.archetype
+        , aspectField editable ch gs.untether Desire DesireField ch.desire
+        , aspectField editable ch gs.untether Quest QuestField ch.quest
         , field editable ch ConditionField "Condition" ch.condition
         , notesField editable ch
         ]
+
+
+{-| An aspect field with its accumulated Banes shown as dots beneath it, or an
+"untethered" flag when this is the aspect a failed session goal broke
+(section 19). -}
+aspectField : Bool -> CharacterSheet -> Maybe Untether -> Aspect -> CharacterField -> String -> Element Msg
+aspectField editable ch untether aspect fieldTag value =
+    let
+        count =
+            aspectBaneCount aspect ch.aspectBanes
+
+        broken =
+            case untether of
+                Just u ->
+                    u.slot == ch.slot && u.aspect == aspect
+
+                Nothing ->
+                    False
+
+        extras =
+            if broken then
+                [ el [ Font.size 10, Font.color Ui.danger, Font.semiBold ]
+                    (text "untethered — rewrite or replace this aspect")
+                ]
+
+            else if count > 0 then
+                [ Element.row [ spacing Ui.xs, Element.centerY ]
+                    (List.repeat count Ui.baneDot
+                        ++ [ el [ Font.size 10, Font.color Ui.inkSoft ]
+                                (text
+                                    (String.fromInt count
+                                        ++ " Bane"
+                                        ++ (if count == 1 then
+                                                ""
+
+                                            else
+                                                "s"
+                                           )
+                                    )
+                                )
+                           ]
+                    )
+                ]
+
+            else
+                []
+    in
+    Element.column [ spacing Ui.xs, width fill ]
+        (field editable ch fieldTag (aspectLabel aspect) value :: extras)
 
 
 {-| Who holds this sheet, and the claim / release control. Players claim an

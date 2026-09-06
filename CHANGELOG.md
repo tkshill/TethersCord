@@ -10,6 +10,29 @@ version yet, so headings are dates.
 
 ### Added
 
+- The overcome aftermath — aspects, the carried pool, and untethering (roadmap
+  section 19):
+  - **Aspects accumulate Banes.** A mixed overcome roll (one Boon, one Bane)
+    now sends the Boon to the session pool and drops the Bane onto one of the
+    acting character's three aspects — Archetype / Desire / Quest — at random.
+    New `archetype_banes` / `desire_banes` / `quest_banes` columns on
+    `characters` (migration `0009`); the counts show as dots beneath each
+    aspect on the sheet. Two Boons or two Banes both feed the pool whole.
+  - **The session pool carries.** Its Boons flush at session end; its Banes
+    carry into the next session (`session.carriedBanes`, shown on the Session
+    card). `/session/end` now draws **one** stone to decide the goal — a Boon
+    is met, a Bane fails — instead of the old met / partial / failed tiers, so
+    difficulty escalates on its own until a failure flushes the pool.
+  - **Untethering.** A failed session goal draws one Bane at random from every
+    aspect Bane on every sheet; that character is untethered on the drawn
+    aspect and all their aspect Banes clear. One at a time, never on two
+    consecutive failures, skipped if nobody carries a Bane. A table-wide banner
+    shows the reckoning; the facilitator closes it with a confirm-gated
+    `POST /api/table/:id/untether/resolve`. While untethered, that character's
+    own mixed overcome Bane goes to the pool, not an aspect (the "frenzy").
+  - Deferred to playtest: Highlight aspect-locking during a frenzy, the
+    facilitator calling a foregone failure early, and any per-session compel
+    cap.
 - NPCs and locations (roadmap section 13). Two new facilitator-owned reference
   collections, backed by the `npcs` / `locations` D1 tables (migration `0008`,
   scoped by `session_id` like `characters`) and carried in

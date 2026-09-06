@@ -194,14 +194,15 @@ its own stone pool that fills up from the rolls made during it.
       (`{ goal }`) and `/session/end`. Start opens the goal and a fresh session
       pool; end runs the session roll. Each writes a system line to the log.
 - [x] **Session stone pool** — separate from the per-roll bag, starts at two
-      Boon + two Bane, held in the Durable Object's stone storage. Each accepted
-      roll adds one of that roll's two result stones, chosen at random.
-- [x] **Session roll** — `/session/end` draws two from the session pool: two
-      Boon → `met`, one → `partial`, none → `failed`. Written to
-      `game_sessions.outcome` and logged. (The met/partial/failed thresholds are
-      a placeholder pending playtesting.) **Section 19 revises this:** the tiers
-      go away, success is a Boons-vs-Banes comparison of the whole pool, and the
-      pool's Banes carry between sessions until a failure flushes them.
+      Boon + two Bane, held in the Durable Object's stone storage. **Section 19:**
+      an accepted overcome roll now feeds it per the routing in that section (two
+      of a kind whole; a mixed roll's Boon only), and the base four is joined by
+      any Banes carried from the previous session.
+- [x] **Session roll** — **superseded by section 19.** `/session/end` now draws
+      **one** stone from the pool: a Boon means the goal is met, a Bane means it
+      failed. The met / partial / failed tiers are retired; the pool's Banes
+      carry between sessions and a failure flushes them, and a failed goal can
+      untether a character.
 - [x] Trim or paginate history — **done in section 15.** The DO now loads,
       holds, and broadcasts only the last `MESSAGE_WINDOW` (50) messages; older
       rows are fetched on demand through `GET /messages/history`.
@@ -651,11 +652,19 @@ unreliable over hours; hosted Whisper-class APIs are not free at that length).
 
 ## 19. The overcome aftermath — aspects, conditions, and the tether
 
-**Converging.** The shape below is stable enough to build against; the checked
-items near the end are the parts to settle in playtest. This is the rules layer
-that turns individual overcome outcomes into a character's long arc, keeping what
-makes Burning Wheel, Pendragon and Archive of the Sky work inside a rules-lite
-core.
+**Built** (feat/section-19-overcome-aftermath), minus the playtest-open items
+below. This is the rules layer that turns individual overcome outcomes into a
+character's long arc, keeping what makes Burning Wheel, Pendragon and Archive of
+the Sky work inside a rules-lite core.
+
+Shipped: aspect-Bane tracking (`archetype_banes` / `desire_banes` /
+`quest_banes`, migration `0009`; shown as dots on the sheet), the overcome
+routing below, the carried session pool (`session.carriedBanes`), the
+single-stone session verdict, untethering (`gameState.untether`), the
+facilitator-only `POST /untether/resolve`, and the frenzy's Bane-to-pool
+routing. Deferred to playtest: Highlight aspect-locking during a frenzy
+(Highlights stay aspect-agnostic), the facilitator calling a foregone failure
+early, any per-session compel cap, and cadence tuning.
 
 ### Overcome resolution
 
@@ -674,10 +683,14 @@ success by design.
 ### The session pool carries (revises section 7)
 
 - The pool's **Boons flush at the end of each session; its Banes carry over.**
-- Session-goal success is the Boons-vs-Banes comparison in the pool at session
-  end — no threshold, and the met / partial / failed tiers are retired.
-- Because Banes carry and Boons do not, **session goals escalate in difficulty
-  until a failure.** A failure flushes the pool completely back to the base four.
+- Session-goal success is **one stone drawn from the pool at session end** — a
+  Boon means the goal is met, a Bane means it failed. No threshold, no
+  comparison, and the met / partial / failed tiers are retired. (The earlier
+  "Boons-vs-Banes comparison" wording was dropped for the draw during the
+  build.)
+- Because Banes carry and Boons do not, the odds of that draw coming up Bane
+  climb each session, so **goals escalate in difficulty until a failure.** A
+  failure flushes the pool completely back to the base four.
 - The table can spend personal Boons on Highlights to push Boons into the pool
   and buy another session, or hoard them and let the reckoning come — the player
   economy paces the escalation, with no magic number anywhere in it.

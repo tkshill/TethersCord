@@ -104,6 +104,16 @@ export type UsedAbilities = {
   kinds: AbilityKind[];
 };
 
+/** The three fixed aspects a character is written around. */
+export type AspectName = "archetype" | "desire" | "quest";
+
+/**
+ * How many Banes each aspect carries (section 19). A mixed overcome roll marks
+ * one aspect; the counts persist between sessions and all clear together when a
+ * failed session goal untethers the character.
+ */
+export type AspectBanes = Record<AspectName, number>;
+
 export type CharacterSheet = {
   id: string;
   slot: number;
@@ -115,13 +125,14 @@ export type CharacterSheet = {
   condition: string;
   notes: string;
   fate: number;
+  aspectBanes: AspectBanes;
   /** Discord user id of the player who claimed this sheet, or null. */
   ownerId: string | null;
 };
 
 export type CharacterSheetFields = Omit<
   CharacterSheet,
-  "id" | "slot" | "fate" | "ownerId"
+  "id" | "slot" | "fate" | "aspectBanes" | "ownerId"
 >;
 
 /**
@@ -149,6 +160,12 @@ export type SessionState = {
   id: string;
   goal: string;
   pool: StoneKind[];
+  /**
+   * How many Banes this session's pool started with beyond the base four,
+   * carried from the previous session (section 19). Shown to the table so the
+   * escalating difficulty is legible; recomputed each session end.
+   */
+  carriedBanes: number;
 };
 
 /**
@@ -174,6 +191,18 @@ export type Overcome = {
   targetSlot: number;
 };
 
+/**
+ * A character whose reckoning is in progress (section 19). Set when a failed
+ * session goal draws one Bane at random from every aspect Bane on every
+ * character; that character is untethered on the drawn aspect and all their
+ * aspect Banes clear. Cleared by `POST /untether/resolve` once the
+ * facilitator-framed scene concludes. Only one at a time.
+ */
+export type Untether = {
+  slot: number;
+  aspect: AspectName;
+};
+
 export type GameState = {
   sessionId: string;
   messages: Message[];
@@ -189,6 +218,8 @@ export type GameState = {
   characters: CharacterSheet[];
   npcs: TableEntity[];
   locations: TableEntity[];
+  /** An in-progress reckoning, or null. Section 19. */
+  untether: Untether | null;
 };
 
 export type PostMessageInput = {

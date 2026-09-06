@@ -6,6 +6,7 @@ import type {
 } from "@cloudflare/workers-types";
 import type {
   AbilityKind,
+  AspectName,
   CommitBoonInput,
   CommittedBoon,
   EntityInput,
@@ -27,6 +28,7 @@ import type {
   StoneKind,
   TableEntity,
   CharacterSheet,
+  Untether,
   UpdateCharacterInput,
   UpdateFateInput,
   UpdateSessionGoalInput,
@@ -58,6 +60,14 @@ const ABILITY_KINDS: readonly AbilityKind[] = [
   "gain-insight",
   "suggest-compel",
 ];
+
+/** The three fixed aspects, and the D1 column each Bane count lives in. */
+const ASPECT_NAMES: readonly AspectName[] = ["archetype", "desire", "quest"];
+const ASPECT_BANE_COLUMNS: Record<AspectName, string> = {
+  archetype: "archetype_banes",
+  desire: "desire_banes",
+  quest: "quest_banes",
+};
 
 /** Sanity bound on a single coalesced pledge delta; `applyPledge` clamps the
  * real effect to what the character holds anyway. */
@@ -105,6 +115,13 @@ type StoneState = {
   usedAbilities: UsedAbilities[];
   proposals: Proposal[];
   session: SessionState | null;
+  /** Banes the next session's pool inherits (section 19). Boons never carry. */
+  carriedBanes: number;
+  /** Whether the most recently ended session failed its goal — blocks a second
+   * consecutive untether. */
+  lastSessionFailed: boolean;
+  /** An in-progress reckoning, or null. */
+  untether: Untether | null;
 };
 
 /** Shape of `KEY_STONES` as written by builds that still used colour names. */
@@ -120,7 +137,10 @@ type LegacyStoneState = {
   floatingBoons?: FloatingBoon[];
   usedAbilities?: UsedAbilities[];
   proposals?: Proposal[];
-  session?: SessionState | null;
+  session?: (Omit<SessionState, "carriedBanes"> & { carriedBanes?: number }) | null;
+  carriedBanes?: number;
+  lastSessionFailed?: boolean;
+  untether?: Untether | null;
 };
 
 function migrateStoneKind(kind: LegacyStoneKind): StoneKind {
@@ -363,6 +383,13 @@ export class GameTable implements DurableObject {
       );
     }
 
+    if (url.pathname === "/untether/resolve" && request.method === "POST") {
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleResolveUntether(authInfo))
+      );
+    }
+
     const charUpdateMatch = url.pathname.match(/^\/characters\/(\d+)\/update$/);
     if (charUpdateMatch && request.method === "POST") {
       return this.withLock(() =>
@@ -530,18 +557,8 @@ export class GameTable implements DurableObject {
     const messages = rows.results ? [...rows.results].reverse() : [];
     const characters = await this.loadOrCreateCharacters(sessionId);
     const stones = await this.loadStoneState();
-    // Seed the write-skip baseline so an unchanged stone slice is not
-    // re-persisted on the first mutation after a cold start.
-    this.lastSavedStones = JSON.stringify({
-      stonePool: stones.stonePool,
-      pendingRoll: stones.pendingRoll,
-      overcome: stones.overcome,
-      committedBoons: stones.committedBoons,
-      floatingBoons: stones.floatingBoons,
-      usedAbilities: stones.usedAbilities,
-      proposals: stones.proposals,
-      session: stones.session,
-    } satisfies StoneState);
+    this.carriedBanes = stones.carriedBanes;
+    this.lastSessionFailed = stones.lastSessionFailed;
     const sessionHistory = await this.loadSessionHistory(sessionId);
     const npcs = await this.loadEntities(sessionId, "npcs");
     const locations = await this.loadEntities(sessionId, "locations");
@@ -561,7 +578,12 @@ export class GameTable implements DurableObject {
       characters,
       npcs,
       locations,
+      untether: stones.untether,
     };
+
+    // Seed the write-skip baseline so an unchanged stone slice is not
+    // re-persisted on the first mutation after a cold start.
+    this.lastSavedStones = JSON.stringify(this.stoneSlice(this.gameState));
 
     // Equal to `storedSessionId` by the guard above; every later request in this
     // object's lifetime compares against it instead of re-reading storage.
@@ -597,7 +619,13 @@ export class GameTable implements DurableObject {
           floatingId: p.floatingId ?? null,
           targetSlot: p.targetSlot ?? null,
         })),
-        session: stored.session ?? null,
+        // Sessions from before section 19 carry no `carriedBanes`.
+        session: stored.session
+          ? { ...stored.session, carriedBanes: stored.session.carriedBanes ?? 0 }
+          : null,
+        carriedBanes: stored.carriedBanes ?? 0,
+        lastSessionFailed: stored.lastSessionFailed ?? false,
+        untether: stored.untether ?? null,
       };
     }
 
@@ -610,6 +638,9 @@ export class GameTable implements DurableObject {
       usedAbilities: [],
       proposals: [],
       session: null,
+      carriedBanes: 0,
+      lastSessionFailed: false,
+      untether: null,
     };
     await this.state.storage.put(KEY_STONES, initial);
     return initial;
@@ -623,8 +654,16 @@ export class GameTable implements DurableObject {
    */
   private lastSavedStones: string | null = null;
 
-  private async saveStoneState(state: GameState): Promise<void> {
-    const slice = {
+  /**
+   * Banes the next session's pool inherits (section 19), and whether the last
+   * ended session failed its goal. These are DO-owned but not broadcast, so they
+   * live on the instance rather than in `GameState`; `stoneSlice` folds them in.
+   */
+  private carriedBanes = 0;
+  private lastSessionFailed = false;
+
+  private stoneSlice(state: GameState): StoneState {
+    return {
       stonePool: state.stonePool,
       pendingRoll: state.pendingRoll,
       overcome: state.overcome,
@@ -633,7 +672,14 @@ export class GameTable implements DurableObject {
       usedAbilities: state.usedAbilities,
       proposals: state.proposals,
       session: state.session,
-    } satisfies StoneState;
+      carriedBanes: this.carriedBanes,
+      lastSessionFailed: this.lastSessionFailed,
+      untether: state.untether,
+    };
+  }
+
+  private async saveStoneState(state: GameState): Promise<void> {
+    const slice = this.stoneSlice(state);
 
     const serialised = JSON.stringify(slice);
     if (serialised === this.lastSavedStones) {
@@ -697,7 +743,8 @@ export class GameTable implements DurableObject {
     const rows = await this.env.DB.prepare(
       `
       SELECT id, slot, name, notable_features, archetype, desire, quest, condition,
-             notes, fate, discord_user_id
+             notes, fate, discord_user_id,
+             archetype_banes, desire_banes, quest_banes
       FROM characters
       WHERE session_id = ?
       ORDER BY slot
@@ -733,6 +780,9 @@ export class GameTable implements DurableObject {
         notes: "",
         fate: 0,
         discord_user_id: null,
+        archetype_banes: 0,
+        desire_banes: 0,
+        quest_banes: 0,
       });
     }
 
@@ -1424,18 +1474,64 @@ export class GameTable implements DurableObject {
       characters = characters.map((c) => (c.slot === slot ? { ...c, fate } : c));
     }
 
-    // One of the two result stones, at random, feeds the running session pool.
+    // Route the accepted roll's result stones (section 19). An overcome draws
+    // two: two of a kind feed the session pool whole; a mixed roll sends the
+    // Boon to the pool and drops the Bane onto one of the acting character's
+    // aspects at random — unless that character is untethered, in which case the
+    // Bane also goes to the pool (no new aspect strain mid-reckoning). A plain
+    // non-overcome roll still seeds the pool with one random result stone.
     const priorSession = this.gameState!.session;
     const drawn = this.gameState!.pendingRoll?.chosen ?? [];
-    const session: SessionState | null =
-      priorSession && drawn.length > 0
-        ? {
-            ...priorSession,
-            pool: [...priorSession.pool, drawn[randomInt(drawn.length)]],
-          }
-        : priorSession;
-
     const overcome = this.gameState!.overcome;
+    const poolAdds: StoneKind[] = [];
+    let routeNote = "";
+
+    if (overcome && drawn.length === 2) {
+      const boons = drawn.filter((s) => s === "Boon").length;
+      const untetheredTarget =
+        this.gameState!.untether?.slot === overcome.targetSlot;
+
+      if (boons === 1 && !untetheredTarget) {
+        poolAdds.push("Boon");
+        const aspect = ASPECT_NAMES[randomInt(ASPECT_NAMES.length)];
+        const target = characters.find((c) => c.slot === overcome.targetSlot);
+        if (target) {
+          const column = ASPECT_BANE_COLUMNS[aspect];
+          await this.env.DB.prepare(
+            `UPDATE characters SET ${column} = ${column} + 1, updated_at = ? WHERE id = ?`,
+          )
+            .bind(now, target.id)
+            .run();
+          characters = characters.map((c) =>
+            c.slot === target.slot
+              ? {
+                  ...c,
+                  aspectBanes: {
+                    ...c.aspectBanes,
+                    [aspect]: c.aspectBanes[aspect] + 1,
+                  },
+                }
+              : c,
+          );
+          routeNote = `Boon to the pool, Bane onto ${aspect}`;
+        }
+      } else {
+        poolAdds.push(...drawn);
+        routeNote =
+          boons === 2
+            ? "both Boons to the pool"
+            : boons === 0
+              ? "both Banes to the pool"
+              : "Boon to the pool, Bane to the pool (untethered)";
+      }
+    } else if (drawn.length > 0) {
+      poolAdds.push(drawn[randomInt(drawn.length)]);
+    }
+
+    const session: SessionState | null =
+      priorSession && poolAdds.length > 0
+        ? { ...priorSession, pool: [...priorSession.pool, ...poolAdds] }
+        : priorSession;
 
     this.gameState = {
       ...this.gameState!,
@@ -1453,16 +1549,13 @@ export class GameTable implements DurableObject {
 
     if (overcome) {
       const target = characters.find((c) => c.slot === overcome.targetSlot);
-      const boons = drawn.filter((s) => s === "Boon").length;
-      const verdict =
-        boons === 2 ? "succeeded" : boons === 1 ? "partial" : "failed";
       await this.appendMessage({
         authorId: authInfo.discordUserId,
         authorName: authInfo.username,
         role: authInfo.role,
-        content: `Overcome ${verdict}${
-          target ? ` — ${characterLabel(target)}` : ""
-        } (${drawn.join(", ")})`,
+        content: `Overcome${target ? ` — ${characterLabel(target)}` : ""}: ${
+          routeNote || drawn.join(", ")
+        }`,
       });
     }
 
@@ -1560,9 +1653,19 @@ export class GameTable implements DurableObject {
       .bind(id, this.gameState!.sessionId, goal, Date.now())
       .run();
 
+    // Section 19: the pool starts from the base four plus every Bane carried
+    // from the previous session (Boons never carry; a failed goal flushes the
+    // carry to zero). `untether` is deliberately not touched here — a reckoning
+    // spans into the following session.
+    const carriedBanes = this.carriedBanes;
+    const pool: StoneKind[] = [
+      ...INITIAL_SESSION_POOL,
+      ...Array<StoneKind>(carriedBanes).fill("Bane"),
+    ];
+
     this.gameState = {
       ...this.gameState!,
-      session: { id, goal, pool: [...INITIAL_SESSION_POOL] },
+      session: { id, goal, pool, carriedBanes },
       // A new session starts from a clean slate. Nothing left open at the end
       // of the previous session (or before this one began) carries in:
       // abilities, floating boons, an unresolved overcome or roll, pledges, or
@@ -1580,7 +1683,9 @@ export class GameTable implements DurableObject {
       authorId: authInfo.discordUserId,
       authorName: authInfo.username,
       role: authInfo.role,
-      content: `Session started — ${goal}`,
+      content: `Session started — ${goal}${
+        carriedBanes > 0 ? ` (carrying ${carriedBanes} Bane${carriedBanes === 1 ? "" : "s"})` : ""
+      }`,
     });
 
     this.broadcast(this.gameState);
@@ -1593,16 +1698,67 @@ export class GameTable implements DurableObject {
       return new Response("No session is running", { status: 400 });
     }
 
-    const draw = pickTwoRandom(session.pool).chosen;
-    const boons = draw.filter((s) => s === "Boon").length;
-    const verdict = boons === 2 ? "met" : boons === 1 ? "partial" : "failed";
-    const outcome = `${verdict} (${draw.join(", ")})`;
+    // Section 19: the goal succeeds or fails on a single stone drawn from the
+    // pool. On success the Boons flush and the Banes carry; a failure flushes
+    // the pool completely back to the base four.
+    const now = Date.now();
+    const drawn = session.pool[randomInt(session.pool.length)];
+    const success = drawn === "Boon";
+    const banesInPool = session.pool.filter((s) => s === "Bane").length;
+    const nextCarry = success ? banesInPool : 0;
+    const wasConsecutiveFailure = this.lastSessionFailed;
+
+    // A failed goal untethers one character — unless a reckoning is already
+    // open, or the previous session also failed, or nobody carries an aspect
+    // Bane. The character is drawn by weighting every aspect Bane on every
+    // sheet equally; the drawn aspect is the one they untether on, and all
+    // their aspect Banes then clear.
+    let characters = this.gameState!.characters;
+    let untether = this.gameState!.untether;
+    let untetherNote = "";
+
+    if (!success && untether === null && !wasConsecutiveFailure) {
+      const bag: { slot: number; aspect: AspectName }[] = [];
+      for (const c of characters) {
+        for (const aspect of ASPECT_NAMES) {
+          for (let i = 0; i < c.aspectBanes[aspect]; i++) {
+            bag.push({ slot: c.slot, aspect });
+          }
+        }
+      }
+
+      if (bag.length > 0) {
+        const pick = bag[randomInt(bag.length)];
+        untether = { slot: pick.slot, aspect: pick.aspect };
+        const target = characters.find((c) => c.slot === pick.slot)!;
+        await this.env.DB.prepare(
+          `UPDATE characters
+             SET archetype_banes = 0, desire_banes = 0, quest_banes = 0, updated_at = ?
+           WHERE id = ?`,
+        )
+          .bind(now, target.id)
+          .run();
+        characters = characters.map((c) =>
+          c.slot === pick.slot
+            ? { ...c, aspectBanes: { archetype: 0, desire: 0, quest: 0 } }
+            : c,
+        );
+        untetherNote = ` — ${characterLabel(target)} untethered on ${pick.aspect}`;
+      }
+    }
+
+    const outcome = success
+      ? `goal met — drew Boon${nextCarry > 0 ? ` (${nextCarry} Bane${nextCarry === 1 ? "" : "s"} carried)` : ""}`
+      : `goal failed — drew Bane (pool flushed)${untetherNote}`;
 
     await this.env.DB.prepare(
       `UPDATE game_sessions SET ended_at = ?, outcome = ? WHERE id = ?`,
     )
-      .bind(Date.now(), outcome, session.id)
+      .bind(now, outcome, session.id)
       .run();
+
+    this.carriedBanes = nextCarry;
+    this.lastSessionFailed = !success;
 
     const sessionHistory = await this.loadSessionHistory(
       this.gameState!.sessionId,
@@ -1611,6 +1767,8 @@ export class GameTable implements DurableObject {
       ...this.gameState!,
       session: null,
       sessionHistory,
+      characters,
+      untether,
       // Ending a session discards everything left unresolved: unspent floating
       // boons, once-per-session abilities, an open overcome or roll on the
       // table, pledged boons, and any proposal the facilitator never accepted
@@ -1628,7 +1786,7 @@ export class GameTable implements DurableObject {
       authorId: authInfo.discordUserId,
       authorName: authInfo.username,
       role: authInfo.role,
-      content: `Session ended — goal ${verdict}: ${session.goal} (${draw.join(", ")})`,
+      content: `Session ended — ${session.goal}: ${outcome}`,
     });
 
     this.broadcast(this.gameState);
@@ -1671,6 +1829,38 @@ export class GameTable implements DurableObject {
       authorName: authInfo.username,
       role: authInfo.role,
       content: `Goal updated — ${goal}`,
+    });
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  /**
+   * Close an in-progress reckoning (section 19). The facilitator-framed scene
+   * is table talk; this just clears the flag so a later failed goal can untether
+   * again. The player rewriting or replacing the untethered aspect happens
+   * through the normal sheet edit.
+   */
+  private async handleResolveUntether(authInfo: AuthInfo): Promise<Response> {
+    const untether = this.gameState!.untether;
+    if (!untether) {
+      return new Response("No untether to resolve", { status: 400 });
+    }
+
+    const target = this.gameState!.characters.find(
+      (c) => c.slot === untether.slot,
+    );
+
+    this.gameState = { ...this.gameState!, untether: null };
+    await this.saveStoneState(this.gameState);
+
+    await this.appendMessage({
+      authorId: authInfo.discordUserId,
+      authorName: authInfo.username,
+      role: authInfo.role,
+      content: `Untether resolved${
+        target ? ` — ${characterLabel(target)}` : ""
+      } (${untether.aspect})`,
     });
 
     this.broadcast(this.gameState);
@@ -2169,6 +2359,9 @@ type CharacterRow = {
   notes: string;
   fate: number;
   discord_user_id: string | null;
+  archetype_banes: number;
+  desire_banes: number;
+  quest_banes: number;
 };
 
 function rowToCharacterSheet(row: CharacterRow): CharacterSheet {
@@ -2183,6 +2376,11 @@ function rowToCharacterSheet(row: CharacterRow): CharacterSheet {
     condition: row.condition,
     notes: row.notes,
     fate: row.fate,
+    aspectBanes: {
+      archetype: row.archetype_banes,
+      desire: row.desire_banes,
+      quest: row.quest_banes,
+    },
     ownerId: row.discord_user_id,
   };
 }
