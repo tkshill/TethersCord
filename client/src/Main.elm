@@ -58,6 +58,7 @@ init flags =
       , newMessage = ""
       , status = "Authorizing with Discord…"
       , editingSlot = Nothing
+      , selectedSlot = 0
       , logAtBottom = True
       , newSessionGoal = ""
       , connection = Connected
@@ -191,8 +192,12 @@ update msg model =
         CommitBoonDecrement ->
             ( model, commitCmd model -1 )
 
+        SelectSlot slot ->
+            ( { model | selectedSlot = slot }, Cmd.none )
+
         ClaimSlot slot ->
-            ( model, claimCmd model slot )
+            -- Bring the claimed sheet's tab to the front as well.
+            ( { model | selectedSlot = slot }, claimCmd model slot )
 
         ReleaseSlot slot ->
             ( model, releaseCmd model slot )

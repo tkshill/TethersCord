@@ -10,6 +10,16 @@ version yet, so headings are dates.
 
 ### Added
 
+- Character sheets are shown one at a time behind a tab strip (`Model.selectedSlot`)
+  instead of three columns that collapsed to a cramped stack. Claiming a sheet
+  brings its tab forward.
+- A character's boons now render as a row of circles at the top of the sheet,
+  above the text fields, so a player sees their spendable stones in the context
+  of the current roll. Boons pledged into the next roll are marked with a centre
+  dot rather than a separate "Pledged" count, and the roll panel likewise draws
+  pledged boons as marked stones in the bag instead of a "(N boon pledged)"
+  caption. The sheet's `+` / `−` controls are now labelled "Grant" (facilitator)
+  and "Pledge" (owner).
 - Session history: the Session card now lists the table's completed sessions
   (start date, goal, and met / partial / failed outcome), newest first. The
   worker reads the last twenty `game_sessions` rows into a new

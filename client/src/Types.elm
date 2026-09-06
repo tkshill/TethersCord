@@ -220,6 +220,9 @@ type alias Model =
     -- overwrite a sheet while it is being edited.
     , editingSlot : Maybe Int
 
+    -- Which character sheet's tab is open. Sheets are shown one at a time.
+    , selectedSlot : Int
+
     -- Whether the message log is scrolled to (or near) its bottom. New messages
     -- only pull the log down when this holds, so a viewer reading back history
     -- is left where they are.
@@ -268,6 +271,7 @@ type Msg
     | AddBoon
     | CommitBoonIncrement
     | CommitBoonDecrement
+    | SelectSlot Int
     | ClaimSlot Int
     | ReleaseSlot Int
     | SlotClaimed (Result Http.Error ())

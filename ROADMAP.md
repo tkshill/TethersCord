@@ -215,24 +215,22 @@ its own stone pool that fills up from the rolls made during it.
 ## 9. Character sheet layout and stone visualisation
 
 The three sheets in a `wrappedRow` and the roll panel's text-and-number
-summaries are getting dense. This pass is about seeing the current roll at a
+summaries were getting dense. This pass is about seeing the current roll at a
 glance.
 
-- [ ] **Tabbed character sheets.** Show one sheet at a time behind a tab strip
-      (or selector) so each field has room, instead of three cramped columns
-      that collapse to a stack when narrow.
-- [ ] **Boons at the top of the sheet.** Move the "Boons" and "Pledged" rows
-      above the text fields, so a player sees their spendable stones in the
-      context of the current roll.
-- [ ] **Render a player's boons as circles**, not a bare count with `+` / `−`,
-      reusing the `Ui.stoneChip` shape.
-- [ ] **Mark the pledged ones.** Show which of a player's boon circles are
-      pledged into the current roll with a visual change to those circles — a
-      fill texture, an extra ring, or a centre mark — rather than the separate
-      "Pledged" number.
-- [ ] **Pledged boons as shapes in the pool.** In the roll panel, draw pledged
-      boons as extra stone shapes in the bag rather than the
-      "(N boon pledged)" caption.
+- [x] **Tabbed character sheets.** Sheets show one at a time behind a tab strip
+      (`Model.selectedSlot`, `Ui.tab`); claiming a sheet brings its tab forward.
+      Tabs are labelled by character name, falling back to a slot number, with a
+      "(you)" marker on the viewer's own sheet.
+- [x] **Boons at the top of the sheet.** The boons block sits above the text
+      fields now.
+- [x] **Render a player's boons as circles** via `Ui.boonDot`, built from the
+      same `Ui.stoneCircle` primitive as `Ui.stoneChip`.
+- [x] **Mark the pledged ones.** Pledged boon circles carry an accent centre dot
+      (`stoneCircle`'s `marked` flag); the separate "Pledged" count is gone.
+- [x] **Pledged boons as shapes in the pool.** The roll panel appends one marked
+      `Ui.pledgedStoneChip` per pledged boon to the bag; the caption is now just
+      "Bag of N".
 
 ## 10. The overcome action and player moves
 
