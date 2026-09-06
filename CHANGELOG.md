@@ -10,13 +10,18 @@ version yet, so headings are dates.
 
 ### Added
 
-- A client test suite (roadmap section 11, first pass). `pnpm run test` runs
-  `elm-test` over `client/tests/`: `Api.decodeGameState` against a full wire
+- A test suite (roadmap section 11). `pnpm run test` runs the client suite
+  (`elm-test` over `client/tests/`: `Api.decodeGameState` against a full wire
   snapshot, `Main.applyServerState`'s edit-cursor merge, `Main.update` guards
-  and the `Effect` each `Msg` yields, and the `Format` / `Roll` helpers. It is
-  folded into `pnpm run build` after `typecheck`, and a new
-  `.github/workflows/ci.yml` runs `pnpm run build` on push and PR — the
-  project's first CI. Worker / Durable Object tests are still to come.
+  and the `Effect` each `Msg` yields, the `Format` / `Roll` helpers) then the
+  worker suite (`vitest` via `@cloudflare/vitest-pool-workers` over
+  `worker/test/`, running inside `workerd` with a real `GameTable` Durable
+  Object and a migrated D1: the `index.ts` proxy, the auth / facilitator /
+  roll gates, the proposal / session / ability state machine, `withLock`
+  serialisation, and `oauth-discord`). It is folded into `pnpm run build`
+  after `typecheck`, and a new `.github/workflows/ci.yml` runs `pnpm run build`
+  on push and PR — the project's first CI. `avh4/elm-program-test` is still to
+  come.
 - Player moves and abilities (roadmap section 10). A new **Moves** card offers
   each player, once they hold a sheet: the once-per-session abilities **Help
   Out** (reroll an overcome), **Add a Detail** and **Gain Insight** (each mints a
