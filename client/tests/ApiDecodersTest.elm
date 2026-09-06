@@ -10,6 +10,7 @@ import Api
 import Expect
 import Fixtures
 import Json.Decode as Decode
+import Kind
 import Roll exposing (Stone(..))
 import Test exposing (Test, describe, test)
 import Types
@@ -62,10 +63,10 @@ suite =
                     |> Result.map (.proposals >> List.map (\p -> ( p.kind, p.slot, p.targetSlot )))
                     |> Expect.equal
                         (Ok
-                            [ ( "add-boon", Nothing, Nothing )
-                            , ( "pledge", Just 1, Nothing )
-                            , ( "suggest-compel", Just 1, Just 2 )
-                            , ( "use-floating", Just 1, Nothing )
+                            [ ( Kind.AddBoon, Nothing, Nothing )
+                            , ( Kind.Pledge, Just 1, Nothing )
+                            , ( Kind.AbilityProposal Kind.SuggestCompel, Just 1, Just 2 )
+                            , ( Kind.UseFloating, Just 1, Nothing )
                             ]
                         )
         , test "carries the use-floating proposal's floatingId" <|
@@ -82,7 +83,7 @@ suite =
             \_ ->
                 decoded
                     |> Result.map .usedAbilities
-                    |> Expect.equal (Ok [ { slot = 1, kinds = [ "help-out", "add-detail" ] } ])
+                    |> Expect.equal (Ok [ { slot = 1, kinds = [ Kind.HelpOut, Kind.AddDetail ] } ])
         , test "reads the running session and its pool" <|
             \_ ->
                 decoded

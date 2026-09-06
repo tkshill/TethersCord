@@ -71,6 +71,14 @@ version yet, so headings are dates.
   - **`Format.pluralize`** replaces the inline `"Bane" ++ (if n == 1 …)`
     pattern, and **`Types.characterAtSlot`** is the one shared slot lookup for
     `Main` and `View`.
+- Maintainability pass — typed proposal / ability kinds (roadmap section 22,
+  step 2). A new `Kind.elm` module gives the client `ProposalKind` and
+  `AbilityKind` custom types with decoders, at parity with the Worker's
+  `types.ts` unions. `Proposal.kind` and `UsedAbility.kinds` are typed rather
+  than raw strings, `Msg.UseAbility` carries an `AbilityKind`, and
+  `View.describeProposal` is now a total `case` with no string fall-through, so
+  a new kind produces a compile error at every site that must handle it. No
+  behaviour change.
 - Storage and write economy (roadmap section 16):
   - **`saveStoneState` skips the write when nothing changed.** The stone slice
     is serialised and compared to the last write (seeded from the cold-start

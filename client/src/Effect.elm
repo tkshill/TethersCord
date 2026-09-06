@@ -17,6 +17,7 @@ user is authorised — `perform` only translates.
 import Api
 import Browser.Dom
 import Http
+import Kind exposing (AbilityKind)
 import Ports
 import Process
 import Task
@@ -50,7 +51,7 @@ type Effect
     | PostReleaseSlot Auth Int
     | PostProposalDecision Auth String String (Maybe String)
     | PostWithdrawProposal Auth String
-    | PostUseAbility Auth String
+    | PostUseAbility Auth AbilityKind
     | PostSuggestCompel Auth Int
     | PostAcceptCompelMove Auth
     | PostUseFloatingBoon Auth String
@@ -135,7 +136,7 @@ perform flags effect =
             Api.postWithdrawProposal flags auth id (ProposalResolved id)
 
         PostUseAbility auth kind ->
-            Api.postUseAbility flags auth kind moveRaised
+            Api.postUseAbility flags auth (Kind.abilityToString kind) moveRaised
 
         PostSuggestCompel auth targetSlot ->
             Api.postSuggestCompel flags auth targetSlot moveRaised

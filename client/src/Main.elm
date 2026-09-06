@@ -14,6 +14,7 @@ import Browser
 import Dict
 import Effect exposing (Effect)
 import Json.Decode as Decode
+import Kind
 import Ports
 import Set
 import Time
@@ -467,7 +468,7 @@ update msg model =
             fail "Failed to resolve the proposal." (clearInflight "proposal:" model)
 
         UseAbility kind ->
-            guard ("move:" ++ kind) model (\auth -> Effect.PostUseAbility auth kind)
+            guard ("move:" ++ Kind.abilityToString kind) model (\auth -> Effect.PostUseAbility auth kind)
 
         SuggestCompel targetSlot ->
             guard "move:suggest-compel" model (\auth -> Effect.PostSuggestCompel auth targetSlot)
