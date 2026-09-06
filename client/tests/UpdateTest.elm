@@ -11,6 +11,7 @@ import Expect
 import Fixtures
 import Http
 import Main
+import Set
 import Test exposing (Test, describe, test)
 import Types exposing (Model, Msg(..))
 
@@ -57,7 +58,12 @@ suite =
                         |> Expect.equal Effect.None
             ]
         , describe "GotGameState seed"
-            [ test "the first snapshot seeds the board and scrolls the log" <|
+            [ test "backend auth schedules a fallback load rather than fetching immediately" <|
+                \_ ->
+                    Main.update (GotBackendAuth (Ok Fixtures.playerAuth)) m
+                        |> Tuple.second
+                        |> Expect.equal (Effect.RetryGetGameStateIn 3000)
+            , test "the first snapshot seeds the board and scrolls the log" <|
                 \_ ->
                     Main.update (GotGameState (Ok Fixtures.gameState)) { ready | gameState = Nothing }
                         |> Expect.equal
@@ -81,7 +87,7 @@ suite =
                     Main.update (GotGameState (Err Http.NetworkError)) { m | gameStateAttempts = 0 }
                         |> Expect.equal
                             ( { m | status = "Reconnecting to the table…", gameStateAttempts = 1 }
-                            , Effect.RetryGetGameStateIn 2000
+                            , Effect.RetryGetGameStateIn 3000
                             )
             , test "gives up once the cap is reached" <|
                 \_ ->
@@ -106,10 +112,31 @@ suite =
             , test "AddBoon posts to the add-boon route with auth" <|
                 \_ ->
                     Main.update AddBoon ready
-                        |> Expect.equal ( ready, Effect.PostStones Fixtures.playerAuth "/stones/add-boon" )
+                        |> Tuple.second
+                        |> Expect.equal (Effect.PostStones Fixtures.playerAuth "/stones/add-boon")
             , test "RollStones targets the roll route" <|
                 \_ ->
                     Main.update RollStones ready
+                        |> Tuple.second
+                        |> Expect.equal (Effect.PostStones Fixtures.playerAuth "/stones/roll")
+            , test "a second RollStones while the first is in flight is dropped" <|
+                \_ ->
+                    let
+                        afterFirst =
+                            Main.update RollStones ready |> Tuple.first
+                    in
+                    Main.update RollStones afterFirst
+                        |> Expect.equal ( afterFirst, Effect.None )
+            , test "StonesUpdated clears the in-flight roll so it can be fired again" <|
+                \_ ->
+                    let
+                        afterFirst =
+                            Main.update RollStones ready |> Tuple.first
+
+                        settled =
+                            Main.update (StonesUpdated (Ok ())) afterFirst |> Tuple.first
+                    in
+                    Main.update RollStones settled
                         |> Tuple.second
                         |> Expect.equal (Effect.PostStones Fixtures.playerAuth "/stones/roll")
             , test "AcceptProposal carries that row's trimmed draft note as context" <|
@@ -165,7 +192,8 @@ suite =
                             { ready | confirming = Just "end-session" }
                     in
                     Main.update EndSession armed
-                        |> Expect.equal ( { armed | confirming = Nothing }, Effect.PostEndSession Fixtures.playerAuth )
+                        |> (\( next, eff ) -> ( next.confirming, eff ))
+                        |> Expect.equal ( Nothing, Effect.PostEndSession Fixtures.playerAuth )
             , test "CancelConfirm disarms without acting" <|
                 \_ ->
                     Main.update CancelConfirm { ready | confirming = Just "clear-log" }
@@ -192,7 +220,7 @@ suite =
                 \_ ->
                     Main.update (SelectSlot 2) ready
                         |> Expect.equal ( { ready | selectedSlot = 2 }, Effect.None )
-            , test "CharacterFieldInput edits local state and marks the slot as being edited" <|
+            , test "CharacterFieldInput edits local state, marks the slot dirty, and arms the debounced save" <|
                 \_ ->
                     Main.update (CharacterFieldInput 1 Types.NameField "Bea") ready
                         |> (\( next, eff ) ->
@@ -202,7 +230,69 @@ suite =
                                     |> Maybe.map (.characters >> List.map .name)
                                 )
                            )
-                        |> Expect.equal ( Effect.None, Just 1, Just [ "Bea" ] )
+                        |> Expect.equal ( Effect.DebounceFieldSave 1 1000, Just 1, Just [ "Bea" ] )
+            , test "a stale FieldSaveDue token is ignored" <|
+                \_ ->
+                    let
+                        edited =
+                            Main.update (CharacterFieldInput 1 Types.NameField "Bea") ready
+                                |> Tuple.first
+                                |> Main.update (CharacterFieldInput 1 Types.NameField "Beatrix")
+                                |> Tuple.first
+                    in
+                    -- token 1 was superseded by token 2, so the earlier timer is a no-op
+                    Main.update (FieldSaveDue 1) edited
+                        |> Expect.equal ( edited, Effect.None )
+            , test "the current FieldSaveDue flushes each dirty sheet as one write and clears the dirty set" <|
+                \_ ->
+                    let
+                        edited =
+                            Main.update (CharacterFieldInput 1 Types.NameField "Bea") ready
+                                |> Tuple.first
+                    in
+                    Main.update (FieldSaveDue edited.fieldSaveSeq) edited
+                        |> (\( next, eff ) ->
+                                case eff of
+                                    Effect.Batch [ Effect.PostCharacterUpdate _ slot sheet ] ->
+                                        ( slot, sheet.name, Set.isEmpty next.dirtySlots )
+
+                                    _ ->
+                                        ( -1, "wrong effect", False )
+                           )
+                        |> Expect.equal ( 1, "Bea", True )
+            ]
+        , describe "Highlight pledge coalescing"
+            [ test "the +/- taps only arm a debounce, they do not each POST" <|
+                \_ ->
+                    let
+                        ( afterTaps, _ ) =
+                            Main.update CommitBoonIncrement ready
+                                |> Tuple.first
+                                |> Main.update CommitBoonIncrement
+                                |> Tuple.first
+                                |> Main.update CommitBoonDecrement
+                    in
+                    afterTaps.pendingPledgeDelta |> Expect.equal 1
+            , test "PledgeDue sends the accumulated net delta as one commit" <|
+                \_ ->
+                    let
+                        armed =
+                            Main.update CommitBoonIncrement ready
+                                |> Tuple.first
+                                |> Main.update CommitBoonIncrement
+                                |> Tuple.first
+                    in
+                    Main.update (PledgeDue armed.pledgeSeq) armed
+                        |> (\( next, eff ) -> ( eff, next.pendingPledgeDelta ))
+                        |> Expect.equal ( Effect.PostCommitBoon Fixtures.playerAuth 2, 0 )
+            , test "a stale PledgeDue token is ignored" <|
+                \_ ->
+                    let
+                        armed =
+                            Main.update CommitBoonIncrement ready |> Tuple.first
+                    in
+                    Main.update (PledgeDue (armed.pledgeSeq - 1)) armed
+                        |> Expect.equal ( armed, Effect.None )
             ]
         , describe "NPCs and locations"
             [ test "AddEntity posts a create for that kind with auth" <|
@@ -229,26 +319,35 @@ suite =
                                 , next.gameState |> Maybe.map (.npcs >> List.map .name)
                                 )
                            )
-                        |> Expect.equal ( Effect.None, Just "n1", Just [ "Warden" ] )
-            , test "EntityFieldBlur releases the edit lock and posts the row" <|
+                        |> Expect.equal ( Effect.DebounceFieldSave 1 1000, Just "n1", Just [ "Warden" ] )
+            , test "EntityFieldBlur releases the edit lock; the debounced flush posts the row" <|
                 \_ ->
                     let
                         gs =
                             Fixtures.gameState
 
-                        row =
-                            { id = "l1", name = "The Gate", notes = "locked" }
-
                         seeded =
-                            { ready
-                                | editingEntity = Just "l1"
-                                , gameState = Just { gs | locations = [ row ] }
-                            }
+                            { ready | gameState = Just { gs | locations = [ { id = "l1", name = "The", notes = "" } ] } }
+
+                        edited =
+                            Main.update (EntityFieldInput Types.Location "l1" Types.EntityNameField "The Gate") seeded
+                                |> Tuple.first
+
+                        blurred =
+                            Main.update (EntityFieldBlur Types.Location "l1") edited |> Tuple.first
                     in
-                    Main.update (EntityFieldBlur Types.Location "l1") seeded
-                        |> (\( next, eff ) -> ( next.editingEntity, eff ))
+                    ( blurred.editingEntity
+                    , Main.update (FieldSaveDue blurred.fieldSaveSeq) blurred
+                        |> Tuple.second
+                    )
                         |> Expect.equal
-                            ( Nothing, Effect.PostUpdateEntity Fixtures.playerAuth Types.Location row )
+                            ( Nothing
+                            , Effect.Batch
+                                [ Effect.PostUpdateEntity Fixtures.playerAuth
+                                    Types.Location
+                                    { id = "l1", name = "The Gate", notes = "" }
+                                ]
+                            )
             , test "DeleteEntity clears an edit lock on that row and posts a delete" <|
                 \_ ->
                     Main.update (DeleteEntity Types.Npc "n1") { ready | editingEntity = Just "n1" }

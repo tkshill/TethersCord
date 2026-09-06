@@ -1,3 +1,4 @@
+import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { call, claim, readState, seedAuth } from "./helpers";
 
@@ -58,6 +59,78 @@ describe("GameTable state machine", () => {
       const state = await readState(table, fac);
       expect(state.proposals).toHaveLength(0);
       expect(state.stonePool).toHaveLength(5);
+    });
+  });
+
+  describe("the auth lookup cache", () => {
+    it("serves a token from DO memory for a minute, sparing the D1 join per request", async () => {
+      const table = "gt-authcache";
+      const { token } = await seedAuth(undefined, { facilitator: true });
+
+      // First call primes the cache with token → AuthInfo.
+      expect((await call(table, "/stones/add-boon", { token })).status).toBe(204);
+
+      // Delete the row it was resolved from; an uncached lookup would now 401.
+      await env.DB.prepare(
+        `DELETE FROM sessions_auth WHERE session_token = ?`,
+      )
+        .bind(token)
+        .run();
+
+      // Still accepted, because the Durable Object memoised the resolution.
+      expect((await call(table, "/stones/add-boon", { token })).status).toBe(204);
+    });
+
+    it("does not cache an unknown token", async () => {
+      const table = "gt-authcache-miss";
+      const bad = crypto.randomUUID();
+
+      expect((await call(table, "/stones/add-boon", { token: bad })).status).toBe(
+        401,
+      );
+
+      // The same token becomes valid; the earlier miss must not be remembered.
+      await seedAuth(bad, { facilitator: true });
+      expect((await call(table, "/stones/add-boon", { token: bad })).status).toBe(
+        204,
+      );
+    });
+  });
+
+  describe("coalesced Highlight pledges", () => {
+    it("accepts a net pledge delta greater than one and clamps it to fate", async () => {
+      const table = "gt-pledge-net";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+      const { token: player } = await seedAuth();
+
+      await claim(table, player, 0);
+      await call(table, "/characters/0/fate", { token: fac, body: { delta: 5 } });
+
+      // The client has coalesced a run of + taps into one commit.
+      const queued = await call(table, "/stones/commit", {
+        token: player,
+        body: { delta: 3 },
+      });
+      expect(queued.status).toBe(204);
+
+      const pledgeId = await firstProposalId(table, fac);
+      await call(table, `/proposals/${pledgeId}/accept`, { token: fac });
+
+      const state = await readState(table, fac);
+      expect(state.committedBoons).toEqual([{ slot: 0, count: 3 }]);
+    });
+
+    it("rejects a zero delta", async () => {
+      const table = "gt-pledge-zero";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+      const { token: player } = await seedAuth();
+      await claim(table, player, 0);
+
+      const res = await call(table, "/stones/commit", {
+        token: player,
+        body: { delta: 0 },
+      });
+      expect(res.status).toBe(400);
     });
   });
 

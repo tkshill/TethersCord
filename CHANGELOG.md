@@ -31,6 +31,29 @@ version yet, so headings are dates.
 
 ### Changed
 
+- Fewer counted requests per action, to stay well inside the Cloudflare Free
+  budget (roadmap section 14):
+  - **Cold launch.** The client no longer spends an HTTP `getGameState` on the
+    happy path. The live socket sends a full snapshot before its first `await`,
+    so the seed load is now only a fallback fired ~3 s later if no snapshot has
+    arrived; the old immediate fetch plus 3×/2 s retry loop is gone. Saves one
+    to four requests per launch.
+  - **Character sheets and reference rows** save once, debounced ~1 s after the
+    last keystroke (and on tab-away), as a single write per dirty sheet — not
+    one `POST /characters/:slot/update` per field blur. NPC / location edits
+    debounce the same way.
+  - **Every mutation is de-duplicated in flight**: an action whose request has
+    not yet come back is a no-op on a second click, and its button renders
+    disabled. This also closes the double-roll / double-proposal holes from the
+    September audit.
+  - **Highlight +/- taps coalesce** into one `/stones/commit` carrying the net
+    delta after a short pause, rather than one proposal per tap. `/stones/commit`
+    now accepts any non-zero integer `delta` (was ±1 only); `applyPledge` already
+    clamps the effect to `[0, fate]`.
+  - **The Durable Object caches the auth lookup.** `getAuthFromToken`'s
+    `sessions_auth` ⋈ `facilitators` query ran on every `/api/table/*` call; a
+    resolved token → `AuthInfo` is now memoised in DO memory for 60 s, so it is
+    one D1 read per token per minute.
 - Ending a session now discards **every** unresolved pending state, not just
   floating boons and used abilities: an open overcome, a roll left on the table,
   pledged boons, and any proposal the facilitator never resolved. Starting a

@@ -12,6 +12,7 @@ value; a test overrides only the fields it cares about with record update.
 -}
 
 import Dict
+import Set
 import Time
 import Types
     exposing
@@ -97,6 +98,12 @@ model =
     , confirming = Nothing
     , editingSlot = Nothing
     , editingEntity = Nothing
+    , inflight = Set.empty
+    , dirtySlots = Set.empty
+    , dirtyEntities = Set.empty
+    , fieldSaveSeq = 0
+    , pendingPledgeDelta = 0
+    , pledgeSeq = 0
     , selectedSlot = 0
     , logAtBottom = True
     , newSessionGoal = ""

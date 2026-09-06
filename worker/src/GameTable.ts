@@ -59,6 +59,10 @@ const ABILITY_KINDS: readonly AbilityKind[] = [
   "suggest-compel",
 ];
 
+/** Sanity bound on a single coalesced pledge delta; `applyPledge` clamps the
+ * real effect to what the character holds anyway. */
+const MAX_PLEDGE_DELTA = 50;
+
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_FIELD_LENGTH = 500;
 const MAX_NOTES_LENGTH = 4000;
@@ -75,6 +79,14 @@ const INITIAL_SESSION_POOL: readonly StoneKind[] = [
 /** Durable Object storage keys. */
 const KEY_SESSION_ID = "sessionId";
 const KEY_STONES = "stones";
+
+/**
+ * How long a resolved token → `AuthInfo` is trusted from memory before the
+ * `sessions_auth` ⋈ `facilitators` query runs again. Bounds how stale a role
+ * change (or an expiry that lands mid-window) can be to this many milliseconds,
+ * in exchange for one D1 read per token per minute instead of per request.
+ */
+const AUTH_CACHE_TTL_MS = 60_000;
 
 type StoneState = {
   stonePool: StoneKind[];
@@ -136,9 +148,45 @@ export class GameTable implements DurableObject {
    */
   private mutationLock: Promise<unknown> = Promise.resolve();
 
+  /**
+   * token → resolved `AuthInfo`, memoised for `AUTH_CACHE_TTL_MS`. Only positive
+   * results are cached; an unknown or expired token always hits D1 so a freshly
+   * minted session is picked up at once. Lives in DO memory, so it is dropped on
+   * hibernation — which is fine, the next request just repopulates it.
+   */
+  private authCache = new Map<string, { info: AuthInfo; expiresAt: number }>();
+
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
+  }
+
+  private async resolveAuthToken(token: string): Promise<AuthInfo | null> {
+    const cached = this.authCache.get(token);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.info;
+    }
+
+    const info = await getAuthFromToken(this.env, token);
+    if (info) {
+      this.authCache.set(token, {
+        info,
+        expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
+      });
+    } else {
+      this.authCache.delete(token);
+    }
+    return info;
+  }
+
+  private async authFromRequest(request: Request): Promise<AuthInfo | null> {
+    const authHeader = request.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return null;
+    }
+    const token = authHeader.slice("Bearer ".length).trim();
+    if (!token) return null;
+    return this.resolveAuthToken(token);
   }
 
   private withLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -178,7 +226,7 @@ export class GameTable implements DurableObject {
     }
 
     // Every route below this point requires a valid session.
-    const authInfo = await getAuthFromRequest(this.env, request);
+    const authInfo = await this.authFromRequest(request);
     if (!authInfo) {
       return new Response("Unauthorized", { status: 401 });
     }
@@ -374,7 +422,7 @@ export class GameTable implements DurableObject {
     const token = parseTokenFromProtocol(
       request.headers.get("Sec-WebSocket-Protocol"),
     );
-    const authInfo = token ? await getAuthFromToken(this.env, token) : null;
+    const authInfo = token ? await this.resolveAuthToken(token) : null;
     if (!authInfo) {
       return new Response("Unauthorized", { status: 401 });
     }
@@ -715,9 +763,11 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * Pledge (or withdraw) one of the caller's own boons on the next roll. The
-   * slot is the sheet they have claimed. Queued as a proposal; the effect only
-   * lands when the facilitator accepts it.
+   * Pledge (or withdraw) boons of the caller's own on the next roll. The slot is
+   * the sheet they have claimed. Queued as a proposal; the effect only lands
+   * when the facilitator accepts it. `delta` is the net change the client has
+   * coalesced from a run of +/- taps, not necessarily ±1; `applyPledge` clamps
+   * it to `[0, fate]` on accept.
    */
   private async handleCommitBoon(
     request: Request,
@@ -725,8 +775,13 @@ export class GameTable implements DurableObject {
   ): Promise<Response> {
     const input = (await readJson(request)) as CommitBoonInput | null;
     const delta = input?.delta;
-    if (delta !== 1 && delta !== -1) {
-      return new Response("delta must be 1 or -1", { status: 400 });
+    if (
+      typeof delta !== "number" ||
+      !Number.isInteger(delta) ||
+      delta === 0 ||
+      Math.abs(delta) > MAX_PLEDGE_DELTA
+    ) {
+      return new Response("delta must be a non-zero integer", { status: 400 });
     }
 
     const character = this.gameState!.characters.find(
@@ -2083,21 +2138,6 @@ function parseTokenFromProtocol(header: string | null): string | null {
 
   const parts = header.split(",").map((part) => part.trim());
   return parts.find((part) => part && part !== "bearer") ?? null;
-}
-
-async function getAuthFromRequest(
-  env: Env,
-  request: Request,
-): Promise<AuthInfo | null> {
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return null;
-  }
-
-  const token = authHeader.slice("Bearer ".length).trim();
-  if (!token) return null;
-
-  return getAuthFromToken(env, token);
 }
 
 async function getAuthFromToken(

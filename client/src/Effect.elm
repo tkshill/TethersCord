@@ -33,6 +33,8 @@ type Effect
     | ScrollLogToBottom
     | RetryGetGameStateIn Float
     | DismissErrorIn Float
+    | DebounceFieldSave Int Float
+    | DebouncePledge Int Float
       -- Reads
     | GetGameState Auth
       -- Mutations (204-only; the result arrives on the socket)
@@ -86,6 +88,12 @@ perform flags effect =
 
         DismissErrorIn ms ->
             Process.sleep ms |> Task.perform (\_ -> DismissError)
+
+        DebounceFieldSave seq ms ->
+            Process.sleep ms |> Task.perform (\_ -> FieldSaveDue seq)
+
+        DebouncePledge seq ms ->
+            Process.sleep ms |> Task.perform (\_ -> PledgeDue seq)
 
         GetGameState auth ->
             Api.getGameState flags auth GotGameState

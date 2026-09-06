@@ -15,6 +15,7 @@ import Dict
 import Effect exposing (Effect)
 import Json.Decode as Decode
 import Ports
+import Set
 import Time
 import Types exposing (..)
 import View
@@ -27,11 +28,14 @@ maxGameStateAttempts =
     3
 
 
-{-| Backoff before a retried game-state seed load, in milliseconds.
+{-| Delay before the fallback game-state load, in milliseconds. The live socket
+sends a full snapshot before its first `await`, so in nearly every launch it
+beats this timer and the HTTP `getGameState` never fires. It doubles as the
+backoff between retries once a load has actually failed.
 -}
 gameStateRetryDelay : Float
 gameStateRetryDelay =
-    2000
+    3000
 
 
 {-| How long a transient error stays on screen before it dismisses itself, in
@@ -40,6 +44,22 @@ milliseconds.
 errorDismissDelay : Float
 errorDismissDelay =
     6000
+
+
+{-| Idle time after the last character-sheet / entity keystroke before the edit
+is flushed to the server as one write, rather than one per field blur.
+-}
+fieldSaveDelay : Float
+fieldSaveDelay =
+    1000
+
+
+{-| Idle time after the last Highlight +/- tap before the coalesced net pledge is
+sent as a single proposal.
+-}
+pledgeDelay : Float
+pledgeDelay =
+    700
 
 
 connectionFromString : String -> Connection
@@ -86,6 +106,12 @@ init flags =
       , confirming = Nothing
       , editingSlot = Nothing
       , editingEntity = Nothing
+      , inflight = Set.empty
+      , dirtySlots = Set.empty
+      , dirtyEntities = Set.empty
+      , fieldSaveSeq = 0
+      , pendingPledgeDelta = 0
+      , pledgeSeq = 0
       , selectedSlot = 0
       , logAtBottom = True
       , newSessionGoal = ""
@@ -112,19 +138,6 @@ subscriptions _ =
 -- UPDATE
 
 
-{-| Issue an effect that needs an authenticated user, or nothing if there is no
-auth yet. Covers the many branches that were `case model.auth of Just auth -> …`.
--}
-withAuth : Model -> (Auth -> Effect) -> ( Model, Effect )
-withAuth model toEffect =
-    case model.auth of
-        Just auth ->
-            ( model, toEffect auth )
-
-        Nothing ->
-            ( model, Effect.None )
-
-
 {-| Show a transient failure note and schedule its own dismissal. Used for the
 per-action mutation failures, which are worth flagging but not worth keeping on
 screen once the user has moved on.
@@ -132,6 +145,121 @@ screen once the user has moved on.
 fail : String -> Model -> ( Model, Effect )
 fail message model =
     ( { model | error = Just message }, Effect.DismissErrorIn errorDismissDelay )
+
+
+{-| Start a guarded mutation. If its action key already has a request in flight,
+do nothing — this is what makes an impatient double-click harmless. Otherwise
+mark the key busy and issue the effect (which needs auth).
+-}
+guard : String -> Model -> (Auth -> Effect) -> ( Model, Effect )
+guard key model toEffect =
+    if Set.member key model.inflight then
+        ( model, Effect.None )
+
+    else
+        case model.auth of
+            Just auth ->
+                ( { model | inflight = Set.insert key model.inflight }, toEffect auth )
+
+            Nothing ->
+                ( model, Effect.None )
+
+
+{-| Release every in-flight key sharing a prefix, once its (often shared) result
+message has come back. Mutations are driven one at a time from the UI, so
+clearing by family rather than exact key is enough.
+-}
+clearInflight : String -> Model -> Model
+clearInflight prefix model =
+    { model
+        | inflight = Set.filter (\key -> not (String.startsWith prefix key)) model.inflight
+    }
+
+
+{-| (Re)arm the field-save debounce after an edit or a blur: bump the token and
+schedule a `FieldSaveDue` carrying it.
+-}
+armFieldSave : Model -> ( Model, Effect )
+armFieldSave model =
+    let
+        seq =
+            model.fieldSaveSeq + 1
+    in
+    ( { model | fieldSaveSeq = seq }, Effect.DebounceFieldSave seq fieldSaveDelay )
+
+
+{-| Accumulate a Highlight +/- tap into the pending net delta and arm the pledge
+debounce.
+-}
+armPledge : Int -> Model -> ( Model, Effect )
+armPledge step model =
+    let
+        seq =
+            model.pledgeSeq + 1
+    in
+    ( { model | pendingPledgeDelta = model.pendingPledgeDelta + step, pledgeSeq = seq }
+    , Effect.DebouncePledge seq pledgeDelay
+    )
+
+
+{-| Find an NPC / location row by id anywhere in the game state, paired with the
+collection it lives in, for the debounced entity save.
+-}
+findEntityWithKind : String -> GameState -> Maybe ( EntityKind, TableEntity )
+findEntityWithKind entityId gs =
+    case findEntityAtId Npc entityId gs of
+        Just entity ->
+            Just ( Npc, entity )
+
+        Nothing ->
+            findEntityAtId Location entityId gs
+                |> Maybe.map (\entity -> ( Location, entity ))
+
+
+{-| Send every dirty character sheet / entity row as one write apiece and clear
+the dirty sets. Invoked by the debounce (`FieldSaveDue`) and eagerly when the
+user leaves a tab, so a whole sheet edit costs one request rather than one per
+field.
+-}
+flushFieldSaves : Model -> ( Model, Effect )
+flushFieldSaves model =
+    case model.auth of
+        Nothing ->
+            ( model, Effect.None )
+
+        Just auth ->
+            let
+                sheetSaves =
+                    model.dirtySlots
+                        |> Set.toList
+                        |> List.filterMap
+                            (\slot ->
+                                model.gameState
+                                    |> Maybe.andThen (findCharacterAtSlot slot)
+                                    |> Maybe.map (Effect.PostCharacterUpdate auth slot)
+                            )
+
+                entitySaves =
+                    model.dirtyEntities
+                        |> Set.toList
+                        |> List.filterMap
+                            (\entityId ->
+                                model.gameState
+                                    |> Maybe.andThen (findEntityWithKind entityId)
+                                    |> Maybe.map
+                                        (\( kind, entity ) -> Effect.PostUpdateEntity auth kind entity)
+                            )
+
+                effects =
+                    sheetSaves ++ entitySaves
+            in
+            if List.isEmpty effects then
+                ( model, Effect.None )
+
+            else
+                ( { model | dirtySlots = Set.empty, dirtyEntities = Set.empty }
+                , Effect.Batch effects
+                )
 
 
 update : Msg -> Model -> ( Model, Effect )
@@ -148,9 +276,13 @@ update msg model =
                 Ports.UnknownInbound ->
                     ( model, Effect.None )
 
+        -- The socket opens right after this and pushes a full snapshot before
+        -- its first `await`, so rather than spend an HTTP `getGameState` on the
+        -- happy path, schedule a fallback load that only fires if no snapshot
+        -- has landed a few seconds later.
         GotBackendAuth (Ok auth) ->
             ( { model | auth = Just auth, status = "Loaded auth as " ++ auth.username }
-            , Effect.GetGameState auth
+            , Effect.RetryGetGameStateIn gameStateRetryDelay
             )
 
         GotBackendAuth (Err _) ->
@@ -219,38 +351,58 @@ update msg model =
             fail "Failed to post message." model
 
         ClearLog ->
-            withAuth { model | confirming = Nothing } Effect.PostClearMessages
+            guard "log:clear" { model | confirming = Nothing } Effect.PostClearMessages
 
         LogCleared (Ok ()) ->
-            ( model, Effect.None )
+            ( clearInflight "log:" model, Effect.None )
 
         LogCleared (Err _) ->
-            fail "Failed to clear the log." model
+            fail "Failed to clear the log." (clearInflight "log:" model)
 
         AddBoon ->
-            withAuth model (\auth -> Effect.PostStones auth "/stones/add-boon")
+            guard "stones:add-boon" model (\auth -> Effect.PostStones auth "/stones/add-boon")
 
+        -- The +/- taps only nudge a running total; one coalesced proposal is
+        -- sent once the taps stop (`PledgeDue`).
         CommitBoonIncrement ->
-            withAuth model (\auth -> Effect.PostCommitBoon auth 1)
+            armPledge 1 model
 
         CommitBoonDecrement ->
-            withAuth model (\auth -> Effect.PostCommitBoon auth -1)
+            armPledge -1 model
+
+        PledgeDue seq ->
+            if seq /= model.pledgeSeq || model.pendingPledgeDelta == 0 then
+                ( model, Effect.None )
+
+            else
+                case model.auth of
+                    Just auth ->
+                        ( { model
+                            | pendingPledgeDelta = 0
+                            , inflight = Set.insert "stones:pledge" model.inflight
+                          }
+                        , Effect.PostCommitBoon auth model.pendingPledgeDelta
+                        )
+
+                    Nothing ->
+                        ( { model | pendingPledgeDelta = 0 }, Effect.None )
 
         SelectSlot slot ->
-            ( { model | selectedSlot = slot }, Effect.None )
+            -- Leaving a tab flushes any unsaved edits on the sheet behind it.
+            flushFieldSaves { model | selectedSlot = slot }
 
         ClaimSlot slot ->
             -- Bring the claimed sheet's tab to the front as well.
-            withAuth { model | selectedSlot = slot } (\auth -> Effect.PostClaimSlot auth slot)
+            guard "slot:claim" { model | selectedSlot = slot } (\auth -> Effect.PostClaimSlot auth slot)
 
         ReleaseSlot slot ->
-            withAuth model (\auth -> Effect.PostReleaseSlot auth slot)
+            guard "slot:release" model (\auth -> Effect.PostReleaseSlot auth slot)
 
         SlotClaimed (Ok ()) ->
-            ( model, Effect.None )
+            ( clearInflight "slot:" model, Effect.None )
 
         SlotClaimed (Err _) ->
-            fail "Couldn't claim that character sheet." model
+            fail "Couldn't claim that character sheet." (clearInflight "slot:" model)
 
         AcceptProposal id ->
             let
@@ -267,40 +419,48 @@ update msg model =
                                     Just text
                             )
             in
-            withAuth model (\auth -> Effect.PostProposalDecision auth id "accept" context)
+            guard ("proposal:accept:" ++ id)
+                model
+                (\auth -> Effect.PostProposalDecision auth id "accept" context)
 
         RejectProposal id ->
-            withAuth model (\auth -> Effect.PostProposalDecision auth id "reject" Nothing)
+            guard ("proposal:reject:" ++ id)
+                model
+                (\auth -> Effect.PostProposalDecision auth id "reject" Nothing)
 
         WithdrawProposal id ->
-            withAuth model (\auth -> Effect.PostWithdrawProposal auth id)
+            guard ("proposal:withdraw:" ++ id)
+                model
+                (\auth -> Effect.PostWithdrawProposal auth id)
 
         ProposalDraftChanged id s ->
             ( { model | proposalDrafts = Dict.insert id s model.proposalDrafts }, Effect.None )
 
         ProposalResolved id (Ok ()) ->
-            ( { model | proposalDrafts = Dict.remove id model.proposalDrafts }, Effect.None )
+            ( clearInflight "proposal:" { model | proposalDrafts = Dict.remove id model.proposalDrafts }
+            , Effect.None
+            )
 
         ProposalResolved _ (Err _) ->
-            fail "Failed to resolve the proposal." model
+            fail "Failed to resolve the proposal." (clearInflight "proposal:" model)
 
         UseAbility kind ->
-            withAuth model (\auth -> Effect.PostUseAbility auth kind)
+            guard ("move:" ++ kind) model (\auth -> Effect.PostUseAbility auth kind)
 
         SuggestCompel targetSlot ->
-            withAuth model (\auth -> Effect.PostSuggestCompel auth targetSlot)
+            guard "move:suggest-compel" model (\auth -> Effect.PostSuggestCompel auth targetSlot)
 
         AcceptCompelMove ->
-            withAuth model Effect.PostAcceptCompelMove
+            guard "move:accept-compel" model Effect.PostAcceptCompelMove
 
         UseFloatingBoon floatingId ->
-            withAuth model (\auth -> Effect.PostUseFloatingBoon auth floatingId)
+            guard "move:use-floating" model (\auth -> Effect.PostUseFloatingBoon auth floatingId)
 
         MoveRaised (Ok ()) ->
-            ( model, Effect.None )
+            ( clearInflight "move:" model, Effect.None )
 
         MoveRaised (Err _) ->
-            fail "Couldn't raise that move." model
+            fail "Couldn't raise that move." (clearInflight "move:" model)
 
         SessionGoalChanged s ->
             ( { model | newSessionGoal = s }, Effect.None )
@@ -309,33 +469,31 @@ update msg model =
             ( { model | goalEdit = s }, Effect.None )
 
         SaveSessionGoal ->
-            case ( model.auth, String.trim model.goalEdit == "" ) of
-                ( Just auth, False ) ->
-                    ( { model | confirming = Nothing }
-                    , Effect.PostSessionGoal auth model.goalEdit
-                    )
+            if String.trim model.goalEdit == "" then
+                ( { model | confirming = Nothing }, Effect.None )
 
-                _ ->
-                    ( { model | confirming = Nothing }, Effect.None )
+            else
+                guard "session:goal"
+                    { model | confirming = Nothing }
+                    (\auth -> Effect.PostSessionGoal auth model.goalEdit)
 
         StartSession ->
-            case ( model.auth, String.trim model.newSessionGoal == "" ) of
-                ( Just auth, False ) ->
-                    ( { model | newSessionGoal = "" }
-                    , Effect.PostStartSession auth model.newSessionGoal
-                    )
+            if String.trim model.newSessionGoal == "" then
+                ( model, Effect.None )
 
-                _ ->
-                    ( model, Effect.None )
+            else
+                guard "session:start"
+                    { model | newSessionGoal = "" }
+                    (\auth -> Effect.PostStartSession auth model.newSessionGoal)
 
         EndSession ->
-            withAuth { model | confirming = Nothing } Effect.PostEndSession
+            guard "session:end" { model | confirming = Nothing } Effect.PostEndSession
 
         SessionUpdated (Ok ()) ->
-            ( model, Effect.None )
+            ( clearInflight "session:" model, Effect.None )
 
         SessionUpdated (Err _) ->
-            fail "Failed to update the session." model
+            fail "Failed to update the session." (clearInflight "session:" model)
 
         RequestConfirm key ->
             ( { model | confirming = Just key }, Effect.None )
@@ -358,40 +516,42 @@ update msg model =
                     ( model, Effect.None )
 
         RollStones ->
-            withAuth model (\auth -> Effect.PostStones auth "/stones/roll")
+            guard "stones:roll" model (\auth -> Effect.PostStones auth "/stones/roll")
 
         RerollStones ->
-            withAuth model (\auth -> Effect.PostStones auth "/stones/reroll")
+            guard "stones:reroll" model (\auth -> Effect.PostStones auth "/stones/reroll")
 
         AcceptRoll ->
-            withAuth model (\auth -> Effect.PostStones auth "/stones/accept")
+            guard "stones:accept" model (\auth -> Effect.PostStones auth "/stones/accept")
 
         StonesUpdated (Ok ()) ->
-            ( model, Effect.None )
+            ( clearInflight "stones:" model, Effect.None )
 
         StonesUpdated (Err _) ->
-            fail "Failed to update stones." model
+            fail "Failed to update stones." (clearInflight "stones:" model)
 
         StartOvercome slot ->
-            withAuth model (\auth -> Effect.PostStartOvercome auth slot)
+            guard "overcome:start" model (\auth -> Effect.PostStartOvercome auth slot)
 
         CancelOvercome ->
-            withAuth model Effect.PostCancelOvercome
+            guard "overcome:cancel" model Effect.PostCancelOvercome
 
         OvercomeUpdated (Ok ()) ->
-            ( model, Effect.None )
+            ( clearInflight "overcome:" model, Effect.None )
 
         OvercomeUpdated (Err _) ->
-            fail "Failed to update the overcome." model
+            fail "Failed to update the overcome." (clearInflight "overcome:" model)
 
+        -- Field edits update the local sheet at once and mark the slot dirty; the
+        -- write is deferred to a single debounced flush (`FieldSaveDue`).
         CharacterFieldInput slot fieldTag value ->
-            ( { model
-                | gameState =
-                    Maybe.map (mapCharacterAtSlot slot (setCharacterField fieldTag value)) model.gameState
-                , editingSlot = Just slot
-              }
-            , Effect.None
-            )
+            armFieldSave
+                { model
+                    | gameState =
+                        Maybe.map (mapCharacterAtSlot slot (setCharacterField fieldTag value)) model.gameState
+                    , editingSlot = Just slot
+                    , dirtySlots = Set.insert slot model.dirtySlots
+                }
 
         CharacterFieldBlur slot ->
             let
@@ -402,40 +562,46 @@ update msg model =
                     else
                         model
             in
-            case ( model.auth, model.gameState |> Maybe.andThen (findCharacterAtSlot slot) ) of
-                ( Just auth, Just character ) ->
-                    ( released, Effect.PostCharacterUpdate auth slot character )
+            if Set.member slot released.dirtySlots then
+                armFieldSave released
 
-                _ ->
-                    ( released, Effect.None )
+            else
+                ( released, Effect.None )
+
+        FieldSaveDue seq ->
+            if seq /= model.fieldSaveSeq then
+                ( model, Effect.None )
+
+            else
+                flushFieldSaves model
 
         FateIncrement slot ->
-            withAuth model (\auth -> Effect.PostFate auth slot 1)
+            guard ("fate:" ++ String.fromInt slot) model (\auth -> Effect.PostFate auth slot 1)
 
         FateDecrement slot ->
-            withAuth model (\auth -> Effect.PostFate auth slot -1)
+            guard ("fate:" ++ String.fromInt slot) model (\auth -> Effect.PostFate auth slot -1)
 
         CharacterUpdated (Ok ()) ->
-            ( model, Effect.None )
+            ( clearInflight "fate:" model, Effect.None )
 
         CharacterUpdated (Err _) ->
-            fail "Failed to update character sheet." model
+            fail "Failed to update character sheet." (clearInflight "fate:" model)
 
         AddEntity kind ->
-            withAuth model (\auth -> Effect.PostCreateEntity auth kind)
+            guard ("entity:create:" ++ entityKindPath kind) model (\auth -> Effect.PostCreateEntity auth kind)
 
         EntityFieldInput kind entityId fieldTag value ->
-            ( { model
-                | gameState =
-                    Maybe.map
-                        (mapEntityAtId kind entityId (setEntityField fieldTag value))
-                        model.gameState
-                , editingEntity = Just entityId
-              }
-            , Effect.None
-            )
+            armFieldSave
+                { model
+                    | gameState =
+                        Maybe.map
+                            (mapEntityAtId kind entityId (setEntityField fieldTag value))
+                            model.gameState
+                    , editingEntity = Just entityId
+                    , dirtyEntities = Set.insert entityId model.dirtyEntities
+                }
 
-        EntityFieldBlur kind entityId ->
+        EntityFieldBlur _ entityId ->
             let
                 released =
                     if model.editingEntity == Just entityId then
@@ -444,12 +610,11 @@ update msg model =
                     else
                         model
             in
-            case ( model.auth, model.gameState |> Maybe.andThen (findEntityAtId kind entityId) ) of
-                ( Just auth, Just entity ) ->
-                    ( released, Effect.PostUpdateEntity auth kind entity )
+            if Set.member entityId released.dirtyEntities then
+                armFieldSave released
 
-                _ ->
-                    ( released, Effect.None )
+            else
+                ( released, Effect.None )
 
         DeleteEntity kind entityId ->
             let
@@ -460,13 +625,15 @@ update msg model =
                     else
                         model
             in
-            withAuth released (\auth -> Effect.PostDeleteEntity auth kind entityId)
+            guard ("entity:delete:" ++ entityId)
+                { released | dirtyEntities = Set.remove entityId released.dirtyEntities }
+                (\auth -> Effect.PostDeleteEntity auth kind entityId)
 
         EntityMutated (Ok ()) ->
-            ( model, Effect.None )
+            ( clearInflight "entity:" model, Effect.None )
 
         EntityMutated (Err _) ->
-            fail "Failed to update the table entry." model
+            fail "Failed to update the table entry." (clearInflight "entity:" model)
 
         WsGameStateRaw value ->
             case Decode.decodeValue Api.decodeGameState value of
@@ -499,54 +666,57 @@ update msg model =
 -- STATE MERGING
 
 
-{-| Accept a server snapshot, but keep the character sheet the user is part-way
-through typing into. Broadcasts arrive on every table action, and replacing the
-whole state wholesale would wipe the field under the cursor.
+{-| Accept a server snapshot, but keep every character sheet / reference row that
+has a local edit not yet saved. Broadcasts arrive on every table action, and
+taking the server copy wholesale would wipe a field being typed into or an edit
+still sitting in the debounce window before its flush.
 -}
 applyServerState : Model -> GameState -> GameState
 applyServerState model incoming =
-    incoming
-        |> keepEditedCharacter model
-        |> keepEditedEntity model
-
-
-keepEditedCharacter : Model -> GameState -> GameState
-keepEditedCharacter model incoming =
-    case ( model.editingSlot, model.gameState ) of
-        ( Just slot, Just local ) ->
-            case findCharacterAtSlot slot local of
-                Just localCharacter ->
-                    mapCharacterAtSlot slot (\_ -> localCharacter) incoming
+    let
+        dirtySlots =
+            case model.editingSlot of
+                Just slot ->
+                    Set.insert slot model.dirtySlots
 
                 Nothing ->
-                    incoming
+                    model.dirtySlots
 
-        _ ->
+        dirtyEntities =
+            case model.editingEntity of
+                Just entityId ->
+                    Set.insert entityId model.dirtyEntities
+
+                Nothing ->
+                    model.dirtyEntities
+    in
+    case model.gameState of
+        Just local ->
+            incoming
+                |> (\gs -> Set.foldl (keepLocalCharacter local) gs dirtySlots)
+                |> (\gs -> Set.foldl (keepLocalEntity local) gs dirtyEntities)
+
+        Nothing ->
             incoming
 
 
-{-| Keep the NPC / location row the facilitator is mid-edit on, the same way
-`keepEditedCharacter` protects a sheet under the cursor.
--}
-keepEditedEntity : Model -> GameState -> GameState
-keepEditedEntity model incoming =
-    case ( model.editingEntity, model.gameState ) of
-        ( Just entityId, Just local ) ->
-            case
-                ( findEntityAtId Npc entityId local
-                , findEntityAtId Location entityId local
-                )
-            of
-                ( Just localEntity, _ ) ->
-                    mapEntityAtId Npc entityId (\_ -> localEntity) incoming
+keepLocalCharacter : GameState -> Int -> GameState -> GameState
+keepLocalCharacter local slot incoming =
+    case findCharacterAtSlot slot local of
+        Just localCharacter ->
+            mapCharacterAtSlot slot (\_ -> localCharacter) incoming
 
-                ( _, Just localEntity ) ->
-                    mapEntityAtId Location entityId (\_ -> localEntity) incoming
+        Nothing ->
+            incoming
 
-                _ ->
-                    incoming
 
-        _ ->
+keepLocalEntity : GameState -> String -> GameState -> GameState
+keepLocalEntity local entityId incoming =
+    case findEntityWithKind entityId local of
+        Just ( kind, localEntity ) ->
+            mapEntityAtId kind entityId (\_ -> localEntity) incoming
+
+        Nothing ->
             incoming
 
 
