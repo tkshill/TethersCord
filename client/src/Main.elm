@@ -145,11 +145,23 @@ update msg model =
         AddBoon ->
             ( model, stonesCmd model "/stones/add-boon" )
 
-        CommitBoonIncrement slot ->
-            ( model, commitCmd model slot 1 )
+        CommitBoonIncrement ->
+            ( model, commitCmd model 1 )
 
-        CommitBoonDecrement slot ->
-            ( model, commitCmd model slot -1 )
+        CommitBoonDecrement ->
+            ( model, commitCmd model -1 )
+
+        ClaimSlot slot ->
+            ( model, claimCmd model slot )
+
+        ReleaseSlot slot ->
+            ( model, releaseCmd model slot )
+
+        SlotClaimed (Ok ()) ->
+            ( model, Cmd.none )
+
+        SlotClaimed (Err _) ->
+            ( { model | status = "Couldn't claim that character sheet." }, Cmd.none )
 
         RollStones ->
             ( model, stonesCmd model "/stones/roll" )
@@ -253,11 +265,31 @@ fateCmd model slot delta =
             Cmd.none
 
 
-commitCmd : Model -> Int -> Int -> Cmd Msg
-commitCmd model slot delta =
+commitCmd : Model -> Int -> Cmd Msg
+commitCmd model delta =
     case model.auth of
         Just auth ->
-            Api.postCommitBoon model.flags auth slot delta StonesUpdated
+            Api.postCommitBoon model.flags auth delta StonesUpdated
+
+        Nothing ->
+            Cmd.none
+
+
+claimCmd : Model -> Int -> Cmd Msg
+claimCmd model slot =
+    case model.auth of
+        Just auth ->
+            Api.postClaimSlot model.flags auth slot SlotClaimed
+
+        Nothing ->
+            Cmd.none
+
+
+releaseCmd : Model -> Int -> Cmd Msg
+releaseCmd model slot =
+    case model.auth of
+        Just auth ->
+            Api.postReleaseSlot model.flags auth slot SlotClaimed
 
         Nothing ->
             Cmd.none

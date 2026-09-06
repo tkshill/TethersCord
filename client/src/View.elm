@@ -50,7 +50,7 @@ view model =
         [ header model
         , Ui.banner model.status
         , rollPanel facilitator model.gameState
-        , characterSheets facilitator model.gameState
+        , characterSheets facilitator (Maybe.map .userId model.auth) model.gameState
         , messageLog facilitator model.timeZone model.gameState
         , composer model
         ]
@@ -174,8 +174,8 @@ stoneChip stone =
 -- CHARACTERS
 
 
-characterSheets : Bool -> Maybe GameState -> Element Msg
-characterSheets facilitator maybeGs =
+characterSheets : Bool -> Maybe String -> Maybe GameState -> Element Msg
+characterSheets facilitator myId maybeGs =
     Ui.card
         [ Ui.sectionTitle "Characters"
         , case maybeGs of
@@ -184,12 +184,19 @@ characterSheets facilitator maybeGs =
 
             Just gs ->
                 Element.wrappedRow [ spacing Ui.md, width fill ]
-                    (List.map (characterSheet facilitator gs.committedBoons) gs.characters)
+                    (List.map (characterSheet facilitator myId gs.committedBoons) gs.characters)
         ]
 
 
-characterSheet : Bool -> List CommittedBoon -> CharacterSheet -> Element Msg
-characterSheet facilitator committedBoons ch =
+characterSheet : Bool -> Maybe String -> List CommittedBoon -> CharacterSheet -> Element Msg
+characterSheet facilitator myId committedBoons ch =
+    let
+        mine =
+            ch.ownerId /= Nothing && ch.ownerId == myId
+
+        editable =
+            facilitator || mine || ch.ownerId == Nothing
+    in
     Element.column
         [ spacing Ui.sm
         , padding Ui.md
@@ -198,39 +205,100 @@ characterSheet facilitator committedBoons ch =
         , Border.width 1
         , Border.rounded 6
         ]
-        [ field ch NameField "Name" ch.name
-        , field ch NotableFeaturesField "Notable features" ch.notableFeatures
-        , field ch ArchetypeField "Archetype" ch.archetype
-        , field ch DesireField "Desire" ch.desire
-        , field ch QuestField "Quest" ch.quest
-        , field ch ConditionField "Condition" ch.condition
-        , notesField ch
+        [ ownerRow facilitator mine ch
+        , field editable ch NameField "Name" ch.name
+        , field editable ch NotableFeaturesField "Notable features" ch.notableFeatures
+        , field editable ch ArchetypeField "Archetype" ch.archetype
+        , field editable ch DesireField "Desire" ch.desire
+        , field editable ch QuestField "Quest" ch.quest
+        , field editable ch ConditionField "Condition" ch.condition
+        , notesField editable ch
         , fateRow facilitator ch
-        , commitRow ch (committedBoonsForSlot ch.slot committedBoons)
+        , commitRow mine (committedBoonsForSlot ch.slot committedBoons)
         ]
 
 
-field : CharacterSheet -> CharacterField -> String -> String -> Element Msg
-field ch fieldTag label value =
-    Input.text
-        (inputAttrs ++ [ Ui.onBlur (CharacterFieldBlur ch.slot) ])
-        { onChange = CharacterFieldInput ch.slot fieldTag
-        , text = value
-        , placeholder = Nothing
-        , label = fieldLabel label
-        }
+{-| Who holds this sheet, and the claim / release control. Players claim an
+unclaimed sheet; the owner (or facilitator) can release it. -}
+ownerRow : Bool -> Bool -> CharacterSheet -> Element Msg
+ownerRow facilitator mine ch =
+    let
+        ( label, action ) =
+            if mine then
+                ( "Your character"
+                , Just (Ui.ghostButton { onPress = Just (ReleaseSlot ch.slot), label = "Release" })
+                )
+
+            else if ch.ownerId == Nothing then
+                ( "Unclaimed"
+                , if facilitator then
+                    Nothing
+
+                  else
+                    Just (Ui.ghostButton { onPress = Just (ClaimSlot ch.slot), label = "Claim" })
+                )
+
+            else
+                ( "Claimed", Nothing )
+    in
+    Element.row [ width fill, spacing Ui.sm, Element.centerY ]
+        (el [ Font.size 11, Font.color Ui.inkSoft ] (text label)
+            :: (case action of
+                    Just btn ->
+                        [ el [ Element.alignRight ] btn ]
+
+                    Nothing ->
+                        []
+               )
+        )
 
 
-notesField : CharacterSheet -> Element Msg
-notesField ch =
-    Input.multiline
-        (inputAttrs ++ [ height (px 72), Ui.onBlur (CharacterFieldBlur ch.slot) ])
-        { onChange = CharacterFieldInput ch.slot NotesField
-        , text = ch.notes
-        , placeholder = Nothing
-        , label = fieldLabel "Notes"
-        , spellcheck = False
-        }
+field : Bool -> CharacterSheet -> CharacterField -> String -> String -> Element Msg
+field editable ch fieldTag label value =
+    if editable then
+        Input.text
+            (inputAttrs ++ [ Ui.onBlur (CharacterFieldBlur ch.slot) ])
+            { onChange = CharacterFieldInput ch.slot fieldTag
+            , text = value
+            , placeholder = Nothing
+            , label = fieldLabel label
+            }
+
+    else
+        readOnlyField label value
+
+
+notesField : Bool -> CharacterSheet -> Element Msg
+notesField editable ch =
+    if editable then
+        Input.multiline
+            (inputAttrs ++ [ height (px 72), Ui.onBlur (CharacterFieldBlur ch.slot) ])
+            { onChange = CharacterFieldInput ch.slot NotesField
+            , text = ch.notes
+            , placeholder = Nothing
+            , label = fieldLabel "Notes"
+            , spellcheck = False
+            }
+
+    else
+        readOnlyField "Notes" ch.notes
+
+
+readOnlyField : String -> String -> Element msg
+readOnlyField label value =
+    Element.column [ spacing Ui.xs, width fill ]
+        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text label)
+        , Element.paragraph
+            (inputAttrs ++ [ Font.color Ui.inkSoft ])
+            [ text
+                (if String.trim value == "" then
+                    "—"
+
+                 else
+                    value
+                )
+            ]
+        ]
 
 
 fateRow : Bool -> CharacterSheet -> Element Msg
@@ -246,16 +314,23 @@ fateRow facilitator ch =
         )
 
 
-{-| Boons this character has pledged into the next roll. Spent on Accept.
--}
-commitRow : CharacterSheet -> Int -> Element Msg
-commitRow ch pledged =
+{-| Boons pledged into the next roll. The count shows on every sheet; only the
+sheet's owner gets the `+` / `−`. -}
+commitRow : Bool -> Int -> Element Msg
+commitRow mine pledged =
     Element.row [ spacing Ui.sm, Element.centerY ]
-        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Pledged")
-        , el [ Font.semiBold, width (px 20), Font.center ] (text (String.fromInt pledged))
-        , Ui.ghostButton { onPress = Just (CommitBoonDecrement ch.slot), label = "−" }
-        , Ui.ghostButton { onPress = Just (CommitBoonIncrement ch.slot), label = "+" }
-        ]
+        ([ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Pledged")
+         , el [ Font.semiBold, width (px 20), Font.center ] (text (String.fromInt pledged))
+         ]
+            ++ (if mine then
+                    [ Ui.ghostButton { onPress = Just CommitBoonDecrement, label = "−" }
+                    , Ui.ghostButton { onPress = Just CommitBoonIncrement, label = "+" }
+                    ]
+
+                else
+                    []
+               )
+        )
 
 
 fieldLabel : String -> Input.Label msg

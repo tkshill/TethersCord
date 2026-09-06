@@ -150,7 +150,7 @@ export class GameTable implements DurableObject {
     }
 
     if (url.pathname === "/stones/commit" && request.method === "POST") {
-      return this.withLock(() => this.handleCommitBoon(request));
+      return this.withLock(() => this.handleCommitBoon(request, authInfo));
     }
 
     if (url.pathname === "/stones/roll" && request.method === "POST") {
@@ -177,7 +177,27 @@ export class GameTable implements DurableObject {
     const charUpdateMatch = url.pathname.match(/^\/characters\/(\d+)\/update$/);
     if (charUpdateMatch && request.method === "POST") {
       return this.withLock(() =>
-        this.handleUpdateCharacter(request, Number(charUpdateMatch[1])),
+        this.handleUpdateCharacter(
+          request,
+          Number(charUpdateMatch[1]),
+          authInfo,
+        ),
+      );
+    }
+
+    const charClaimMatch = url.pathname.match(/^\/characters\/(\d+)\/claim$/);
+    if (charClaimMatch && request.method === "POST") {
+      return this.withLock(() =>
+        this.handleClaimSlot(Number(charClaimMatch[1]), authInfo),
+      );
+    }
+
+    const charReleaseMatch = url.pathname.match(
+      /^\/characters\/(\d+)\/release$/,
+    );
+    if (charReleaseMatch && request.method === "POST") {
+      return this.withLock(() =>
+        this.handleReleaseSlot(Number(charReleaseMatch[1]), authInfo),
       );
     }
 
@@ -353,7 +373,8 @@ export class GameTable implements DurableObject {
   ): Promise<CharacterSheet[]> {
     const rows = await this.env.DB.prepare(
       `
-      SELECT id, slot, name, notable_features, archetype, desire, quest, condition, notes, fate
+      SELECT id, slot, name, notable_features, archetype, desire, quest, condition,
+             notes, fate, discord_user_id
       FROM characters
       WHERE session_id = ?
       ORDER BY slot
@@ -388,6 +409,7 @@ export class GameTable implements DurableObject {
         condition: "",
         notes: "",
         fate: 0,
+        discord_user_id: null,
       });
     }
 
@@ -446,27 +468,28 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * Pledge (or withdraw) a character's boons into the next roll. The pledge is
-   * clamped to what the character actually holds in `fate`; it is only spent
-   * when the roll is accepted.
+   * Pledge (or withdraw) the caller's own boons into the next roll. The slot is
+   * resolved from the sheet the caller has claimed, so there is no slot to pass.
+   * The pledge is clamped to what the character holds in `fate`; it is only
+   * spent when the roll is accepted.
    */
-  private async handleCommitBoon(request: Request): Promise<Response> {
+  private async handleCommitBoon(
+    request: Request,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
     const input = (await readJson(request)) as CommitBoonInput | null;
-    const slot = input?.slot;
     const delta = input?.delta;
-    if (
-      typeof slot !== "number" ||
-      !Number.isInteger(slot) ||
-      typeof delta !== "number" ||
-      !Number.isInteger(delta)
-    ) {
-      return new Response("slot and delta must be integers", { status: 400 });
+    if (typeof delta !== "number" || !Number.isInteger(delta)) {
+      return new Response("delta must be an integer", { status: 400 });
     }
 
-    const character = this.gameState!.characters.find((c) => c.slot === slot);
+    const character = this.gameState!.characters.find(
+      (c) => c.ownerId === authInfo.discordUserId,
+    );
     if (!character) {
-      return new Response("Not found", { status: 404 });
+      return new Response("Claim a character sheet first", { status: 400 });
     }
+    const slot = character.slot;
 
     const current =
       this.gameState!.committedBoons.find((c) => c.slot === slot)?.count ?? 0;
@@ -548,6 +571,7 @@ export class GameTable implements DurableObject {
   private async handleUpdateCharacter(
     request: Request,
     slot: number,
+    authInfo: AuthInfo,
   ): Promise<Response> {
     const input = (await readJson(request)) as UpdateCharacterInput | null;
     if (!input) {
@@ -557,6 +581,16 @@ export class GameTable implements DurableObject {
     const character = this.gameState!.characters.find((c) => c.slot === slot);
     if (!character) {
       return new Response("Not found", { status: 404 });
+    }
+
+    // The facilitator may edit any sheet; a player only their own, or one that
+    // no one has claimed yet (setup before claiming).
+    const mayEdit =
+      authInfo.role === "facilitator" ||
+      character.ownerId === null ||
+      character.ownerId === authInfo.discordUserId;
+    if (!mayEdit) {
+      return new Response("Not your character sheet", { status: 403 });
     }
 
     const updated: CharacterSheet = {
@@ -602,6 +636,87 @@ export class GameTable implements DurableObject {
 
     this.broadcast(this.gameState);
     return ackResponse();
+  }
+
+  /**
+   * Bind the calling user to a sheet. Fails if someone else holds it; releases
+   * any other sheet the caller already holds so a player owns at most one.
+   */
+  private async handleClaimSlot(
+    slot: number,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    const target = this.gameState!.characters.find((c) => c.slot === slot);
+    if (!target) {
+      return new Response("Not found", { status: 404 });
+    }
+    if (target.ownerId && target.ownerId !== authInfo.discordUserId) {
+      return new Response("Sheet already claimed", { status: 409 });
+    }
+
+    const now = Date.now();
+    const priorSlots = this.gameState!.characters.filter(
+      (c) => c.ownerId === authInfo.discordUserId && c.slot !== slot,
+    );
+    for (const prior of priorSlots) {
+      await this.setSheetOwner(prior.id, null, now);
+    }
+    await this.setSheetOwner(target.id, authInfo.discordUserId, now);
+
+    this.gameState = {
+      ...this.gameState!,
+      characters: this.gameState!.characters.map((c) => {
+        if (c.slot === slot) return { ...c, ownerId: authInfo.discordUserId };
+        if (priorSlots.some((p) => p.id === c.id)) return { ...c, ownerId: null };
+        return c;
+      }),
+    };
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  /** Release a sheet. Allowed for the sheet's owner or the facilitator. */
+  private async handleReleaseSlot(
+    slot: number,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    const target = this.gameState!.characters.find((c) => c.slot === slot);
+    if (!target) {
+      return new Response("Not found", { status: 404 });
+    }
+    if (!target.ownerId) {
+      return ackResponse();
+    }
+    if (
+      target.ownerId !== authInfo.discordUserId &&
+      authInfo.role !== "facilitator"
+    ) {
+      return new Response("Not your character sheet", { status: 403 });
+    }
+
+    await this.setSheetOwner(target.id, null, Date.now());
+    this.gameState = {
+      ...this.gameState!,
+      characters: this.gameState!.characters.map((c) =>
+        c.slot === slot ? { ...c, ownerId: null } : c,
+      ),
+    };
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  private async setSheetOwner(
+    id: string,
+    ownerId: string | null,
+    now: number,
+  ): Promise<void> {
+    await this.env.DB.prepare(
+      `UPDATE characters SET discord_user_id = ?, updated_at = ? WHERE id = ?`,
+    )
+      .bind(ownerId, now, id)
+      .run();
   }
 
   private async handleUpdateFate(
@@ -764,6 +879,7 @@ type CharacterRow = {
   condition: string;
   notes: string;
   fate: number;
+  discord_user_id: string | null;
 };
 
 function rowToCharacterSheet(row: CharacterRow): CharacterSheet {
@@ -778,6 +894,7 @@ function rowToCharacterSheet(row: CharacterRow): CharacterSheet {
     condition: row.condition,
     notes: row.notes,
     fate: row.fate,
+    ownerId: row.discord_user_id,
   };
 }
 

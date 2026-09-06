@@ -99,8 +99,13 @@ Follow-ups:
 - [ ] Facilitator-set difficulty: let the facilitator add Bane stones to a roll
       from the fiction instead of the fixed two. Deferred — the fixed two Bane
       stay for now.
-- [ ] Bind a character sheet to a Discord user so "pledge my boons" needs no
-      slot picker.
+- [x] Bind a character sheet to a Discord user. `characters.discord_user_id`
+      (migration `0006`, partial-unique per table); a player claims an unclaimed
+      sheet with `POST /characters/:slot/claim` and drops it with `/release`
+      (owner or facilitator). `/stones/commit` now takes only `{ delta }` and
+      resolves the slot from the caller's claimed sheet — no slot picker.
+      `/characters/:slot/update` is owner-or-facilitator (or anyone while the
+      sheet is unclaimed); the client renders non-editable sheets read-only.
 - [x] Where boons are earned: the sheet's boon `+` / `−` is now facilitator-only
       (section 5), so the facilitator grants boons. Player-initiated gains will
       come through the proposal flow (moves like Accept Compel).

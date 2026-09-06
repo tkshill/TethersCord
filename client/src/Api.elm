@@ -2,10 +2,12 @@ module Api exposing
     ( decodeGameState
     , getGameState
     , postCharacterUpdate
+    , postClaimSlot
     , postClearMessages
     , postCommitBoon
     , postFate
     , postMessage
+    , postReleaseSlot
     , postStones
     )
 
@@ -132,22 +134,43 @@ postFate flags auth slot delta toMsg =
         }
 
 
-{-| Pledge (positive `delta`) or withdraw (negative) a character's boons from
-the next roll. The Worker clamps the pledge to what the character holds.
+{-| Pledge (positive `delta`) or withdraw (negative) boons from the next roll.
+The slot is the caller's own claimed sheet, resolved server-side; the Worker
+clamps the pledge to what that character holds.
 -}
-postCommitBoon : Flags -> Auth -> Int -> Int -> (Result Http.Error () -> msg) -> Cmd msg
-postCommitBoon flags auth slot delta toMsg =
+postCommitBoon : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
+postCommitBoon flags auth delta toMsg =
     Http.request
         { method = "POST"
         , headers = authHeaders auth ++ [ jsonContentType ]
         , url = tableUrl flags "/stones/commit"
-        , body =
-            Http.jsonBody
-                (Encode.object
-                    [ ( "slot", Encode.int slot )
-                    , ( "delta", Encode.int delta )
-                    ]
-                )
+        , body = Http.jsonBody (Encode.object [ ( "delta", Encode.int delta ) ])
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+{-| Claim a character sheet for the calling user, or release one. Releasing is
+allowed for the sheet's owner or the facilitator.
+-}
+postClaimSlot : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
+postClaimSlot flags auth slot toMsg =
+    slotAction flags auth slot "claim" toMsg
+
+
+postReleaseSlot : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
+postReleaseSlot flags auth slot toMsg =
+    slotAction flags auth slot "release" toMsg
+
+
+slotAction : Flags -> Auth -> Int -> String -> (Result Http.Error () -> msg) -> Cmd msg
+slotAction flags auth slot action toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth
+        , url = tableUrl flags ("/characters/" ++ String.fromInt slot ++ "/" ++ action)
+        , body = Http.emptyBody
         , expect = Http.expectWhatever toMsg
         , timeout = Nothing
         , tracker = Nothing
@@ -207,7 +230,7 @@ decodeCharacterSheet : Decode.Decoder CharacterSheet
 decodeCharacterSheet =
     Decode.map8
         (\id slot name notableFeatures archetype desire quest condition ->
-            \notes fate ->
+            \notes fate ownerId ->
                 { id = id
                 , slot = slot
                 , name = name
@@ -218,6 +241,7 @@ decodeCharacterSheet =
                 , condition = condition
                 , notes = notes
                 , fate = fate
+                , ownerId = ownerId
                 }
         )
         (Decode.field "id" Decode.string)
@@ -230,9 +254,10 @@ decodeCharacterSheet =
         (Decode.field "condition" Decode.string)
         |> Decode.andThen
             (\toSheet ->
-                Decode.map2 toSheet
+                Decode.map3 toSheet
                     (Decode.field "notes" Decode.string)
                     (Decode.field "fate" Decode.int)
+                    (Decode.field "ownerId" (Decode.nullable Decode.string))
             )
 
 

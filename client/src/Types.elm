@@ -112,6 +112,9 @@ type alias CharacterSheet =
     , condition : String
     , notes : String
     , fate : Int
+
+    -- Discord user id of the player who claimed this sheet, if any.
+    , ownerId : Maybe String
     }
 
 
@@ -201,8 +204,11 @@ type Msg
     | LogCleared (Result Http.Error ())
     | FromDiscordRaw Decode.Value
     | AddBoon
-    | CommitBoonIncrement Int
-    | CommitBoonDecrement Int
+    | CommitBoonIncrement
+    | CommitBoonDecrement
+    | ClaimSlot Int
+    | ReleaseSlot Int
+    | SlotClaimed (Result Http.Error ())
     | RollStones
     | RerollStones
     | AcceptRoll

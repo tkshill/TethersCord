@@ -50,9 +50,14 @@ export type CharacterSheet = {
   condition: string;
   notes: string;
   fate: number;
+  /** Discord user id of the player who claimed this sheet, or null. */
+  ownerId: string | null;
 };
 
-export type CharacterSheetFields = Omit<CharacterSheet, "id" | "slot" | "fate">;
+export type CharacterSheetFields = Omit<
+  CharacterSheet,
+  "id" | "slot" | "fate" | "ownerId"
+>;
 
 export type GameState = {
   sessionId: string;
@@ -74,7 +79,6 @@ export type UpdateFateInput = {
 };
 
 export type CommitBoonInput = {
-  slot: number;
   delta: number;
 };
 
