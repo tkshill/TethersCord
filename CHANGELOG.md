@@ -54,15 +54,19 @@ version yet, so headings are dates.
 
 ### Added
 
-- **Glossary terms and in-place tooltips** (roadmap section 21, steps 2–3).
-  `client/src/Copy/Terms.elm` holds the game's ~30 player-facing terms, each
-  with a one-line gloss and a two-to-three-sentence definition. `Ui.withTip`
-  attaches a native browser tooltip (the HTML `title` attribute) to an element;
-  the card titles Session / Stones / Characters, the aspect and Condition
-  fields, "Highlight", "Session pool", "Floating boons", the open-overcome line,
-  and the once-per-session / compel move buttons now carry the matching gloss on
-  hover. Hover-only for now — the "How to play" card (step 4) is the path for
-  touch.
+- **Glossary terms, in-place tooltips, and a "How to play" card** (roadmap
+  section 21, steps 2–4).
+  - `client/src/Copy/Terms.elm` holds the game's ~30 player-facing terms, each
+    with a one-line gloss and a two-to-three-sentence definition.
+  - `Ui.withTip` attaches a native browser tooltip (the HTML `title` attribute)
+    to an element; the card titles Session / Stones / Characters, the aspect and
+    Condition fields, "Highlight", "Session pool", "Floating boons", the
+    open-overcome line, and the once-per-session / compel move buttons now carry
+    the matching gloss on hover.
+  - `View.Guide` is a new section card at the foot of the Activity — collapsed
+    by default (`Model.guideExpanded`, `ToggleGuide`), it lays out every term
+    grouped in order of play. It is the path for touch, where `title` tooltips
+    do not fire.
 
 ### Changed
 

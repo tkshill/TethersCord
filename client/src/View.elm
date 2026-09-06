@@ -14,6 +14,7 @@ import Types exposing (..)
 import Ui
 import View.Characters
 import View.Entities
+import View.Guide
 import View.Helpers exposing (ViewContext, inputAttrs, placeholder)
 import View.Log
 import View.Moves
@@ -75,6 +76,7 @@ view model =
                     , noMoreHistory = model.noMoreHistory
                     }
                     gs
+                , View.Guide.view ctx { expanded = model.guideExpanded }
                 ]
 
 

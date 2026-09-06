@@ -500,6 +500,10 @@ type alias Model =
     -- ask for and the "load earlier" affordance is hidden.
     , noMoreHistory : Bool
 
+    -- Whether the "How to play" glossary card is expanded. Collapsed on load;
+    -- toggled by `ToggleGuide`, purely local view state.
+    , guideExpanded : Bool
+
     -- Backend WebSocket connection state, as last reported by the JS socket.
     , connection : Connection
 
@@ -574,6 +578,7 @@ type Msg
     | RequestConfirm String
     | CancelConfirm
     | DismissError
+    | ToggleGuide
     | WsStatusChanged String
     | RetryGetGameState
     | RollStones
