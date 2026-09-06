@@ -12,7 +12,7 @@ import Element.Font as Font
 import Kind
 import Types exposing (..)
 import Ui
-import View.Helpers exposing (ViewContext, characterLabel, latestProposalId, withdrawLink)
+import View.Helpers exposing (ViewContext, characterLabel, latestProposalId, tip, withdrawLink)
 
 
 view : ViewContext -> GameState -> Element Msg
@@ -32,7 +32,7 @@ view ctx gs =
                   in
                   Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
                     (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.anyTime)
-                        :: moveButton (pendingId /= Nothing) Copy.acceptCompel AcceptCompelMove
+                        :: tip "Accept Compel" (moveButton (pendingId /= Nothing) Copy.acceptCompel AcceptCompelMove)
                         :: (if pendingId == Nothing then
                                 []
 
@@ -83,7 +83,8 @@ abilityRow myId gs ch =
                             ""
 
                     btn =
-                        moveButton (used || pending || not available) (label ++ suffix) (UseAbility kind)
+                        tip label
+                            (moveButton (used || pending || not available) (label ++ suffix) (UseAbility kind))
                 in
                 if pending then
                     Element.row [ spacing Ui.xs, Element.centerY ] [ btn, withdrawLink pendingId ]
@@ -134,7 +135,8 @@ suggestCompelRow myId gs ch =
                     ""
         in
         Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
-            (el [ Font.size 11, Font.color Ui.inkSoft ] (text (Copy.suggestCompel ++ suffix))
+            (tip "Suggest Compel"
+                (el [ Font.size 11, Font.color Ui.inkSoft ] (text (Copy.suggestCompel ++ suffix)))
                 :: (if used then
                         []
 

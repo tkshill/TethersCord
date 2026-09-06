@@ -2,25 +2,31 @@ module View.Helpers exposing
     ( ViewContext
     , characterLabel
     , countProposals
+    , glossaryTitle
     , inputAttrs
     , latestProposalId
     , pendingHint
     , placeholder
     , stoneChip
+    , tip
+    , tipAttrs
     , withdrawLink
     )
 
 {-| Small view helpers shared by more than one of the `View.*` section modules:
 the `ViewContext` record threaded through every section, the proposal-count /
 latest-id lookups, the "(n pending) · withdraw" hint, the bordered-input
-attributes, and the plain placeholder line.
+attributes, the plain placeholder line, and the two glossary-tooltip helpers
+that pair a label with its `Copy.Terms` gloss.
 -}
 
 import Copy
+import Copy.Terms as Terms
 import Element exposing (Element, el, none, spacing, text, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
+import Html.Attributes
 import Kind
 import Roll exposing (Stone(..))
 import Time
@@ -42,6 +48,39 @@ type alias ViewContext =
 placeholder : String -> Element msg
 placeholder label =
     el [ Font.size 13, Font.color Ui.inkSoft ] (text label)
+
+
+{-| A section-card title carrying a native tooltip with its glossary gloss.
+`label` is the card heading; `termKey` is the `Copy.Terms` name to look the gloss
+up by (they differ where the card is plural, e.g. "Stones" / "Stone").
+-}
+glossaryTitle : String -> String -> Element msg
+glossaryTitle label termKey =
+    Ui.withTip (Terms.termShort termKey) (Ui.sectionTitle label)
+
+
+{-| Wrap an inline label or button in a native tooltip for a glossary term,
+looked up by name. An unknown name adds no tooltip. Shrink-wraps, so it is for
+an element that is already its own size; for a full-width form field, put
+`tipAttrs` on the input instead so its width is untouched.
+-}
+tip : String -> Element msg -> Element msg
+tip termKey child =
+    Ui.withTip (Terms.termShort termKey) child
+
+
+{-| The `title`-attribute form of `tip`, to drop straight into an input's
+attribute list so the tooltip covers the field without a wrapping element. Empty
+list for an unknown term.
+-}
+tipAttrs : String -> List (Element.Attribute msg)
+tipAttrs termKey =
+    case Terms.termShort termKey of
+        "" ->
+            []
+
+        gloss ->
+            [ Element.htmlAttribute (Html.Attributes.title gloss) ]
 
 
 inputAttrs : List (Element.Attribute msg)

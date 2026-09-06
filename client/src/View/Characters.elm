@@ -19,10 +19,13 @@ import View.Helpers
         ( ViewContext
         , characterLabel
         , countProposals
+        , glossaryTitle
         , inputAttrs
         , latestProposalId
         , pendingHint
         , placeholder
+        , tip
+        , tipAttrs
         )
 
 
@@ -33,7 +36,7 @@ type alias Props =
 view : ViewContext -> Props -> GameState -> Element Msg
 view ctx props gs =
     Ui.card
-        [ Ui.sectionTitle Copy.charactersTitle
+        [ glossaryTitle Copy.charactersTitle "Aspect"
         , let
             selected =
                 case List.filter (\c -> c.slot == props.selectedSlot) gs.characters of
@@ -109,12 +112,12 @@ characterSheet facilitator myId gs ch =
         ]
         [ ownerRow facilitator mine ch
         , boonsBlock facilitator mine ch (committedBoonsForSlot ch.slot gs.committedBoons) pendingPledges pendingPledgeId
-        , field editable ch NameField "Name" ch.name
-        , field editable ch NotableFeaturesField Copy.notableFeaturesLabel ch.notableFeatures
+        , field editable ch NameField "" "Name" ch.name
+        , field editable ch NotableFeaturesField "" Copy.notableFeaturesLabel ch.notableFeatures
         , aspectField editable ch gs.untether Archetype ArchetypeField ch.archetype
         , aspectField editable ch gs.untether Desire DesireField ch.desire
         , aspectField editable ch gs.untether Quest QuestField ch.quest
-        , field editable ch ConditionField Copy.conditionLabel ch.condition
+        , field editable ch ConditionField "Condition" Copy.conditionLabel ch.condition
         , notesField editable ch
         ]
 
@@ -156,7 +159,7 @@ aspectField editable ch untether aspect fieldTag value =
                 []
     in
     Element.column [ spacing Ui.xs, width fill ]
-        (field editable ch fieldTag (aspectLabel aspect) value :: extras)
+        (field editable ch fieldTag (aspectLabel aspect) (aspectLabel aspect) value :: extras)
 
 
 {-| Who holds this sheet, and the claim / release control. Players claim an
@@ -195,11 +198,15 @@ ownerRow facilitator mine ch =
         )
 
 
-field : Bool -> CharacterSheet -> CharacterField -> String -> String -> Element Msg
-field editable ch fieldTag label value =
+{-| A labelled sheet field. `tipKey` names the glossary term whose gloss shows as
+a native tooltip over the field; `""` for a field that is not game vocabulary
+("Name", "Notes").
+-}
+field : Bool -> CharacterSheet -> CharacterField -> String -> String -> String -> Element Msg
+field editable ch fieldTag tipKey label value =
     if editable then
         Input.text
-            (inputAttrs ++ [ Ui.onBlur (CharacterFieldBlur ch.slot) ])
+            (inputAttrs ++ tipAttrs tipKey ++ [ Ui.onBlur (CharacterFieldBlur ch.slot) ])
             { onChange = CharacterFieldInput ch.slot fieldTag
             , text = value
             , placeholder = Nothing
@@ -207,7 +214,7 @@ field editable ch fieldTag label value =
             }
 
     else
-        readOnlyField label value
+        readOnlyField tipKey label value
 
 
 notesField : Bool -> CharacterSheet -> Element Msg
@@ -223,12 +230,12 @@ notesField editable ch =
             }
 
     else
-        readOnlyField "Notes" ch.notes
+        readOnlyField "" "Notes" ch.notes
 
 
-readOnlyField : String -> String -> Element msg
-readOnlyField label value =
-    Element.column [ spacing Ui.xs, width fill ]
+readOnlyField : String -> String -> String -> Element msg
+readOnlyField tipKey label value =
+    Element.column (spacing Ui.xs :: width fill :: tipAttrs tipKey)
         [ el [ Font.size 11, Font.color Ui.inkSoft ] (text label)
         , Element.paragraph
             (inputAttrs ++ [ Font.color Ui.inkSoft ])
@@ -290,7 +297,7 @@ pledgeControls : Bool -> Int -> Maybe String -> List (Element Msg)
 pledgeControls mine pending pendingId =
     if mine then
         -- "Highlight" is the player-facing name for pledging a boon to the roll.
-        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.highlight)
+        [ tip "Highlight" (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.highlight))
         , Ui.ghostButton { onPress = Just CommitBoonDecrement, label = "−" }
         , Ui.ghostButton { onPress = Just CommitBoonIncrement, label = "+" }
         ]

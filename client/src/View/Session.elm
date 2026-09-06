@@ -14,7 +14,7 @@ import Format
 import Time
 import Types exposing (..)
 import Ui
-import View.Helpers exposing (ViewContext, characterLabel, inputAttrs, placeholder, stoneChip)
+import View.Helpers exposing (ViewContext, characterLabel, glossaryTitle, inputAttrs, placeholder, stoneChip, tip)
 
 
 type alias Props =
@@ -27,7 +27,7 @@ type alias Props =
 view : ViewContext -> Props -> GameState -> Element Msg
 view ctx props gs =
     Ui.card
-        [ Ui.sectionTitle Copy.sessionTitle
+        [ glossaryTitle Copy.sessionTitle "Session"
         , case gs.session of
             Just s ->
                 Element.column [ spacing Ui.sm, width fill ]
@@ -40,7 +40,8 @@ view ctx props gs =
                             , text s.goal
                             ]
                     , Element.wrappedRow [ spacing Ui.xs, Element.centerY ]
-                        (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.sessionPool)
+                        (tip "Session pool"
+                            (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.sessionPool))
                             :: List.map stoneChip s.pool
                         )
                     , if s.carriedBanes > 0 then

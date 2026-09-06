@@ -32,6 +32,7 @@ module Ui exposing
     , speakerColor
     , stoneChip
     , tab
+    , withTip
     , xl
     , xs
     )
@@ -48,6 +49,7 @@ import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
 import Html exposing (Html)
+import Html.Attributes
 import Html.Events
 import Json.Decode as Decode
 import Set exposing (Set)
@@ -80,6 +82,23 @@ onlyWhen cond elements =
 
     else
         []
+
+
+{-| Attach a native browser tooltip (the HTML `title` attribute) to an element,
+so hovering a game term shows its short gloss. An empty string adds nothing, so a
+missing glossary entry degrades to no tooltip. Hover-only — the "How to play"
+card is the path for touch.
+
+It shrink-wraps, so it is for an inline label or a button; a full-width form
+field takes the `title` attribute directly instead, to leave its width alone.
+-}
+withTip : String -> Element msg -> Element msg
+withTip tipText child =
+    if tipText == "" then
+        child
+
+    else
+        el [ Element.htmlAttribute (Html.Attributes.title tipText) ] child
 
 
 

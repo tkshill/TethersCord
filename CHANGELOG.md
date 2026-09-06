@@ -52,6 +52,18 @@ version yet, so headings are dates.
   hint — Add boon, Highlight, the once-per-session abilities, Suggest Compel, and
   Accept Compel — and pulls the proposer's most recent proposal of that kind.
 
+### Added
+
+- **Glossary terms and in-place tooltips** (roadmap section 21, steps 2–3).
+  `client/src/Copy/Terms.elm` holds the game's ~30 player-facing terms, each
+  with a one-line gloss and a two-to-three-sentence definition. `Ui.withTip`
+  attaches a native browser tooltip (the HTML `title` attribute) to an element;
+  the card titles Session / Stones / Characters, the aspect and Condition
+  fields, "Highlight", "Session pool", "Floating boons", the open-overcome line,
+  and the once-per-session / compel move buttons now carry the matching gloss on
+  hover. Hover-only for now — the "How to play" card (step 4) is the path for
+  touch.
+
 ### Changed
 
 - **Player-facing copy pulled into one `client/src/Copy.elm`** (roadmap section
