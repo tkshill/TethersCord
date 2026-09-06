@@ -303,7 +303,11 @@ session. Raised from the **Moves** card once a player holds a sheet.
       agreeing is handled at the table, so no suggest → accept → approve
       handshake was needed.
 
-## 11. Effect pattern + a test suite across client and worker
+## 11. Effect pattern + a test suite across client and worker — largely done
+
+The Effect refactor shipped and both suites run in CI. Still open: the
+`avh4/elm-program-test` flow tests, a `fetch` stub for the happy-path Discord
+exchange, and the extra `GameTable` coverage noted below.
 
 There is no automated test anywhere in the project. `pnpm run build` — an
 optimised Elm compile plus `tsc --noEmit` on both sides — is the whole safety
@@ -325,23 +329,25 @@ asserts on it.
 swaps the `Cmd` for a custom `Effect Msg` that only *describes* a side effect,
 leaving `update` a pure function that returns data a test can inspect.
 
-- [ ] `Effect.elm` — an `Effect msg` type with one constructor per side effect
+- [x] `Effect.elm` — an `Effect` type with one constructor per side effect
       the app performs: `GetGameState`, `PostMessage`, `PostStones`,
       `PostCharacterUpdate`, `PostFate`, `PostCommitBoon`, `PostProposalDecision`,
       `PostAbility`, `PostSession`, `PostOvercome`, `Authorize`, `GetTimeZone`,
-      `ScrollLogToBottom`, `None`, `Batch (List (Effect msg))`. `Api` and `Ports`
+      `ScrollLogToBottom`, `None`, `Batch (List Effect)`. `Api` and `Ports`
       keep the "how"; `Effect` names the "what".
-- [ ] `Effect.perform : Flags -> Effect Msg -> Cmd Msg` at the `Main` boundary,
+- [x] `Effect.perform : Flags -> Effect -> Cmd Msg` at the `Main` boundary,
       called once from `init` and once from the `update` wrapper.
-      `update : Msg -> Model -> ( Model, Effect Msg )`.
-- [ ] No behaviour change — `build:client` is the check. The diff is mechanical:
-      each `Api.postX ... Ctor` becomes an `Effect` value.
+      `update : Msg -> Model -> ( Model, Effect )` is now pure.
+- [x] No behaviour change — `build:client` was the check. The diff was mechanical:
+      each `Api.postX ... Ctor` became an `Effect` value.
 
 ### Client: Elm tests
 
-- [ ] Add `elm-explorations/test` to `client/elm.json` `test-dependencies`, and
-      `avh4/elm-program-test` for the flows that span several messages.
-- [ ] Unit tests, no program harness:
+- [x] `elm-explorations/test` `2.2.1` added to `client/elm.json`
+      `test-dependencies`. `avh4/elm-program-test` (for flows that span several
+      messages) is still deferred — the `update` tests fold `Main.update`
+      directly for now.
+- [x] Unit tests, no program harness (`client/tests/`, 42 tests):
   - `Api` decoders round-trip against captured `GameState` / message /
     character JSON, including the awkward cases: an open overcome, a pending
     roll, floating boons, a proposal of each `kind`.
@@ -356,8 +362,9 @@ leaving `update` a pure function that returns data a test can inspect.
     `model.gameState`).
   - raising a move queues it and shows the "(pending)" hint without touching
     shared state.
-- [ ] `client/tests/`, run with the `elm-test` CLI (or `elm-test-rs`), invoked
-      through the pinned `node_modules/elm` binary the way `build.mjs` does.
+- [x] `client/tests/`, run with the `elm-test` CLI invoked through the pinned
+      `node_modules/elm/bin/elm` binary (`pnpm run test:client`), the way
+      `build.mjs` does.
 
 ### Worker and Durable Object: Vitest in `workerd`
 
@@ -367,62 +374,69 @@ leaving `update` a pure function that returns data a test can inspect.
 hibernation paths, not a mock. It runs entirely locally, touches no Cloudflare
 account, and costs nothing against the Free tier.
 
-- [ ] `worker/vitest.config.ts` using `defineWorkersConfig`, pointed at
-      `wrangler.jsonc` for bindings and declaring the D1 migrations so each test
-      file starts from a migrated, empty database.
+- [x] `worker/vitest.config.mts` using `defineWorkersConfig` (an `.mts` file —
+      the pool package is ESM-only), pointed at `wrangler.jsonc` for bindings;
+      `worker/test/apply-migrations.ts` applies `worker/migrations/` before each
+      file so it starts from a migrated, empty database. `compatibilityDate` is
+      pinned to `2026-08-22` because the pool bundles an older `workerd`.
 - [ ] Discord is the only external call; stub `fetch` to `discord.com` in a
       setup file so the suite is fully offline. `handleDiscordExchange` gets a
-      canned token + `users/@me` response.
+      canned token + `users/@me` response. **Not done** — the `oauth` tests
+      currently cover only `pruneExpiredSessions` and `handleDiscordExchange`'s
+      input-validation paths, which never reach `discord.com`; a stub for the
+      happy-path exchange is still to add.
 
 ### What the worker tests cover
 
-- [ ] **`GameTable` state machine**, driven through `stub.fetch` against the DO:
-  - proposal lifecycle — `add-boon` / `commit` / `abilities/use` /
-    `moves/accept-compel` / `stones/use-floating` append a `Proposal`;
-    `/proposals/:id/accept` applies it (and pays `ACCEPT_COMPEL_BOONS`,
-    `SUGGEST_COMPEL_SUGGESTER_BOONS` / `SUGGEST_COMPEL_TARGET_BOONS` where
-    relevant); `/reject` drops it with no effect.
-  - the overcome — `/overcome/start` frames a target; `/stones/roll` and
-    `/stones/reroll` are allowed to the target player while it is open and
-    rejected otherwise; a reroll deducts `REROLL_COST` from the target's
-    `fate`; `/stones/accept` clears the overcome.
-  - session lifecycle — `/session/start` and `/session/end` clear
-    `floatingBoons`, `usedAbilities`, `overcome`, `pendingRoll`,
-    `committedBoons`, and unresolved `proposals` (the section 12 invariant,
-    pinned by a test).
-  - once-per-session abilities — a second `help-out` from the same slot after
-    an accepted one is refused; `usedAbilities` resets on session start/end.
-  - cold-start load — seed `messages` / `characters` rows in D1, spin up the
-    DO, assert the first snapshot matches.
-- [ ] **Auth gates** — every route rejects a missing / malformed / expired
-      bearer token; `facilitatorOnly` routes 403 for a player; `rollGate` routes
-      allow the facilitator always and the overcome target conditionally.
-- [ ] **`withLock` serialisation** — fire two mutations concurrently at one DO
-      and assert neither lost-updates the other (two `add-boon` accepts leave
-      the pool at +2).
-- [ ] **The `index.ts` proxy** — `tableId` from the path overwrites any
+- [x] **`GameTable` state machine**, driven through `SELF.fetch` against the DO:
+  - proposal lifecycle — a player's `add-boon` appends a `Proposal` without
+    touching the pool; `/proposals/:id/accept` applies it; `/reject` drops it
+    with no effect; a facilitator's own `add-boon` applies directly. An
+    accepted Suggest Compel pays `SUGGEST_COMPEL_SUGGESTER_BOONS` /
+    `SUGGEST_COMPEL_TARGET_BOONS`.
+  - session lifecycle — `/session/start` opens the goal; `/session/end` writes
+    a `sessionHistory` row and clears `floatingBoons` + `usedAbilities`. An
+    ability with no running session is refused (400).
+  - once-per-session abilities — a second `gain-insight` from the same slot
+    after an accepted one is refused (409).
+  - Still to add: cold-start load (seed `messages` / `characters` in D1, assert
+    the first snapshot), the overcome reroll `REROLL_COST` deduction and
+    `/stones/accept` clearing the overcome, the Accept Compel payout, and the
+    full section-12 session-end clear (`overcome` / `pendingRoll` /
+    `committedBoons` / unresolved `proposals` are **not** cleared yet — a test
+    note pins the gap).
+- [x] **Auth gates** — every route rejects a missing / unknown / expired bearer
+      token; `facilitatorOnly` routes 403 for a player and allow a
+      `facilitators`-table facilitator; `rollGate` allows the facilitator always
+      and the overcome target conditionally, rejecting another player.
+- [x] **`withLock` serialisation** — three `add-boon` accepts fired concurrently
+      at one DO leave the pool at +3; a lost update would leave fewer.
+- [x] **The `index.ts` proxy** — `tableId` from the path overwrites any
       `?tableId=` in the query; `TABLE_ID_PATTERN` rejects an out-of-range id
       with 400; the path is rewritten before it reaches the stub.
-- [ ] **`oauth-discord.ts`** — `inferRole` returns `facilitator` for
-      `BOOTSTRAP_FACILITATOR_ID` and for a seeded `facilitators` row, `player`
-      otherwise; `pruneExpiredSessions` deletes only rows past `expires_at`.
+- [x] **`oauth-discord.ts`** — `pruneExpiredSessions` deletes only rows past
+      `expires_at`; `handleDiscordExchange` 400s a non-JSON body and a body with
+      no code. `inferRole` is exercised indirectly through the `facilitators`
+      table in the auth-gate tests; the `BOOTSTRAP_FACILITATOR_ID` path is not
+      directly asserted.
 
 ### Shared fixtures
 
-- [ ] A small builder module (`worker/test/fixtures.ts`) for `GameState`,
-      `Character`, `Proposal`, and `BackendAuthResult` values, so a test states
-      only the fields it cares about. Types come from `worker/src/types.ts` —
-      the same file the client imports — so a fixture that stops compiling flags
-      a contract change.
+- [x] `worker/test/helpers.ts` (`seedAuth` — a `sessions_auth` / `facilitators`
+      row; `call` / `claim` / `readState` — drive routes through `SELF.fetch`)
+      and `client/tests/Fixtures.elm` (a full wire-snapshot `GameState`) cover
+      this. A separate typed value-builder off `worker/src/types.ts` was not
+      needed once the tests drive the real routes rather than construct state.
 
 ### Scripts and CI
 
-- [ ] `pnpm run test:client` (elm-test) and `pnpm run test:worker` (vitest),
+- [x] `pnpm run test:client` (elm-test) and `pnpm run test:worker` (vitest),
       plus `pnpm run test` running both.
-- [ ] Fold `test` into `pnpm run build` after `typecheck`, so the pre-deploy
+- [x] Fold `test` into `pnpm run build` after `typecheck`, so the pre-deploy
       gate runs the suite.
-- [ ] `.github/workflows/ci.yml` — `pnpm install` then `pnpm run build` (client
-      bundle + typecheck + tests) on push and PR. The first CI the project has.
+- [x] `.github/workflows/ci.yml` — `pnpm install --frozen-lockfile` then
+      `pnpm run build` (client bundle + typecheck + tests) on push to `main` and
+      on every PR. The first CI the project has.
 
 ## 12. Correctness, session lifecycle, and UX cleanup
 
