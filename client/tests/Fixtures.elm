@@ -11,6 +11,7 @@ module Fixtures exposing
 value; a test overrides only the fields it cares about with record update.
 -}
 
+import Dict
 import Time
 import Types
     exposing
@@ -90,11 +91,14 @@ model =
     , gameState = Nothing
     , newMessage = ""
     , status = "Authorizing with Discord…"
+    , error = Nothing
+    , confirming = Nothing
     , editingSlot = Nothing
     , selectedSlot = 0
     , logAtBottom = True
     , newSessionGoal = ""
-    , proposalDraft = ""
+    , goalEdit = ""
+    , proposalDrafts = Dict.empty
     , connection = Connected
     , gameStateAttempts = 0
     , timeZone = Time.utc

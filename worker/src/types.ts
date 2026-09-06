@@ -191,6 +191,10 @@ export type StartSessionInput = {
   goal: string;
 };
 
+export type UpdateSessionGoalInput = {
+  goal: string;
+};
+
 export type StartOvercomeInput = {
   slot: number;
 };

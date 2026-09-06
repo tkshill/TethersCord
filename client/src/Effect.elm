@@ -32,6 +32,7 @@ type Effect
     | GetTimeZone
     | ScrollLogToBottom
     | RetryGetGameStateIn Float
+    | DismissErrorIn Float
       -- Reads
     | GetGameState Auth
       -- Mutations (204-only; the result arrives on the socket)
@@ -44,11 +45,13 @@ type Effect
     | PostClaimSlot Auth Int
     | PostReleaseSlot Auth Int
     | PostProposalDecision Auth String String (Maybe String)
+    | PostWithdrawProposal Auth String
     | PostUseAbility Auth String
     | PostSuggestCompel Auth Int
     | PostAcceptCompelMove Auth
     | PostUseFloatingBoon Auth String
     | PostStartSession Auth String
+    | PostSessionGoal Auth String
     | PostEndSession Auth
     | PostStartOvercome Auth Int
     | PostCancelOvercome Auth
@@ -78,6 +81,9 @@ perform flags effect =
         RetryGetGameStateIn ms ->
             Process.sleep ms |> Task.perform (\_ -> RetryGetGameState)
 
+        DismissErrorIn ms ->
+            Process.sleep ms |> Task.perform (\_ -> DismissError)
+
         GetGameState auth ->
             Api.getGameState flags auth GotGameState
 
@@ -106,7 +112,10 @@ perform flags effect =
             Api.postReleaseSlot flags auth slot SlotClaimed
 
         PostProposalDecision auth id decision context ->
-            Api.postProposalDecision flags auth id decision context ProposalResolved
+            Api.postProposalDecision flags auth id decision context (ProposalResolved id)
+
+        PostWithdrawProposal auth id ->
+            Api.postWithdrawProposal flags auth id (ProposalResolved id)
 
         PostUseAbility auth kind ->
             Api.postUseAbility flags auth kind MoveRaised
@@ -122,6 +131,9 @@ perform flags effect =
 
         PostStartSession auth goal ->
             Api.postStartSession flags auth goal SessionUpdated
+
+        PostSessionGoal auth goal ->
+            Api.postSessionGoal flags auth goal SessionUpdated
 
         PostEndSession auth ->
             Api.postEndSession flags auth SessionUpdated

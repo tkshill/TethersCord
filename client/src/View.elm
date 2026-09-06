@@ -51,11 +51,12 @@ view model =
         [ header model
         , connectionNote model.connection
         , Ui.banner model.status
-        , sessionPanel facilitator model.timeZone model.newSessionGoal model.gameState
-        , rollPanel facilitator myId model.proposalDraft model.gameState
+        , Ui.errorNote model.error
+        , sessionPanel facilitator model.confirming model.newSessionGoal model.goalEdit model.timeZone model.gameState
+        , rollPanel facilitator myId model.proposalDrafts model.gameState
         , movesCard myId model.gameState
         , characterSheets facilitator myId model.selectedSlot model.gameState
-        , messageLog facilitator model.timeZone model.gameState
+        , messageLog facilitator model.confirming model.timeZone model.gameState
         , composer model
         ]
 
@@ -116,23 +117,34 @@ header model =
 -- SESSION
 
 
-sessionPanel : Bool -> Time.Zone -> String -> Maybe GameState -> Element Msg
-sessionPanel facilitator zone draftGoal maybeGs =
+sessionPanel : Bool -> Maybe String -> String -> String -> Time.Zone -> Maybe GameState -> Element Msg
+sessionPanel facilitator confirming draftGoal goalEdit zone maybeGs =
     Ui.card
         [ Ui.sectionTitle "Session"
         , case maybeGs |> Maybe.andThen .session of
             Just s ->
                 Element.column [ spacing Ui.sm, width fill ]
-                    [ Element.paragraph [ Font.size 13 ]
-                        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Goal  ")
-                        , text s.goal
-                        ]
+                    [ if facilitator then
+                        goalEditor confirming goalEdit s.goal
+
+                      else
+                        Element.paragraph [ Font.size 13 ]
+                            [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Goal  ")
+                            , text s.goal
+                            ]
                     , Element.wrappedRow [ spacing Ui.xs, Element.centerY ]
                         (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Session pool")
                             :: List.map stoneChip s.pool
                         )
                     , if facilitator then
-                        Ui.ghostButton { onPress = Just EndSession, label = "End session" }
+                        Ui.confirmButton
+                            { armed = confirming == Just "end-session"
+                            , idle = "End session"
+                            , confirm = "End session"
+                            , onArm = RequestConfirm "end-session"
+                            , onConfirm = EndSession
+                            , onCancel = CancelConfirm
+                            }
 
                       else
                         none
@@ -155,6 +167,45 @@ sessionPanel facilitator zone draftGoal maybeGs =
                     placeholder "No session running."
         , sessionHistoryView zone
             (maybeGs |> Maybe.map .sessionHistory |> Maybe.withDefault [])
+        ]
+
+
+{-| The facilitator's mid-session goal field. Shows the running goal until it is
+edited; the confirm-gated Save writes it back. An empty or unchanged field
+leaves the goal alone. -}
+goalEditor : Maybe String -> String -> String -> Element Msg
+goalEditor confirming goalEdit currentGoal =
+    let
+        shown =
+            if String.trim goalEdit == "" then
+                currentGoal
+
+            else
+                goalEdit
+
+        changed =
+            String.trim shown /= "" && shown /= currentGoal
+    in
+    Element.row [ spacing Ui.sm, width fill ]
+        [ Input.text
+            (inputAttrs ++ [ width fill ])
+            { onChange = SessionGoalEditChanged
+            , text = shown
+            , placeholder = Nothing
+            , label = Input.labelHidden "Edit session goal"
+            }
+        , if changed then
+            Ui.confirmButton
+                { armed = confirming == Just "edit-goal"
+                , idle = "Save goal"
+                , confirm = "Save goal"
+                , onArm = RequestConfirm "edit-goal"
+                , onConfirm = SaveSessionGoal
+                , onCancel = CancelConfirm
+                }
+
+          else
+            none
         ]
 
 
@@ -214,8 +265,8 @@ verdictColor outcome =
 -- STONES
 
 
-rollPanel : Bool -> Maybe String -> String -> Maybe GameState -> Element Msg
-rollPanel facilitator myId draft maybeGs =
+rollPanel : Bool -> Maybe String -> Dict String String -> Maybe GameState -> Element Msg
+rollPanel facilitator myId drafts maybeGs =
     Ui.card
         [ Ui.sectionTitle "Stones"
         , case maybeGs of
@@ -286,7 +337,7 @@ rollPanel facilitator myId draft maybeGs =
                         Nothing ->
                             Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
                                 (Ui.ghostButton { onPress = Just AddBoon, label = "Add boon" }
-                                    :: pendingHint myAddBoons
+                                    :: pendingHint myAddBoons (latestProposalId myId "add-boon" gs.proposals)
                                     ++ onlyWhen canRoll
                                         [ Ui.primaryButton { onPress = Just RollStones, label = "Roll" } ]
                                 )
@@ -313,7 +364,7 @@ rollPanel facilitator myId draft maybeGs =
                                             [ Ui.primaryButton { onPress = Just AcceptRoll, label = "Accept" } ]
                                     )
                                 ]
-                    , proposalsPanel facilitator draft gs.characters gs.proposals
+                    , proposalsPanel facilitator drafts gs.characters gs.proposals
                     ]
         ]
 
@@ -396,25 +447,29 @@ characterAtSlot slot characters =
 
 
 {-| Facilitator's queue of player-initiated requests awaiting a decision. Hidden
-for players and when empty. `draft` is the context note typed for whichever
-Add a Detail / Gain Insight is being approved. -}
-proposalsPanel : Bool -> String -> List CharacterSheet -> List Proposal -> Element Msg
-proposalsPanel facilitator draft characters proposals =
+for players and when empty. `drafts` holds the context note typed for each
+Add a Detail / Gain Insight, keyed by proposal id so the rows do not share one
+field. -}
+proposalsPanel : Bool -> Dict String String -> List CharacterSheet -> List Proposal -> Element Msg
+proposalsPanel facilitator drafts characters proposals =
     if not facilitator || List.isEmpty proposals then
         none
 
     else
         Element.column [ spacing Ui.sm, width fill ]
             (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Proposals")
-                :: List.map (proposalRow draft characters) proposals
+                :: List.map (proposalRow drafts characters) proposals
             )
 
 
-proposalRow : String -> List CharacterSheet -> Proposal -> Element Msg
-proposalRow draft characters p =
+proposalRow : Dict String String -> List CharacterSheet -> Proposal -> Element Msg
+proposalRow drafts characters p =
     let
         needsContext =
             p.kind == "add-detail" || p.kind == "gain-insight"
+
+        draft =
+            Dict.get p.id drafts |> Maybe.withDefault ""
 
         acceptEnabled =
             not needsContext || String.trim draft /= ""
@@ -442,7 +497,7 @@ proposalRow draft characters p =
         , if needsContext then
             Input.text
                 (inputAttrs ++ [ width fill ])
-                { onChange = ProposalDraftChanged
+                { onChange = ProposalDraftChanged p.id
                 , text = draft
                 , placeholder = Just (Input.placeholder [] (text "Context this boon represents…"))
                 , label = Input.labelHidden "Floating boon context"
@@ -504,17 +559,55 @@ countProposals myId kind proposals =
             0
 
 
-{-| A muted "(n pending)" note for the proposer, or nothing when there are none.
--}
-pendingHint : Int -> List (Element msg)
-pendingHint n =
+{-| The id of the proposer's most recently queued proposal of `kind`, if any.
+This is what the "withdraw" link beside a "(pending)" hint pulls back — the
+latest matching one, since abilities and Add boon queue at most one and a pledge
+is applied as a net delta. -}
+latestProposalId : Maybe String -> String -> List Proposal -> Maybe String
+latestProposalId myId kind proposals =
+    myId
+        |> Maybe.andThen
+            (\id ->
+                proposals
+                    |> List.filter (\p -> p.proposerId == id && p.kind == kind)
+                    |> List.reverse
+                    |> List.head
+            )
+        |> Maybe.map .id
+
+
+{-| A muted "(n pending)" note for the proposer, with a "withdraw" link for the
+proposal it refers to. Nothing when there are none. -}
+pendingHint : Int -> Maybe String -> List (Element Msg)
+pendingHint n maybeId =
     if n <= 0 then
         []
 
     else
-        [ el [ Font.size 11, Font.color Ui.inkSoft ]
-            (text ("(" ++ String.fromInt n ++ " pending)"))
+        [ Element.row [ spacing Ui.xs, Element.centerY ]
+            [ el [ Font.size 11, Font.color Ui.inkSoft ]
+                (text ("(" ++ String.fromInt n ++ " pending)"))
+            , withdrawLink maybeId
+            ]
         ]
+
+
+{-| A small "withdraw" link for whichever pending proposal a hint refers to.
+Renders nothing when there is no id to act on. -}
+withdrawLink : Maybe String -> Element Msg
+withdrawLink maybeId =
+    case maybeId of
+        Just pid ->
+            Input.button
+                [ Font.size 11
+                , Font.color Ui.inkSoft
+                , Font.underline
+                , Element.mouseOver [ Font.color Ui.accent ]
+                ]
+                { onPress = Just (WithdrawProposal pid), label = text "withdraw" }
+
+        Nothing ->
+            none
 
 
 {-| The given elements when `cond` holds, an empty list otherwise. Used to keep
@@ -564,13 +657,20 @@ movesCard myId maybeGs =
                 [ Ui.sectionTitle "Moves"
                 , abilityRow myId gs ch
                 , suggestCompelRow myId gs ch
-                , Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
-                    [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Any time")
-                    , moveButton
-                        (countProposals myId "accept-compel" gs.proposals > 0)
-                        "Accept Compel"
-                        AcceptCompelMove
-                    ]
+                , let
+                    pendingId =
+                        latestProposalId myId "accept-compel" gs.proposals
+                  in
+                  Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
+                    (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Any time")
+                        :: moveButton (pendingId /= Nothing) "Accept Compel" AcceptCompelMove
+                        :: (if pendingId == Nothing then
+                                []
+
+                            else
+                                [ withdrawLink pendingId ]
+                           )
+                    )
                 ]
 
 
@@ -597,8 +697,11 @@ abilityRow myId gs ch =
                     used =
                         abilityUsed ch.slot kind gs.usedAbilities
 
+                    pendingId =
+                        latestProposalId myId kind gs.proposals
+
                     pending =
-                        countProposals myId kind gs.proposals > 0
+                        pendingId /= Nothing
 
                     suffix =
                         if used then
@@ -609,8 +712,15 @@ abilityRow myId gs ch =
 
                         else
                             ""
+
+                    btn =
+                        moveButton (used || pending || not available) (label ++ suffix) (UseAbility kind)
                 in
-                moveButton (used || pending || not available) (label ++ suffix) (UseAbility kind)
+                if pending then
+                    Element.row [ spacing Ui.xs, Element.centerY ] [ btn, withdrawLink pendingId ]
+
+                else
+                    btn
         in
         Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
             [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Once per session")
@@ -633,8 +743,11 @@ suggestCompelRow myId gs ch =
             used =
                 abilityUsed ch.slot "suggest-compel" gs.usedAbilities
 
+            pendingId =
+                latestProposalId myId "suggest-compel" gs.proposals
+
             pending =
-                countProposals myId "suggest-compel" gs.proposals > 0
+                pendingId /= Nothing
 
             targets =
                 gs.characters
@@ -652,8 +765,11 @@ suggestCompelRow myId gs ch =
         in
         Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
             (el [ Font.size 11, Font.color Ui.inkSoft ] (text ("Suggest Compel" ++ suffix))
-                :: (if used || pending then
+                :: (if used then
                         []
+
+                    else if pending then
+                        [ withdrawLink pendingId ]
 
                     else if List.isEmpty targets then
                         [ el [ Font.size 12, Font.color Ui.inkSoft ] (text "no other players") ]
@@ -765,6 +881,13 @@ characterSheet facilitator myId gs ch =
 
             else
                 0
+
+        pendingPledgeId =
+            if mine then
+                latestProposalId myId "pledge" gs.proposals
+
+            else
+                Nothing
     in
     Element.column
         [ spacing Ui.sm
@@ -775,7 +898,7 @@ characterSheet facilitator myId gs ch =
         , Border.rounded 6
         ]
         [ ownerRow facilitator mine ch
-        , boonsBlock facilitator mine ch (committedBoonsForSlot ch.slot gs.committedBoons) pendingPledges
+        , boonsBlock facilitator mine ch (committedBoonsForSlot ch.slot gs.committedBoons) pendingPledges pendingPledgeId
         , field editable ch NameField "Name" ch.name
         , field editable ch NotableFeaturesField "Notable features" ch.notableFeatures
         , field editable ch ArchetypeField "Archetype" ch.archetype
@@ -874,13 +997,13 @@ spendable stones alongside the current roll. The boons show as circles; the ones
 pledged into the next roll carry a centre dot rather than a separate count. The
 facilitator gets a Grant `+` / `−`; the sheet's owner gets a Pledge `+` / `−`
 and a note of any unresolved pledge proposals. -}
-boonsBlock : Bool -> Bool -> CharacterSheet -> Int -> Int -> Element Msg
-boonsBlock facilitator mine ch pledged pending =
+boonsBlock : Bool -> Bool -> CharacterSheet -> Int -> Int -> Maybe String -> Element Msg
+boonsBlock facilitator mine ch pledged pending pendingId =
     Element.column [ spacing Ui.xs, width fill ]
         [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Boons")
         , boonCircles ch.fate pledged
         , Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
-            (grantControls facilitator ch ++ pledgeControls mine pending)
+            (grantControls facilitator ch ++ pledgeControls mine pending pendingId)
         ]
 
 
@@ -910,15 +1033,15 @@ grantControls facilitator ch =
         []
 
 
-pledgeControls : Bool -> Int -> List (Element Msg)
-pledgeControls mine pending =
+pledgeControls : Bool -> Int -> Maybe String -> List (Element Msg)
+pledgeControls mine pending pendingId =
     if mine then
         -- "Highlight" is the player-facing name for pledging a boon to the roll.
         [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Highlight")
         , Ui.ghostButton { onPress = Just CommitBoonDecrement, label = "−" }
         , Ui.ghostButton { onPress = Just CommitBoonIncrement, label = "+" }
         ]
-            ++ pendingHint pending
+            ++ pendingHint pending pendingId
 
     else
         []
@@ -943,10 +1066,10 @@ inputAttrs =
 -- LOG
 
 
-messageLog : Bool -> Time.Zone -> Maybe GameState -> Element Msg
-messageLog facilitator zone maybeGs =
+messageLog : Bool -> Maybe String -> Time.Zone -> Maybe GameState -> Element Msg
+messageLog facilitator confirming zone maybeGs =
     Ui.card
-        [ logHeader facilitator maybeGs
+        [ logHeader facilitator confirming maybeGs
         , case maybeGs of
             Nothing ->
                 placeholder "Loading messages…"
@@ -968,8 +1091,8 @@ messageLog facilitator zone maybeGs =
         ]
 
 
-logHeader : Bool -> Maybe GameState -> Element Msg
-logHeader facilitator maybeGs =
+logHeader : Bool -> Maybe String -> Maybe GameState -> Element Msg
+logHeader facilitator confirming maybeGs =
     let
         hasMessages =
             case maybeGs of
@@ -983,7 +1106,15 @@ logHeader facilitator maybeGs =
         (Ui.sectionTitle "Log"
             :: (if facilitator && hasMessages then
                     [ el [ Element.alignRight ]
-                        (Ui.ghostButton { onPress = Just ClearLog, label = "Clear log" })
+                        (Ui.confirmButton
+                            { armed = confirming == Just "clear-log"
+                            , idle = "Clear log"
+                            , confirm = "Clear log"
+                            , onArm = RequestConfirm "clear-log"
+                            , onConfirm = ClearLog
+                            , onCancel = CancelConfirm
+                            }
+                        )
                     ]
 
                 else

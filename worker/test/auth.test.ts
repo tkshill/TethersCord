@@ -53,6 +53,29 @@ describe("route auth", () => {
       expect(res.status).toBe(403);
     });
 
+    it("403s a player editing the session goal, 204s a facilitator", async () => {
+      const table = "t-session-goal";
+      await seedAuth("goal-fac", { facilitator: true });
+      await seedAuth("goal-player");
+
+      await call(table, "/session/start", {
+        token: "goal-fac",
+        body: { goal: "start" },
+      });
+
+      const byPlayer = await call(table, "/session/goal", {
+        token: "goal-player",
+        body: { goal: "hijack" },
+      });
+      expect(byPlayer.status).toBe(403);
+
+      const byFac = await call(table, "/session/goal", {
+        token: "goal-fac",
+        body: { goal: "revised" },
+      });
+      expect(byFac.status).toBe(204);
+    });
+
     it("lets a facilitator (via the facilitators table) clear the log", async () => {
       await seedAuth("fac-clear", { facilitator: true });
       const res = await call("t-facclear", "/messages/clear", {

@@ -12,12 +12,14 @@ module Api exposing
     , postMessage
     , postProposalDecision
     , postReleaseSlot
+    , postSessionGoal
     , postStartOvercome
     , postStartSession
     , postStones
     , postSuggestCompel
     , postUseAbility
     , postUseFloatingBoon
+    , postWithdrawProposal
     )
 
 {-| Every call the client makes to the Worker backend, plus the JSON decoders
@@ -209,6 +211,22 @@ postProposalDecision flags auth proposalId decision context toMsg =
         }
 
 
+{-| A proposer pulls back their own still-pending proposal. Gated on the caller
+being the proposer, not the facilitator.
+-}
+postWithdrawProposal : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postWithdrawProposal flags auth proposalId toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth
+        , url = tableUrl flags ("/proposals/" ++ proposalId ++ "/withdraw")
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
 {-| Raise a once-per-session ability: `kind` is `"help-out"`, `"add-detail"`, or
 `"gain-insight"`. Queued for the facilitator like any other proposal.
 -}
@@ -288,6 +306,21 @@ postStartSession flags auth goal toMsg =
         { method = "POST"
         , headers = authHeaders auth ++ [ jsonContentType ]
         , url = tableUrl flags "/session/start"
+        , body = Http.jsonBody (Encode.object [ ( "goal", Encode.string goal ) ])
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+{-| Facilitator-only: rewrite the running session's goal.
+-}
+postSessionGoal : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postSessionGoal flags auth goal toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth ++ [ jsonContentType ]
+        , url = tableUrl flags "/session/goal"
         , body = Http.jsonBody (Encode.object [ ( "goal", Encode.string goal ) ])
         , expect = Http.expectWhatever toMsg
         , timeout = Nothing

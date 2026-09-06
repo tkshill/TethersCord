@@ -438,52 +438,63 @@ account, and costs nothing against the Free tier.
       `pnpm run build` (client bundle + typecheck + tests) on push to `main` and
       on every PR. The first CI the project has.
 
-## 12. Correctness, session lifecycle, and UX cleanup
+## 12. Correctness, session lifecycle, and UX cleanup — done
 
 Promoted ahead of the efficiency work. The findings from the September structure
 audit, plus a firmer set of rules for the session lifecycle.
 
 ### Session lifecycle
 
-- [ ] **Starting and ending a session are facilitator-only.** Already enforced —
+- [x] **Starting and ending a session are facilitator-only.** Enforced —
       `facilitatorOnly` guards `/session/start` and `/session/end`, and the
       buttons render only for the facilitator in `View`. Recorded here as an
-      invariant to preserve as the surrounding code changes.
-- [ ] **Ending a session clears every unresolved pending state.**
-      `handleEndSession` already drops `floatingBoons` and `usedAbilities`; it
-      must also clear `overcome`, `pendingRoll`, `committedBoons`, and any
-      `proposals` that were never accepted or rejected — an overcome roll or a
-      move proposal left open when the session ends is discarded, and unspent
-      floating boons disappear. Nothing from a closed session carries into the
-      next one. (`handleStartSession` should clear `committedBoons` and
-      `proposals` as well, belt and braces.)
-- [ ] **The facilitator can edit the session goal at any time.** A new
-      facilitator-only `POST /session/goal` (`{ goal }`) updates the running
-      `game_sessions` row and `gameState.session.goal` and broadcasts. It
-      rewrites live shared state, so the control sits behind the confirmation
-      step below.
-- [ ] **Confirm destructive facilitator actions.** End session, Clear log, and
-      edit-goal each go behind a confirm step.
+      invariant to preserve as the surrounding code changes; pinned by an
+      `auth.test.ts` case.
+- [x] **Ending a session clears every unresolved pending state.**
+      `handleEndSession` and `handleStartSession` now null `overcome` /
+      `pendingRoll`, empty `committedBoons` / `proposals`, and (as before) drop
+      `floatingBoons` / `usedAbilities`. An overcome roll or a move proposal
+      left open when the session ends is discarded; nothing from a closed
+      session carries into the next one. Pinned by a `gameTable.test.ts` case
+      that seeds all six and asserts the clear.
+- [x] **The facilitator can edit the session goal at any time.**
+      `POST /session/goal` (`{ goal }`, `facilitatorOnly`) updates the running
+      `game_sessions` row and `gameState.session.goal`, logs `Goal updated`, and
+      broadcasts. The Session card shows an editable goal field for the
+      facilitator behind the confirm step below.
+- [x] **Confirm destructive facilitator actions.** End session, Clear log, and
+      edit-goal go behind a one-click arm/disarm step (`Ui.confirmButton`,
+      `Model.confirming`): the button becomes a danger-tinted confirm beside a
+      Cancel, and only the second click performs the action.
 
 ### Audit fixes
 
-- [ ] **Clean up a slot's pledges and proposals on claim / release.**
-      `handleClaimSlot` / `handleReleaseSlot` leave `committedBoons` and in-flight
-      proposals pointing at a slot the caller no longer owns; an accepted roll
-      then spends the wrong character's boons.
-- [ ] **Let a proposer withdraw their own proposal.** `POST
-      /proposals/:id/withdraw`, gated on `proposerId`, with a control beside the
-      "(pending)" hint. Today a mis-aimed Suggest Compel can only be undone by
-      the facilitator rejecting it.
-- [ ] **Guard `/stones/accept` on a `pendingRoll`.** Reject with 400 rather than
-      silently resetting the pool and clearing the proposal queue.
-- [ ] **Surface silently-dropped accepts.** When an accepted proposal's target
-      no longer exists, return an error and keep the proposal, rather than
-      removing it with no effect and no log line.
-- [ ] **Per-row context note.** The Add a Detail / Gain Insight note input is
-      bound to one shared `proposalDraft`; give each queued proposal its own.
-- [ ] **Status banner.** Separate transient errors from steady state, and
-      auto-dismiss the errors.
+- [x] **Clean up a slot's pledges and proposals on claim / release.**
+      `handleClaimSlot` / `handleReleaseSlot` run a shared
+      `clearSlotPendingState` over every slot whose owner changed, dropping that
+      slot's `committedBoons` entry and any proposal whose `slot` / `targetSlot`
+      is it, then persist — so a sheet changing hands can no longer leave an
+      accepted roll spending the wrong character's boons.
+- [x] **Let a proposer withdraw their own proposal.** `POST
+      /proposals/:id/withdraw`, gated on `proposerId` (not `facilitatorOnly`),
+      with a "withdraw" link beside every "(pending)" hint that pulls the
+      proposer's most recent proposal of that kind.
+- [x] **Guard `/stones/accept` on a `pendingRoll`.** `handleAcceptRoll` returns
+      400 when there is no roll, rather than silently resetting the pool and
+      clearing the proposal queue.
+- [x] **Surface silently-dropped accepts.** The `pledge` / `suggest-compel` /
+      `accept-compel` / `use-floating` accept arms return 409
+      (`proposalTargetGone`) and leave the proposal queued when their character
+      or floating boon has gone, rather than removing it with no effect and no
+      log line.
+- [x] **Per-row context note.** `Model.proposalDraft : String` became
+      `proposalDrafts : Dict String String` keyed by proposal id; each Add a
+      Detail / Gain Insight row has its own field, and `ProposalResolved` now
+      carries the id so only that row's draft is cleared.
+- [x] **Status banner.** `Model.status` is now steady state only (auth,
+      "Connected."); per-action failures go to `Model.error : Maybe String`,
+      shown as a separate red line and auto-dismissed after ~6 s via a
+      `DismissErrorIn` effect. Terminal auth / load failures stay on `status`.
 
 ## 13. Table entities beyond characters — NPCs and locations
 

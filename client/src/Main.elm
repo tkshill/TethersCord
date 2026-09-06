@@ -11,6 +11,7 @@ that into a `Cmd` once, here at the boundary.
 
 import Api
 import Browser
+import Dict
 import Effect exposing (Effect)
 import Json.Decode as Decode
 import Ports
@@ -31,6 +32,14 @@ maxGameStateAttempts =
 gameStateRetryDelay : Float
 gameStateRetryDelay =
     2000
+
+
+{-| How long a transient error stays on screen before it dismisses itself, in
+milliseconds.
+-}
+errorDismissDelay : Float
+errorDismissDelay =
+    6000
 
 
 connectionFromString : String -> Connection
@@ -73,11 +82,14 @@ init flags =
       , gameState = Nothing
       , newMessage = ""
       , status = "Authorizing with Discord…"
+      , error = Nothing
+      , confirming = Nothing
       , editingSlot = Nothing
       , selectedSlot = 0
       , logAtBottom = True
       , newSessionGoal = ""
-      , proposalDraft = ""
+      , goalEdit = ""
+      , proposalDrafts = Dict.empty
       , connection = Connected
       , gameStateAttempts = 0
       , timeZone = Time.utc
@@ -110,6 +122,15 @@ withAuth model toEffect =
 
         Nothing ->
             ( model, Effect.None )
+
+
+{-| Show a transient failure note and schedule its own dismissal. Used for the
+per-action mutation failures, which are worth flagging but not worth keeping on
+screen once the user has moved on.
+-}
+fail : String -> Model -> ( Model, Effect )
+fail message model =
+    ( { model | error = Just message }, Effect.DismissErrorIn errorDismissDelay )
 
 
 update : Msg -> Model -> ( Model, Effect )
@@ -194,16 +215,16 @@ update msg model =
             ( model, Effect.None )
 
         MessagePosted (Err _) ->
-            ( { model | status = "Failed to post message." }, Effect.None )
+            fail "Failed to post message." model
 
         ClearLog ->
-            withAuth model Effect.PostClearMessages
+            withAuth { model | confirming = Nothing } Effect.PostClearMessages
 
         LogCleared (Ok ()) ->
             ( model, Effect.None )
 
         LogCleared (Err _) ->
-            ( { model | status = "Failed to clear the log." }, Effect.None )
+            fail "Failed to clear the log." model
 
         AddBoon ->
             withAuth model (\auth -> Effect.PostStones auth "/stones/add-boon")
@@ -228,31 +249,39 @@ update msg model =
             ( model, Effect.None )
 
         SlotClaimed (Err _) ->
-            ( { model | status = "Couldn't claim that character sheet." }, Effect.None )
+            fail "Couldn't claim that character sheet." model
 
         AcceptProposal id ->
             let
                 context =
-                    case String.trim model.proposalDraft of
-                        "" ->
-                            Nothing
+                    model.proposalDrafts
+                        |> Dict.get id
+                        |> Maybe.map String.trim
+                        |> Maybe.andThen
+                            (\text ->
+                                if text == "" then
+                                    Nothing
 
-                        text ->
-                            Just text
+                                else
+                                    Just text
+                            )
             in
             withAuth model (\auth -> Effect.PostProposalDecision auth id "accept" context)
 
         RejectProposal id ->
             withAuth model (\auth -> Effect.PostProposalDecision auth id "reject" Nothing)
 
-        ProposalDraftChanged s ->
-            ( { model | proposalDraft = s }, Effect.None )
+        WithdrawProposal id ->
+            withAuth model (\auth -> Effect.PostWithdrawProposal auth id)
 
-        ProposalResolved (Ok ()) ->
-            ( { model | proposalDraft = "" }, Effect.None )
+        ProposalDraftChanged id s ->
+            ( { model | proposalDrafts = Dict.insert id s model.proposalDrafts }, Effect.None )
 
-        ProposalResolved (Err _) ->
-            ( { model | status = "Failed to resolve the proposal." }, Effect.None )
+        ProposalResolved id (Ok ()) ->
+            ( { model | proposalDrafts = Dict.remove id model.proposalDrafts }, Effect.None )
+
+        ProposalResolved _ (Err _) ->
+            fail "Failed to resolve the proposal." model
 
         UseAbility kind ->
             withAuth model (\auth -> Effect.PostUseAbility auth kind)
@@ -270,10 +299,23 @@ update msg model =
             ( model, Effect.None )
 
         MoveRaised (Err _) ->
-            ( { model | status = "Couldn't raise that move." }, Effect.None )
+            fail "Couldn't raise that move." model
 
         SessionGoalChanged s ->
             ( { model | newSessionGoal = s }, Effect.None )
+
+        SessionGoalEditChanged s ->
+            ( { model | goalEdit = s }, Effect.None )
+
+        SaveSessionGoal ->
+            case ( model.auth, String.trim model.goalEdit == "" ) of
+                ( Just auth, False ) ->
+                    ( { model | confirming = Nothing }
+                    , Effect.PostSessionGoal auth model.goalEdit
+                    )
+
+                _ ->
+                    ( { model | confirming = Nothing }, Effect.None )
 
         StartSession ->
             case ( model.auth, String.trim model.newSessionGoal == "" ) of
@@ -286,13 +328,22 @@ update msg model =
                     ( model, Effect.None )
 
         EndSession ->
-            withAuth model Effect.PostEndSession
+            withAuth { model | confirming = Nothing } Effect.PostEndSession
 
         SessionUpdated (Ok ()) ->
             ( model, Effect.None )
 
         SessionUpdated (Err _) ->
-            ( { model | status = "Failed to update the session." }, Effect.None )
+            fail "Failed to update the session." model
+
+        RequestConfirm key ->
+            ( { model | confirming = Just key }, Effect.None )
+
+        CancelConfirm ->
+            ( { model | confirming = Nothing }, Effect.None )
+
+        DismissError ->
+            ( { model | error = Nothing }, Effect.None )
 
         WsStatusChanged raw ->
             ( { model | connection = connectionFromString raw }, Effect.None )
@@ -318,7 +369,7 @@ update msg model =
             ( model, Effect.None )
 
         StonesUpdated (Err _) ->
-            ( { model | status = "Failed to update stones." }, Effect.None )
+            fail "Failed to update stones." model
 
         StartOvercome slot ->
             withAuth model (\auth -> Effect.PostStartOvercome auth slot)
@@ -330,7 +381,7 @@ update msg model =
             ( model, Effect.None )
 
         OvercomeUpdated (Err _) ->
-            ( { model | status = "Failed to update the overcome." }, Effect.None )
+            fail "Failed to update the overcome." model
 
         CharacterFieldInput slot fieldTag value ->
             ( { model
@@ -367,7 +418,7 @@ update msg model =
             ( model, Effect.None )
 
         CharacterUpdated (Err _) ->
-            ( { model | status = "Failed to update character sheet." }, Effect.None )
+            fail "Failed to update character sheet." model
 
         WsGameStateRaw value ->
             case Decode.decodeValue Api.decodeGameState value of

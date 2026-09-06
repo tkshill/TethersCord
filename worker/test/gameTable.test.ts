@@ -77,7 +77,7 @@ describe("GameTable state machine", () => {
   });
 
   describe("the session lifecycle", () => {
-    it("clears the session's floating boons and used abilities when it ends", async () => {
+    it("clears every unresolved pending state when a session ends", async () => {
       const table = "gt-session-end";
       const { token: fac } = await seedAuth(undefined, { facilitator: true });
       const { token: player } = await seedAuth();
@@ -99,21 +99,81 @@ describe("GameTable state machine", () => {
         body: { text: "the door was left ajar" },
       });
 
+      // A pledged boon (accepted), plus a second pledge proposal left open.
+      await call(table, "/characters/0/fate", { token: fac, body: { delta: 3 } });
+      await call(table, "/stones/commit", { token: player, body: { delta: 1 } });
+      const pledgeId = await firstProposalId(table, fac);
+      await call(table, `/proposals/${pledgeId}/accept`, { token: fac });
+      await call(table, "/stones/commit", { token: player, body: { delta: 1 } });
+
+      // An open overcome with a roll on the table.
+      await call(table, "/overcome/start", { token: fac, body: { slot: 0 } });
+      await call(table, "/stones/roll", { token: fac });
+
       let state = await readState(table, fac);
       expect(state.floatingBoons).toHaveLength(1);
       expect(state.usedAbilities).toHaveLength(1);
+      expect(state.committedBoons).toHaveLength(1);
+      expect(state.proposals).toHaveLength(1);
+      expect(state.overcome).not.toBeNull();
+      expect(state.pendingRoll).not.toBeNull();
 
       const ended = await call(table, "/session/end", { token: fac });
       expect(ended.status).toBe(204);
 
       state = await readState(table, fac);
       expect(state.session).toBeNull();
+      expect(state.sessionHistory).toHaveLength(1);
       expect(state.floatingBoons).toHaveLength(0);
       expect(state.usedAbilities).toHaveLength(0);
-      expect(state.sessionHistory).toHaveLength(1);
-      // NOTE: unresolved `proposals` / `overcome` / `pendingRoll` /
-      // `committedBoons` are NOT cleared on session end yet — roadmap §12
-      // ("Ending a session clears every unresolved pending state") tracks that.
+      expect(state.committedBoons).toHaveLength(0);
+      expect(state.proposals).toHaveLength(0);
+      expect(state.overcome).toBeNull();
+      expect(state.pendingRoll).toBeNull();
+    });
+
+    it("starts a session from a clean slate, discarding stale pledges and proposals", async () => {
+      const table = "gt-session-start-clear";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+      const { token: player } = await seedAuth();
+
+      await claim(table, player, 0);
+      await call(table, "/characters/0/fate", { token: fac, body: { delta: 2 } });
+      await call(table, "/stones/commit", { token: player, body: { delta: 1 } });
+      const pledgeId = await firstProposalId(table, fac);
+      await call(table, `/proposals/${pledgeId}/accept`, { token: fac });
+      await call(table, "/stones/add-boon", { token: player }); // leaves a proposal open
+
+      let state = await readState(table, fac);
+      expect(state.committedBoons).toHaveLength(1);
+      expect(state.proposals).toHaveLength(1);
+
+      await call(table, "/session/start", { token: fac, body: { goal: "Fresh" } });
+
+      state = await readState(table, fac);
+      expect(state.committedBoons).toHaveLength(0);
+      expect(state.proposals).toHaveLength(0);
+    });
+
+    it("lets the facilitator rewrite the running goal, and 400s with no session", async () => {
+      const table = "gt-session-goal";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+
+      const early = await call(table, "/session/goal", {
+        token: fac,
+        body: { goal: "too soon" },
+      });
+      expect(early.status).toBe(400);
+
+      await call(table, "/session/start", { token: fac, body: { goal: "First cut" } });
+      const updated = await call(table, "/session/goal", {
+        token: fac,
+        body: { goal: "Second cut" },
+      });
+      expect(updated.status).toBe(204);
+
+      const state = await readState(table, fac);
+      expect(state.session?.goal).toBe("Second cut");
     });
 
     it("refuses an ability with no running session", async () => {
@@ -181,5 +241,113 @@ describe("GameTable state machine", () => {
     );
     expect(fateBySlot[0]).toBe(1); // suggester
     expect(fateBySlot[1]).toBe(2); // compelled character
+  });
+
+  describe("claim / release cleanup", () => {
+    it("drops a slot's pledges and proposals when the sheet is released", async () => {
+      const table = "gt-release-cleanup";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+      const { token: a } = await seedAuth();
+      const { token: b } = await seedAuth();
+
+      await call(table, "/session/start", { token: fac, body: { goal: "x" } });
+      await claim(table, a, 0);
+      await claim(table, b, 1);
+      await call(table, "/characters/0/fate", { token: fac, body: { delta: 3 } });
+      await call(table, "/characters/1/fate", { token: fac, body: { delta: 3 } });
+
+      // slot 0 and slot 1 each pledge a boon (accepted).
+      await call(table, "/stones/commit", { token: a, body: { delta: 1 } });
+      await call(table, `/proposals/${await firstProposalId(table, fac)}/accept`, {
+        token: fac,
+      });
+      await call(table, "/stones/commit", { token: b, body: { delta: 1 } });
+      await call(table, `/proposals/${await firstProposalId(table, fac)}/accept`, {
+        token: fac,
+      });
+      // slot 0 also has an open pledge proposal the facilitator hasn't resolved.
+      await call(table, "/stones/commit", { token: a, body: { delta: 1 } });
+
+      let state = await readState(table, fac);
+      expect(state.committedBoons.map((c) => c.slot).sort()).toEqual([0, 1]);
+      expect(state.proposals).toHaveLength(1);
+      expect(state.proposals[0].slot).toBe(0);
+
+      await call(table, "/characters/0/release", { token: a });
+
+      state = await readState(table, fac);
+      expect(state.committedBoons.map((c) => c.slot)).toEqual([1]); // slot 1 kept
+      expect(state.proposals).toHaveLength(0); // slot 0's open pledge gone
+    });
+  });
+
+  it("400s /stones/accept when there is no roll on the table", async () => {
+    const table = "gt-accept-noroll";
+    const { token: fac } = await seedAuth(undefined, { facilitator: true });
+
+    // Queue a proposal so a silent reset would be visible.
+    const { token: player } = await seedAuth();
+    await call(table, "/stones/add-boon", { token: player });
+
+    const res = await call(table, "/stones/accept", { token: fac });
+    expect(res.status).toBe(400);
+
+    const state = await readState(table, fac);
+    expect(state.proposals).toHaveLength(1); // untouched
+  });
+
+  it("keeps a proposal queued when its target is gone by accept time", async () => {
+    const table = "gt-accept-target-gone";
+    const { token: fac } = await seedAuth(undefined, { facilitator: true });
+    const { token: ada } = await seedAuth();
+    const { token: bea } = await seedAuth();
+
+    await call(table, "/session/start", { token: fac, body: { goal: "compel" } });
+    await claim(table, ada, 0);
+    await claim(table, bea, 1);
+    await call(table, "/abilities/use", {
+      token: ada,
+      body: { kind: "suggest-compel", targetSlot: 1 },
+    });
+    const id = await firstProposalId(table, fac);
+
+    // The compelled player leaves their sheet before the facilitator accepts.
+    // Cleanup drops the proposal outright, so accept then 404s — either way it
+    // is never silently applied with no effect.
+    await call(table, "/characters/1/release", { token: bea });
+    const res = await call(table, `/proposals/${id}/accept`, { token: fac });
+    expect(res.status).not.toBe(204);
+
+    const state = await readState(table, fac);
+    const fateBySlot = Object.fromEntries(
+      state.characters.map((c) => [c.slot, c.fate]),
+    );
+    expect(fateBySlot[0]).toBe(0); // suggester never paid out
+  });
+
+  describe("proposal withdraw", () => {
+    it("lets the proposer withdraw, but no one else", async () => {
+      const table = "gt-withdraw";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+      const { token: ada } = await seedAuth();
+      const { token: bea } = await seedAuth();
+
+      await call(table, "/stones/add-boon", { token: ada });
+      const id = await firstProposalId(table, fac);
+
+      const byOther = await call(table, `/proposals/${id}/withdraw`, { token: bea });
+      expect(byOther.status).toBe(403);
+      const byFac = await call(table, `/proposals/${id}/withdraw`, { token: fac });
+      expect(byFac.status).toBe(403);
+
+      const byProposer = await call(table, `/proposals/${id}/withdraw`, {
+        token: ada,
+      });
+      expect(byProposer.status).toBe(204);
+
+      const state = await readState(table, fac);
+      expect(state.proposals).toHaveLength(0);
+      expect(state.stonePool).toHaveLength(4); // never applied
+    });
   });
 });

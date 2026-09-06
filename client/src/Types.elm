@@ -32,6 +32,7 @@ without creating an import cycle (`Main` imports `View`, so `View` cannot import
 
 -}
 
+import Dict exposing (Dict)
 import Http
 import Json.Decode as Decode
 import Roll exposing (Stone)
@@ -267,7 +268,19 @@ type alias Model =
     , auth : Maybe Auth
     , gameState : Maybe GameState
     , newMessage : String
+
+    -- Steady-state status line: auth progress, "Connected.", reconnection. Not
+    -- used for failures — those go in `error` and clear themselves.
     , status : String
+
+    -- A transient failure note, shown in red beneath the status line and
+    -- auto-dismissed a few seconds after it is set (`DismissError`).
+    , error : Maybe String
+
+    -- A destructive facilitator action that has been armed but not yet
+    -- confirmed (an action key like "end-session" / "clear-log" / "edit-goal").
+    -- The second click on the armed control performs it; anything else disarms.
+    , confirming : Maybe String
 
     -- Slot the user is currently typing into, if any. Server pushes must not
     -- overwrite a sheet while it is being edited.
@@ -284,10 +297,14 @@ type alias Model =
     -- Draft goal in the facilitator's "start session" field.
     , newSessionGoal : String
 
-    -- Draft context note the facilitator types when approving an Add a Detail
-    -- or Gain Insight proposal (the text attached to the resulting floating
-    -- boon).
-    , proposalDraft : String
+    -- Draft goal in the facilitator's mid-session "edit goal" field, seeded
+    -- from the running session's goal.
+    , goalEdit : String
+
+    -- Context note the facilitator types when approving an Add a Detail or Gain
+    -- Insight proposal (the text attached to the resulting floating boon), keyed
+    -- by proposal id so each queued proposal has its own field.
+    , proposalDrafts : Dict String String
 
     -- Backend WebSocket connection state, as last reported by the JS socket.
     , connection : Connection
@@ -335,17 +352,23 @@ type Msg
     | SlotClaimed (Result Http.Error ())
     | AcceptProposal String
     | RejectProposal String
-    | ProposalResolved (Result Http.Error ())
-    | ProposalDraftChanged String
+    | WithdrawProposal String
+    | ProposalResolved String (Result Http.Error ())
+    | ProposalDraftChanged String String
     | UseAbility String
     | SuggestCompel Int
     | AcceptCompelMove
     | UseFloatingBoon String
     | MoveRaised (Result Http.Error ())
     | SessionGoalChanged String
+    | SessionGoalEditChanged String
+    | SaveSessionGoal
     | StartSession
     | EndSession
     | SessionUpdated (Result Http.Error ())
+    | RequestConfirm String
+    | CancelConfirm
+    | DismissError
     | WsStatusChanged String
     | RetryGetGameState
     | RollStones
