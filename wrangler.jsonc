@@ -7,8 +7,8 @@
   "observability": {
     "logs": {
       "enabled": true,
-      "invocation_logs": true
-    }
+      "invocation_logs": true,
+    },
   },
 
   "vars": {
@@ -17,7 +17,7 @@
     // rows in the `facilitators` table. Not a secret, just a snowflake — fill it
     // in here (or override in `.dev.vars` locally). Empty means "table rows
     // only".
-    "BOOTSTRAP_FACILITATOR_ID": ""
+    "BOOTSTRAP_FACILITATOR_ID": "835912979517407242",
   },
   // DISCORD_CLIENT_SECRET is a secret, not a var: `wrangler secret put` in
   // production, `.dev.vars` (next to this file) locally.
@@ -27,30 +27,30 @@
       "binding": "DB",
       "database_name": "ttrpg-activity-db",
       "database_id": "8cef44a0-b184-45b2-af0b-820d803b2fc0",
-      "migrations_dir": "worker/migrations"
-    }
+      "migrations_dir": "worker/migrations",
+    },
   ],
 
   "durable_objects": {
     "bindings": [
       {
         "name": "GAME_TABLE",
-        "class_name": "GameTable"
-      }
-    ]
+        "class_name": "GameTable",
+      },
+    ],
   },
   // `exports` replaces the legacy `migrations` array; the two are mutually
   // exclusive, so do not add one back.
   "exports": {
     "GameTable": {
       "type": "durable-object",
-      "storage": "sqlite"
-    }
+      "storage": "sqlite",
+    },
   },
 
   // Prunes expired rows from sessions_auth once an hour.
   "triggers": {
-    "crons": ["0 * * * *"]
+    "crons": ["0 * * * *"],
   },
 
   // The built Elm SPA is served straight from client/dist. Only /api/* reaches
@@ -60,6 +60,6 @@
   "assets": {
     "directory": "client/dist",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
-  }
+    "run_worker_first": ["/api/*"],
+  },
 }
