@@ -502,19 +502,20 @@ The facilitator needs to record the cast and the map alongside the three player
 sheets. Both are facilitator-owned reference data: broadcast to the whole table,
 read-only for players.
 
-- [ ] **`npcs` and `locations` D1 tables** (append-only migration `0008`),
+- [x] **`npcs` and `locations` D1 tables** (append-only migration `0008`),
       scoped by `session_id` like `characters`: `id`, `session_id`, `name`,
-      `notes`, `created_at`, `updated_at`. Keep the first cut to name + notes;
-      an NPC `location_id`, a status field, and location nesting can come later.
-- [ ] **Facilitator-only routes** — `POST /npcs` (create), `POST
+      `notes`, `created_at`, `updated_at`. First cut is name + notes; an NPC
+      `location_id`, a status field, and location nesting can come later.
+- [x] **Facilitator-only routes** — `POST /npcs` (create), `POST
       /npcs/:id/update`, `POST /npcs/:id/delete`, and the same three for
       locations, all through `facilitatorOnly`.
-- [ ] **`GameState.npcs` / `GameState.locations`**, loaded on Durable Object
+- [x] **`GameState.npcs` / `GameState.locations`**, loaded on Durable Object
       cold start and broadcast with the rest of the state (their own patch kinds
       once section 15's delta broadcasts land).
-- [ ] **Client** — an "NPCs" card and a "Locations" card: an editable list for
+- [x] **Client** — an "NPCs" card and a "Locations" card: an editable list for
       the facilitator, a plain read-only list for players, reusing the
-      character-sheet field styling.
+      character-sheet field styling. The card is hidden from players while its
+      list is empty.
 
 ## 14. Fewer requests per action — the Cloudflare Free budget
 

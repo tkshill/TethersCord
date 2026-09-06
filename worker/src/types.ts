@@ -125,6 +125,22 @@ export type CharacterSheetFields = Omit<
 >;
 
 /**
+ * A facilitator-owned reference row — an NPC or a location. Broadcast to the
+ * whole table, editable only by the facilitator. Backed by the `npcs` /
+ * `locations` D1 tables, scoped by `session_id` like `characters`.
+ */
+export type TableEntity = {
+  id: string;
+  name: string;
+  notes: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+/** Which reference collection a `/npcs` or `/locations` route acts on. */
+export type EntityKind = "npcs" | "locations";
+
+/**
  * The running game session, if one is open. `id` ties back to the
  * `game_sessions` D1 row; `pool` is the session stone pool, held in Durable
  * Object storage and grown one stone per accepted roll.
@@ -171,6 +187,8 @@ export type GameState = {
   session: SessionState | null;
   sessionHistory: SessionSummary[];
   characters: CharacterSheet[];
+  npcs: TableEntity[];
+  locations: TableEntity[];
 };
 
 export type PostMessageInput = {
@@ -207,6 +225,12 @@ export type UseAbilityInput = {
 
 export type UseFloatingBoonInput = {
   floatingId: string;
+};
+
+/** Create (`POST /npcs`) or update (`POST /npcs/:id/update`) a reference row. */
+export type EntityInput = {
+  name?: string;
+  notes?: string;
 };
 
 export type ProposalDecisionInput = {

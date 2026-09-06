@@ -98,6 +98,21 @@ suite =
                 decoded
                     |> Result.map (.sessionHistory >> List.map .outcome)
                     |> Expect.equal (Ok [ "mixed" ])
+        , test "reads NPC and location reference rows" <|
+            \_ ->
+                decoded
+                    |> Result.map
+                        (\gs ->
+                            ( List.map (\e -> ( e.name, e.notes )) gs.npcs
+                            , List.map .name gs.locations
+                            )
+                        )
+                    |> Expect.equal
+                        (Ok
+                            ( [ ( "The Archivist", "keeps the vault keys" ) ]
+                            , [ "The Vault" ]
+                            )
+                        )
         ]
 
 

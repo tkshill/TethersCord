@@ -10,6 +10,15 @@ version yet, so headings are dates.
 
 ### Added
 
+- NPCs and locations (roadmap section 13). Two new facilitator-owned reference
+  collections, backed by the `npcs` / `locations` D1 tables (migration `0008`,
+  scoped by `session_id` like `characters`) and carried in
+  `GameState.npcs` / `GameState.locations`. Facilitator-only routes
+  `POST /api/table/:id/{npcs,locations}` (create a blank row),
+  `.../:entityId/update` (name + notes), and `.../:entityId/delete`. The client
+  shows an "NPCs" card and a "Locations" card: an editable list with Add and
+  Delete for the facilitator, a plain read-only list for players (hidden while
+  empty). First cut is name + notes only.
 - Mid-session goal edits (roadmap section 12). A new facilitator-only
   `POST /api/table/:id/session/goal` rewrites the running session's goal; the
   Session card shows an editable goal field for the facilitator, behind the same

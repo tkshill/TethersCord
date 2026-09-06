@@ -20,7 +20,7 @@ import Ports
 import Process
 import Task
 import Time
-import Types exposing (Auth, CharacterSheet, Flags, Msg(..))
+import Types exposing (Auth, CharacterSheet, EntityKind, Flags, Msg(..), TableEntity)
 import View
 
 
@@ -55,6 +55,9 @@ type Effect
     | PostEndSession Auth
     | PostStartOvercome Auth Int
     | PostCancelOvercome Auth
+    | PostCreateEntity Auth EntityKind
+    | PostUpdateEntity Auth EntityKind TableEntity
+    | PostDeleteEntity Auth EntityKind String
 
 
 {-| Realise an `Effect` as a `Cmd`. The only impure function in the update path.
@@ -143,3 +146,12 @@ perform flags effect =
 
         PostCancelOvercome auth ->
             Api.postCancelOvercome flags auth OvercomeUpdated
+
+        PostCreateEntity auth kind ->
+            Api.postCreateEntity flags auth kind EntityMutated
+
+        PostUpdateEntity auth kind entity ->
+            Api.postUpdateEntity flags auth kind entity EntityMutated
+
+        PostDeleteEntity auth kind entityId ->
+            Api.postDeleteEntity flags auth kind entityId EntityMutated

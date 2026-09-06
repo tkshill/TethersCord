@@ -32,6 +32,8 @@ incoming =
     , overcome = Nothing
     , floatingBoons = []
     , usedAbilities = []
+    , npcs = []
+    , locations = []
     }
 
 

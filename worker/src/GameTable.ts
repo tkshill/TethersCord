@@ -8,6 +8,8 @@ import type {
   AbilityKind,
   CommitBoonInput,
   CommittedBoon,
+  EntityInput,
+  EntityKind,
   Env,
   FloatingBoon,
   GameState,
@@ -23,6 +25,7 @@ import type {
   StartOvercomeInput,
   StartSessionInput,
   StoneKind,
+  TableEntity,
   CharacterSheet,
   UpdateCharacterInput,
   UpdateFateInput,
@@ -337,6 +340,33 @@ export class GameTable implements DurableObject {
       );
     }
 
+    // Facilitator-owned reference data: NPCs and locations. Create at
+    // `/npcs` | `/locations`, then `/{id}/update` and `/{id}/delete`.
+    const entityCreateMatch = url.pathname.match(/^\/(npcs|locations)$/);
+    if (entityCreateMatch && request.method === "POST") {
+      const kind = entityCreateMatch[1] as EntityKind;
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleCreateEntity(request, kind))
+      );
+    }
+
+    const entityMatch = url.pathname.match(
+      /^\/(npcs|locations)\/([0-9a-fA-F-]{36})\/(update|delete)$/,
+    );
+    if (entityMatch && request.method === "POST") {
+      const kind = entityMatch[1] as EntityKind;
+      const [, , entityId, action] = entityMatch;
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() =>
+          action === "update"
+            ? this.handleUpdateEntity(request, kind, entityId)
+            : this.handleDeleteEntity(kind, entityId),
+        )
+      );
+    }
+
     return new Response("Not found", { status: 404 });
   }
 
@@ -441,6 +471,8 @@ export class GameTable implements DurableObject {
     const characters = await this.loadOrCreateCharacters(sessionId);
     const stones = await this.loadStoneState();
     const sessionHistory = await this.loadSessionHistory(sessionId);
+    const npcs = await this.loadEntities(sessionId, "npcs");
+    const locations = await this.loadEntities(sessionId, "locations");
 
     this.gameState = {
       sessionId,
@@ -455,6 +487,8 @@ export class GameTable implements DurableObject {
       session: stones.session,
       sessionHistory,
       characters,
+      npcs,
+      locations,
     };
 
     // Equal to `storedSessionId` by the guard above; every later request in this
@@ -542,6 +576,29 @@ export class GameTable implements DurableObject {
     )
       .bind(sessionId)
       .all<SessionSummary>();
+
+    return rows.results ?? [];
+  }
+
+  /**
+   * The facilitator's reference rows for this table — NPCs or locations —
+   * oldest first, read straight from D1 on cold start. Kept live in
+   * `gameState` thereafter; every mutation goes through `withLock`.
+   */
+  private async loadEntities(
+    sessionId: string,
+    kind: EntityKind,
+  ): Promise<TableEntity[]> {
+    const rows = await this.env.DB.prepare(
+      `
+      SELECT id, name, notes, created_at AS createdAt, updated_at AS updatedAt
+      FROM ${entityTable(kind)}
+      WHERE session_id = ?
+      ORDER BY created_at, id
+    `,
+    )
+      .bind(sessionId)
+      .all<TableEntity>();
 
     return rows.results ?? [];
   }
@@ -1694,6 +1751,106 @@ export class GameTable implements DurableObject {
     return ackResponse();
   }
 
+  /** Add a blank NPC / location row, ready for the facilitator to fill in. */
+  private async handleCreateEntity(
+    request: Request,
+    kind: EntityKind,
+  ): Promise<Response> {
+    const input = (await readJson(request)) as EntityInput | null;
+    const now = Date.now();
+    const entity: TableEntity = {
+      id: crypto.randomUUID(),
+      name: boundedString(input?.name, MAX_FIELD_LENGTH),
+      notes: boundedString(input?.notes, MAX_NOTES_LENGTH),
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.env.DB.prepare(
+      `
+      INSERT INTO ${entityTable(kind)} (id, session_id, name, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `,
+    )
+      .bind(
+        entity.id,
+        this.gameState!.sessionId,
+        entity.name,
+        entity.notes,
+        now,
+        now,
+      )
+      .run();
+
+    this.gameState = {
+      ...this.gameState!,
+      [kind]: [...this.gameState![kind], entity],
+    };
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  private async handleUpdateEntity(
+    request: Request,
+    kind: EntityKind,
+    id: string,
+  ): Promise<Response> {
+    const input = (await readJson(request)) as EntityInput | null;
+    if (!input) {
+      return new Response("Invalid body", { status: 400 });
+    }
+
+    const entity = this.gameState![kind].find((e) => e.id === id);
+    if (!entity) {
+      return new Response("Not found", { status: 404 });
+    }
+
+    const updated: TableEntity = {
+      ...entity,
+      name: boundedField(input.name, entity.name),
+      notes: boundedField(input.notes, entity.notes, MAX_NOTES_LENGTH),
+      updatedAt: Date.now(),
+    };
+
+    await this.env.DB.prepare(
+      `UPDATE ${entityTable(kind)} SET name = ?, notes = ?, updated_at = ? WHERE id = ?`,
+    )
+      .bind(updated.name, updated.notes, updated.updatedAt, id)
+      .run();
+
+    this.gameState = {
+      ...this.gameState!,
+      [kind]: this.gameState![kind].map((e) => (e.id === id ? updated : e)),
+    };
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  private async handleDeleteEntity(
+    kind: EntityKind,
+    id: string,
+  ): Promise<Response> {
+    if (!this.gameState![kind].some((e) => e.id === id)) {
+      return new Response("Not found", { status: 404 });
+    }
+
+    await this.env.DB.prepare(
+      `DELETE FROM ${entityTable(kind)} WHERE id = ?`,
+    )
+      .bind(id)
+      .run();
+
+    this.gameState = {
+      ...this.gameState!,
+      [kind]: this.gameState![kind].filter((e) => e.id !== id),
+    };
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
   /** Persists the message, then folds it into the current in-memory state. */
   private async appendMessage(input: AddMessageInput): Promise<void> {
     const msg: Message = {
@@ -1864,6 +2021,14 @@ function markAbilityUsed(
   return used.map((u) =>
     u.slot === slot ? { ...u, kinds: [...u.kinds, kind] } : u,
   );
+}
+
+/**
+ * The D1 table backing an entity kind. An explicit allowlist so the name is
+ * never anything but one of these two literals when it reaches a SQL string.
+ */
+function entityTable(kind: EntityKind): "npcs" | "locations" {
+  return kind === "npcs" ? "npcs" : "locations";
 }
 
 type CharacterRow = {
