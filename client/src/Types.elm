@@ -21,6 +21,7 @@ module Types exposing
     , TableEntity
     , UsedAbility
     , abilityUsed
+    , actionPending
     , committedBoonsForSlot
     , decodeRole
     , entitiesForKind
@@ -42,6 +43,7 @@ import Dict exposing (Dict)
 import Http
 import Json.Decode as Decode
 import Roll exposing (Stone)
+import Set exposing (Set)
 import Time
 
 
@@ -161,6 +163,14 @@ type alias UsedAbility =
     { slot : Int
     , kinds : List String
     }
+
+
+{-| Whether a mutation with the given action key currently has a request in
+flight. Controls consult this to disable themselves and show a pending state.
+-}
+actionPending : String -> Model -> Bool
+actionPending key model =
+    Set.member key model.inflight
 
 
 {-| Whether the character in `slot` has already used the ability `kind` this
@@ -351,6 +361,28 @@ type alias Model =
     -- any. Same purpose as `editingSlot` for the reference cards.
     , editingEntity : Maybe String
 
+    -- Mutation "action keys" with a request in flight. A control whose key is in
+    -- here is disabled and shown pending, so an impatient double-click cannot
+    -- fire the same POST twice. Cleared when the matching result lands.
+    , inflight : Set String
+
+    -- Character slots / entity ids with unsaved local edits, waiting for the
+    -- debounced save (`FieldSaveDue`). A whole sheet edit becomes one write
+    -- instead of one per field blur. Server pushes keep the local copy of any
+    -- slot / id in these sets, the same way `editingSlot` protects one.
+    , dirtySlots : Set Int
+    , dirtyEntities : Set String
+
+    -- Monotonic token for the field-save debounce: every edit bumps it, and a
+    -- `FieldSaveDue` only fires the write if it still carries the latest value.
+    , fieldSaveSeq : Int
+
+    -- Net pledge delta the Highlight +/- buttons have accumulated but not yet
+    -- sent, coalesced into a single `/stones/commit` after a short pause, with
+    -- `pledgeSeq` as its debounce token.
+    , pendingPledgeDelta : Int
+    , pledgeSeq : Int
+
     -- Which character sheet's tab is open. Sheets are shown one at a time.
     , selectedSlot : Int
 
@@ -411,6 +443,7 @@ type Msg
     | AddBoon
     | CommitBoonIncrement
     | CommitBoonDecrement
+    | PledgeDue Int
     | SelectSlot Int
     | ClaimSlot Int
     | ReleaseSlot Int
@@ -445,6 +478,7 @@ type Msg
     | OvercomeUpdated (Result Http.Error ())
     | CharacterFieldInput Int CharacterField String
     | CharacterFieldBlur Int
+    | FieldSaveDue Int
     | FateIncrement Int
     | FateDecrement Int
     | CharacterUpdated (Result Http.Error ())

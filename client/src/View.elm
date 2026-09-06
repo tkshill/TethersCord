@@ -25,6 +25,7 @@ import Format
 import Html exposing (Html)
 import Html.Attributes
 import Roll exposing (Stone(..))
+import Set exposing (Set)
 import Time
 import Types exposing (..)
 import Ui
@@ -53,7 +54,7 @@ view model =
         , Ui.banner model.status
         , Ui.errorNote model.error
         , sessionPanel facilitator model.confirming model.newSessionGoal model.goalEdit model.timeZone model.gameState
-        , rollPanel facilitator myId model.proposalDrafts model.gameState
+        , rollPanel facilitator myId model.inflight model.proposalDrafts model.gameState
         , movesCard myId model.gameState
         , characterSheets facilitator myId model.selectedSlot model.gameState
         , entityCard Npc facilitator model.gameState
@@ -267,8 +268,21 @@ verdictColor outcome =
 -- STONES
 
 
-rollPanel : Bool -> Maybe String -> Dict String String -> Maybe GameState -> Element Msg
-rollPanel facilitator myId drafts maybeGs =
+{-| `Just msg` unless that action already has a request in flight, in which case
+`Nothing` — which renders the button disabled, so an eager double-click is a
+no-op in the UI as well as in `update`.
+-}
+press : Set String -> String -> Msg -> Maybe Msg
+press inflight key msg =
+    if Set.member key inflight then
+        Nothing
+
+    else
+        Just msg
+
+
+rollPanel : Bool -> Maybe String -> Set String -> Dict String String -> Maybe GameState -> Element Msg
+rollPanel facilitator myId inflight drafts maybeGs =
     Ui.card
         [ Ui.sectionTitle "Stones"
         , case maybeGs of
@@ -338,10 +352,17 @@ rollPanel facilitator myId drafts maybeGs =
                     , case gs.pendingRoll of
                         Nothing ->
                             Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
-                                (Ui.ghostButton { onPress = Just AddBoon, label = "Add boon" }
+                                (Ui.ghostButton
+                                    { onPress = press inflight "stones:add-boon" AddBoon
+                                    , label = "Add boon"
+                                    }
                                     :: pendingHint myAddBoons (latestProposalId myId "add-boon" gs.proposals)
                                     ++ onlyWhen canRoll
-                                        [ Ui.primaryButton { onPress = Just RollStones, label = "Roll" } ]
+                                        [ Ui.primaryButton
+                                            { onPress = press inflight "stones:roll" RollStones
+                                            , label = "Roll"
+                                            }
+                                        ]
                                 )
 
                         Just pending ->
@@ -355,7 +376,7 @@ rollPanel facilitator myId drafts maybeGs =
                                         [ Ui.ghostButton
                                             { onPress =
                                                 if rerollAffordable then
-                                                    Just RerollStones
+                                                    press inflight "stones:reroll" RerollStones
 
                                                 else
                                                     Nothing
@@ -363,10 +384,14 @@ rollPanel facilitator myId drafts maybeGs =
                                             }
                                         ]
                                         ++ onlyWhen facilitator
-                                            [ Ui.primaryButton { onPress = Just AcceptRoll, label = "Accept" } ]
+                                            [ Ui.primaryButton
+                                                { onPress = press inflight "stones:accept" AcceptRoll
+                                                , label = "Accept"
+                                                }
+                                            ]
                                     )
                                 ]
-                    , proposalsPanel facilitator drafts gs.characters gs.proposals
+                    , proposalsPanel facilitator inflight drafts gs.characters gs.proposals
                     ]
         ]
 
@@ -452,20 +477,20 @@ characterAtSlot slot characters =
 for players and when empty. `drafts` holds the context note typed for each
 Add a Detail / Gain Insight, keyed by proposal id so the rows do not share one
 field. -}
-proposalsPanel : Bool -> Dict String String -> List CharacterSheet -> List Proposal -> Element Msg
-proposalsPanel facilitator drafts characters proposals =
+proposalsPanel : Bool -> Set String -> Dict String String -> List CharacterSheet -> List Proposal -> Element Msg
+proposalsPanel facilitator inflight drafts characters proposals =
     if not facilitator || List.isEmpty proposals then
         none
 
     else
         Element.column [ spacing Ui.sm, width fill ]
             (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Proposals")
-                :: List.map (proposalRow drafts characters) proposals
+                :: List.map (proposalRow inflight drafts characters) proposals
             )
 
 
-proposalRow : Dict String String -> List CharacterSheet -> Proposal -> Element Msg
-proposalRow drafts characters p =
+proposalRow : Set String -> Dict String String -> List CharacterSheet -> Proposal -> Element Msg
+proposalRow inflight drafts characters p =
     let
         needsContext =
             p.kind == "add-detail" || p.kind == "gain-insight"
@@ -476,12 +501,24 @@ proposalRow drafts characters p =
         acceptEnabled =
             not needsContext || String.trim draft /= ""
 
+        busy =
+            Set.member ("proposal:accept:" ++ p.id) inflight
+                || Set.member ("proposal:reject:" ++ p.id) inflight
+
         controls =
             Element.row [ spacing Ui.sm, Element.centerY, Element.alignRight ]
-                [ Ui.ghostButton { onPress = Just (RejectProposal p.id), label = "Reject" }
+                [ Ui.ghostButton
+                    { onPress =
+                        if busy then
+                            Nothing
+
+                        else
+                            Just (RejectProposal p.id)
+                    , label = "Reject"
+                    }
                 , Ui.primaryButton
                     { onPress =
-                        if acceptEnabled then
+                        if acceptEnabled && not busy then
                             Just (AcceptProposal p.id)
 
                         else

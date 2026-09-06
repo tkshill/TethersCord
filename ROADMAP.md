@@ -528,30 +528,38 @@ retries). WebSocket broadcasts are outbound and do **not** count, so the lever
 is the number of inbound HTTP calls, not the fan-out. Ordered by value over
 effort.
 
-- [ ] **Drop the HTTP state seed on the happy path.** `handleConnect` already
-      sends a full `GameState` before its first `await`, and `GotGameState (Ok
-      _)` is a no-op whenever that snapshot beat it — which is nearly always.
-      Fire `getGameState` only as a fallback, after ~3 s with no snapshot, and
-      delete the 3×/2 s retry loop. Saves one to four requests per launch.
-- [ ] **One character save per sheet, not per field.** `CharacterFieldBlur`
-      POSTs `/characters/:slot/update` on every field's blur, so editing a whole
-      sheet is seven requests. Debounce to a single write ~1 s after the last
-      edit (flushing on tab-away and unload), sending the full sheet.
-- [ ] **De-duplicate in-flight mutations.** Track pending action keys in the
-      model, or disable the control until its `…Updated` message lands, so an
-      impatient double-click cannot fire the same POST twice. This also closes
-      the double-roll and double-proposal correctness holes from the audit.
-- [ ] **Cache the auth lookup in the Durable Object.** `getAuthFromToken` runs a
-      `sessions_auth` ⋈ `facilitators` query on every `/api/table/*` call.
-      Memoise token → `AuthInfo` in DO memory with a ~60 s TTL: one D1 read per
-      token per minute instead of per request.
-- [ ] **Coalesce Highlight churn.** The pledge `+` / `−` each raise their own
-      proposal. Debounce to the net delta and disable the control while one is
-      queued.
+- [x] **Drop the HTTP state seed on the happy path.** `GotBackendAuth` now
+      schedules the `getGameState` seed as a fallback ~3 s out
+      (`RetryGetGameStateIn`) instead of firing it immediately; `RetryGetGameState`
+      only issues the request while `model.gameState` is still `Nothing`. The
+      socket snapshot beats the timer in nearly every launch, so the read is
+      skipped. Bounded retry cap kept. Saves one to four requests per launch.
+- [x] **One character save per sheet, not per field.** `CharacterFieldInput`
+      marks the slot dirty and arms a debounce (`FieldSaveDue`, token-guarded);
+      `flushFieldSaves` sends one `/characters/:slot/update` per dirty sheet ~1 s
+      after the last edit and on tab-away (`SelectSlot`). NPC / location rows
+      (`dirtyEntities`) debounce the same way. `applyServerState` keeps the local
+      copy of any dirty slot / id, not just the one under the cursor.
+- [x] **De-duplicate in-flight mutations.** `Model.inflight : Set String` holds
+      the action keys awaiting an ack; `guard` makes a second click a no-op and
+      `View.press` renders the button disabled, cleared by prefix when the shared
+      `…Updated` result lands. Closes the double-roll / double-proposal holes.
+      (Visible pending state is wired for the roll panel and the proposal queue;
+      the moves card relies on the `update`-layer guard for now.)
+- [x] **Cache the auth lookup in the Durable Object.** `GameTable.resolveAuthToken`
+      memoises token → `AuthInfo` in DO memory for `AUTH_CACHE_TTL_MS` (60 s);
+      only positive results are cached, so a freshly minted or newly promoted
+      token is picked up within the minute. One D1 read per token per minute.
+- [x] **Coalesce Highlight churn.** `CommitBoonIncrement` / `Decrement` only
+      nudge `pendingPledgeDelta` and arm a debounce (`PledgeDue`); one
+      `/stones/commit` carrying the net delta is sent once the taps stop, and the
+      control disables while `stones:pledge` is in flight. `/stones/commit` now
+      takes any non-zero integer `delta`; `applyPledge` clamps to `[0, fate]`.
 - [ ] **Reuse a still-valid `sessionToken` across reloads.** Persist it in
       `localStorage`; on reload, skip `/api/oauth/discord/exchange` while
       `expires_at` is still in the future. Lower value — Activities usually
       launch fresh rather than reload — but one request saved when they don't.
+      **Deferred** to a dedicated branch (new port + `DiscordBridge` change).
 
 ## 15. Zippier realtime updates
 
