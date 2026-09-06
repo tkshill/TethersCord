@@ -600,15 +600,20 @@ Storage is nowhere near a limit today (~25 kB against a 5 GB account-wide SQLite
 cap on Free), so this is low priority — revisit only if the Durable Object
 metrics move.
 
-- [ ] **Write `KEY_STONES` only when stone state actually changed.** A chat post
-      calls `saveStoneState` even though it touches nothing there. Gate the
-      write on a real stone / proposal / session / overcome change.
-- [ ] **Prune `messages` on the existing hourly cron.** Add a `DELETE FROM
-      messages WHERE created_at < ?` (keep ~30 days, or the last N per table) so
-      the table cannot grow unbounded toward the account cap.
+- [x] **Write `KEY_STONES` only when stone state actually changed.**
+      `saveStoneState` serialises the stone slice and compares it to
+      `lastSavedStones` (seeded from the cold-start load); a byte-identical slice
+      skips the `storage.put`. A chat post and other stone-inert mutations no
+      longer rewrite the blob.
+- [x] **Prune `messages` on the existing hourly cron.** `pruneOldMessages`
+      (`worker/src/maintenance.ts`) runs `DELETE FROM messages WHERE created_at
+      < ?` for a 30-day retention window, alongside `pruneExpiredSessions` in
+      `scheduled`.
 - [ ] **Optionally split `KEY_STONES`** into `stones` / `proposals` / `session`
       / `overcome` keys so adding a proposal does not rewrite the whole blob.
-      Only worth it if write volume shows up in metrics.
+      Only worth it if write volume shows up in metrics. **Not planned** — the
+      write-skip above already removes the no-op rewrites; revisit only if DO
+      write metrics move.
 
 ## 17. Campaigns — multiple games per facilitator (not scheduled)
 

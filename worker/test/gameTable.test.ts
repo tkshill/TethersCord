@@ -62,6 +62,23 @@ describe("GameTable state machine", () => {
     });
   });
 
+  describe("stone-state write economy", () => {
+    it("a chat post between two stone changes does not disturb the persisted stone state", async () => {
+      const table = "gt-stone-write-skip";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+
+      await call(table, "/stones/add-boon", { token: fac });
+      // A plain message runs the same mutation path but touches nothing in the
+      // stone slice; saveStoneState skips the write.
+      await call(table, "/message", { token: fac, body: { content: "hello" } });
+      await call(table, "/stones/add-boon", { token: fac });
+
+      const state = await readState(table, fac);
+      expect(state.stonePool).toHaveLength(6); // 4 base + 2 added, nothing lost
+      expect(state.messages.at(-1)?.content).toBe("hello");
+    });
+  });
+
   describe("the message window", () => {
     it("keeps the snapshot to the last 50 and serves older rows from /messages/history", async () => {
       const table = "gt-msg-window";

@@ -530,6 +530,18 @@ export class GameTable implements DurableObject {
     const messages = rows.results ? [...rows.results].reverse() : [];
     const characters = await this.loadOrCreateCharacters(sessionId);
     const stones = await this.loadStoneState();
+    // Seed the write-skip baseline so an unchanged stone slice is not
+    // re-persisted on the first mutation after a cold start.
+    this.lastSavedStones = JSON.stringify({
+      stonePool: stones.stonePool,
+      pendingRoll: stones.pendingRoll,
+      overcome: stones.overcome,
+      committedBoons: stones.committedBoons,
+      floatingBoons: stones.floatingBoons,
+      usedAbilities: stones.usedAbilities,
+      proposals: stones.proposals,
+      session: stones.session,
+    } satisfies StoneState);
     const sessionHistory = await this.loadSessionHistory(sessionId);
     const npcs = await this.loadEntities(sessionId, "npcs");
     const locations = await this.loadEntities(sessionId, "locations");
@@ -603,8 +615,16 @@ export class GameTable implements DurableObject {
     return initial;
   }
 
+  /**
+   * The serialised `StoneState` as last written to storage. `saveStoneState`
+   * compares against this and skips the `put` when nothing in the stone slice
+   * actually changed — a plain chat post, for instance, runs through the same
+   * mutation path but touches none of it.
+   */
+  private lastSavedStones: string | null = null;
+
   private async saveStoneState(state: GameState): Promise<void> {
-    await this.state.storage.put(KEY_STONES, {
+    const slice = {
       stonePool: state.stonePool,
       pendingRoll: state.pendingRoll,
       overcome: state.overcome,
@@ -613,7 +633,15 @@ export class GameTable implements DurableObject {
       usedAbilities: state.usedAbilities,
       proposals: state.proposals,
       session: state.session,
-    } satisfies StoneState);
+    } satisfies StoneState;
+
+    const serialised = JSON.stringify(slice);
+    if (serialised === this.lastSavedStones) {
+      return;
+    }
+
+    await this.state.storage.put(KEY_STONES, slice);
+    this.lastSavedStones = serialised;
   }
 
   /**
