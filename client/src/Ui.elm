@@ -3,6 +3,7 @@ module Ui exposing
     , banner
     , card
     , danger
+    , divider
     , facilitatorTint
     , ghostButton
     , ink
@@ -19,6 +20,7 @@ module Ui exposing
     , sans
     , sectionTitle
     , sm
+    , speakerColor
     , stoneChip
     , xl
     , xs
@@ -87,6 +89,25 @@ facilitatorTint =
 danger : Color
 danger =
     rgb255 168 74 74
+
+
+{-| A stable colour per speaker at the table. `0` is the facilitator; players
+take `1`, `2`, `3` in the order they first appear in the log. Wraps defensively.
+-}
+speakerColor : Int -> Color
+speakerColor index =
+    case modBy 4 index of
+        1 ->
+            rgb255 74 96 130
+
+        2 ->
+            rgb255 74 122 90
+
+        3 ->
+            rgb255 138 82 122
+
+        _ ->
+            facilitatorTint
 
 
 
@@ -203,6 +224,30 @@ banner status =
                 inkSoft
     in
     el [ Font.size 12, Font.color tone ] (text status)
+
+
+{-| A centred caption with a hairline either side. Used for the log's day
+dividers.
+-}
+divider : String -> Element msg
+divider label =
+    Element.row
+        [ width fill, spacing sm, Element.paddingXY 0 xs ]
+        [ rule
+        , el [ Font.size 10, Font.color inkSoft, Font.letterSpacing 0.5 ] (text label)
+        , rule
+        ]
+
+
+rule : Element msg
+rule =
+    el
+        [ width fill
+        , Element.height (Element.px 1)
+        , Background.color line
+        , Element.centerY
+        ]
+        Element.none
 
 
 

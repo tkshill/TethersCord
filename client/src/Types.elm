@@ -197,6 +197,8 @@ type Msg
     | SendMessage
     | LogScrolled Bool
     | MessagePosted (Result Http.Error ())
+    | ClearLog
+    | LogCleared (Result Http.Error ())
     | FromDiscordRaw Decode.Value
     | AddBoon
     | CommitBoonIncrement Int

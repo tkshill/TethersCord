@@ -19,6 +19,7 @@ import Element
         , text
         , width
         )
+import Dict exposing (Dict)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -41,14 +42,28 @@ logDomId =
 
 view : Model -> Html Msg
 view model =
+    let
+        facilitator =
+            isFacilitator model
+    in
     Ui.page
         [ header model
         , Ui.banner model.status
-        , rollPanel model.gameState
-        , characterSheets model.gameState
-        , messageLog model.timeZone model.gameState
+        , rollPanel facilitator model.gameState
+        , characterSheets facilitator model.gameState
+        , messageLog facilitator model.timeZone model.gameState
         , composer model
         ]
+
+
+isFacilitator : Model -> Bool
+isFacilitator model =
+    case model.auth of
+        Just auth ->
+            auth.role == Facilitator
+
+        Nothing ->
+            False
 
 
 
@@ -77,8 +92,8 @@ header model =
 -- STONES
 
 
-rollPanel : Maybe GameState -> Element Msg
-rollPanel maybeGs =
+rollPanel : Bool -> Maybe GameState -> Element Msg
+rollPanel facilitator maybeGs =
     Ui.card
         [ Ui.sectionTitle "Stones"
         , case maybeGs of
@@ -97,23 +112,39 @@ rollPanel maybeGs =
                     , case gs.pendingRoll of
                         Nothing ->
                             Element.wrappedRow [ spacing Ui.sm ]
-                                [ Ui.ghostButton { onPress = Just AddBoon, label = "Add boon" }
-                                , Ui.primaryButton { onPress = Just RollStones, label = "Roll" }
-                                ]
+                                (Ui.ghostButton { onPress = Just AddBoon, label = "Add boon" }
+                                    :: onlyFacilitator facilitator
+                                        [ Ui.primaryButton { onPress = Just RollStones, label = "Roll" } ]
+                                )
 
                         Just pending ->
                             Element.column [ spacing Ui.sm, width fill ]
-                                [ Element.wrappedRow [ spacing Ui.xs ]
+                                (Element.wrappedRow [ spacing Ui.xs ]
                                     (el [ Font.size 12, Font.color Ui.inkSoft ] (text "Rolled")
                                         :: List.map stoneChip pending.chosen
                                     )
-                                , Element.wrappedRow [ spacing Ui.sm ]
-                                    [ Ui.ghostButton { onPress = Just RerollStones, label = "Reroll" }
-                                    , Ui.primaryButton { onPress = Just AcceptRoll, label = "Accept" }
-                                    ]
-                                ]
+                                    :: onlyFacilitator facilitator
+                                        [ Element.wrappedRow [ spacing Ui.sm ]
+                                            [ Ui.ghostButton { onPress = Just RerollStones, label = "Reroll" }
+                                            , Ui.primaryButton { onPress = Just AcceptRoll, label = "Accept" }
+                                            ]
+                                        ]
+                                )
                     ]
         ]
+
+
+{-| The given elements, but only for the facilitator; an empty list otherwise.
+Keeps the roll lifecycle and boon grants out of players' hands until player
+moves become facilitator-approved proposals (roadmap section 5).
+-}
+onlyFacilitator : Bool -> List (Element msg) -> List (Element msg)
+onlyFacilitator facilitator elements =
+    if facilitator then
+        elements
+
+    else
+        []
 
 
 poolSummary : Int -> Int -> String
@@ -143,8 +174,8 @@ stoneChip stone =
 -- CHARACTERS
 
 
-characterSheets : Maybe GameState -> Element Msg
-characterSheets maybeGs =
+characterSheets : Bool -> Maybe GameState -> Element Msg
+characterSheets facilitator maybeGs =
     Ui.card
         [ Ui.sectionTitle "Characters"
         , case maybeGs of
@@ -153,12 +184,12 @@ characterSheets maybeGs =
 
             Just gs ->
                 Element.wrappedRow [ spacing Ui.md, width fill ]
-                    (List.map (characterSheet gs.committedBoons) gs.characters)
+                    (List.map (characterSheet facilitator gs.committedBoons) gs.characters)
         ]
 
 
-characterSheet : List CommittedBoon -> CharacterSheet -> Element Msg
-characterSheet committedBoons ch =
+characterSheet : Bool -> List CommittedBoon -> CharacterSheet -> Element Msg
+characterSheet facilitator committedBoons ch =
     Element.column
         [ spacing Ui.sm
         , padding Ui.md
@@ -174,7 +205,7 @@ characterSheet committedBoons ch =
         , field ch QuestField "Quest" ch.quest
         , field ch ConditionField "Condition" ch.condition
         , notesField ch
-        , fateRow ch
+        , fateRow facilitator ch
         , commitRow ch (committedBoonsForSlot ch.slot committedBoons)
         ]
 
@@ -202,14 +233,17 @@ notesField ch =
         }
 
 
-fateRow : CharacterSheet -> Element Msg
-fateRow ch =
+fateRow : Bool -> CharacterSheet -> Element Msg
+fateRow facilitator ch =
     Element.row [ spacing Ui.sm, Element.centerY ]
-        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Boons")
-        , el [ Font.semiBold, width (px 20), Font.center ] (text (String.fromInt ch.fate))
-        , Ui.ghostButton { onPress = Just (FateDecrement ch.slot), label = "−" }
-        , Ui.ghostButton { onPress = Just (FateIncrement ch.slot), label = "+" }
-        ]
+        ([ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Boons")
+         , el [ Font.semiBold, width (px 20), Font.center ] (text (String.fromInt ch.fate))
+         ]
+            ++ onlyFacilitator facilitator
+                [ Ui.ghostButton { onPress = Just (FateDecrement ch.slot), label = "−" }
+                , Ui.ghostButton { onPress = Just (FateIncrement ch.slot), label = "+" }
+                ]
+        )
 
 
 {-| Boons this character has pledged into the next roll. Spent on Accept.
@@ -243,10 +277,10 @@ inputAttrs =
 -- LOG
 
 
-messageLog : Time.Zone -> Maybe GameState -> Element Msg
-messageLog zone maybeGs =
+messageLog : Bool -> Time.Zone -> Maybe GameState -> Element Msg
+messageLog facilitator zone maybeGs =
     Ui.card
-        [ Ui.sectionTitle "Log"
+        [ logHeader facilitator maybeGs
         , case maybeGs of
             Nothing ->
                 placeholder "Loading messages…"
@@ -264,20 +298,86 @@ messageLog zone maybeGs =
                         , Element.htmlAttribute (Html.Attributes.id logDomId)
                         , Ui.onScrolledToBottom 32 LogScrolled
                         ]
-                        (List.map (messageRow zone) gs.messages)
+                        (logRows zone (speakerColors gs.messages) gs.messages)
         ]
 
 
-messageRow : Time.Zone -> Message -> Element msg
-messageRow zone msg =
+logHeader : Bool -> Maybe GameState -> Element Msg
+logHeader facilitator maybeGs =
+    let
+        hasMessages =
+            case maybeGs of
+                Just gs ->
+                    not (List.isEmpty gs.messages)
+
+                Nothing ->
+                    False
+    in
+    Element.row [ width fill, spacing Ui.md ]
+        (Ui.sectionTitle "Log"
+            :: (if facilitator && hasMessages then
+                    [ el [ Element.alignRight ]
+                        (Ui.ghostButton { onPress = Just ClearLog, label = "Clear log" })
+                    ]
+
+                else
+                    []
+               )
+        )
+
+
+{-| One stable colour per speaker: the facilitator, then each player in the
+order they first speak. -}
+speakerColors : List Message -> Dict String Element.Color
+speakerColors messages =
+    List.foldl
+        (\msg ( nextPlayer, dict ) ->
+            if Dict.member msg.authorId dict then
+                ( nextPlayer, dict )
+
+            else
+                case msg.role of
+                    Facilitator ->
+                        ( nextPlayer, Dict.insert msg.authorId (Ui.speakerColor 0) dict )
+
+                    Player ->
+                        ( nextPlayer + 1, Dict.insert msg.authorId (Ui.speakerColor nextPlayer) dict )
+        )
+        ( 1, Dict.empty )
+        messages
+        |> Tuple.second
+
+
+{-| The message rows with a day divider inserted wherever the calendar date
+changes. -}
+logRows : Time.Zone -> Dict String Element.Color -> List Message -> List (Element Msg)
+logRows zone colors messages =
+    List.foldl
+        (\msg ( lastDay, acc ) ->
+            let
+                day =
+                    Format.date zone msg.createdAt
+
+                row =
+                    messageRow zone colors msg
+            in
+            if day == lastDay then
+                ( lastDay, row :: acc )
+
+            else
+                ( day, row :: Ui.divider day :: acc )
+        )
+        ( "", [] )
+        messages
+        |> Tuple.second
+        |> List.reverse
+
+
+messageRow : Time.Zone -> Dict String Element.Color -> Message -> Element msg
+messageRow zone colors msg =
     let
         nameColor =
-            case msg.role of
-                Facilitator ->
-                    Ui.facilitatorTint
-
-                Player ->
-                    Ui.ink
+            Dict.get msg.authorId colors |> Maybe.withDefault Ui.ink
     in
     Element.row [ width fill, spacing Ui.md ]
         [ el
@@ -285,9 +385,9 @@ messageRow zone msg =
             , Font.size 11
             , Font.color Ui.inkSoft
             , Element.alignTop
-            , width (px 116)
+            , width (px 44)
             ]
-            (text (Format.timestamp zone msg.createdAt))
+            (text (Format.clock zone msg.createdAt))
         , Element.paragraph [ spacing 3, Font.size 13 ]
             [ el [ Font.semiBold, Font.color nameColor ] (text (msg.authorName ++ ": "))
             , text msg.content

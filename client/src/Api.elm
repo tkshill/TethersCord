@@ -2,6 +2,7 @@ module Api exposing
     ( decodeGameState
     , getGameState
     , postCharacterUpdate
+    , postClearMessages
     , postCommitBoon
     , postFate
     , postMessage
@@ -71,6 +72,22 @@ postStones flags auth path toMsg =
         { method = "POST"
         , headers = authHeaders auth
         , url = tableUrl flags path
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+{-| Facilitator-only: wipe this table's log. The resulting empty state arrives
+on the socket like any other mutation.
+-}
+postClearMessages : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
+postClearMessages flags auth toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth
+        , url = tableUrl flags "/messages/clear"
         , body = Http.emptyBody
         , expect = Http.expectWhatever toMsg
         , timeout = Nothing

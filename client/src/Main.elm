@@ -128,6 +128,20 @@ update msg model =
         MessagePosted (Err _) ->
             ( { model | status = "Failed to post message." }, Cmd.none )
 
+        ClearLog ->
+            case model.auth of
+                Just auth ->
+                    ( model, Api.postClearMessages model.flags auth LogCleared )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        LogCleared (Ok ()) ->
+            ( model, Cmd.none )
+
+        LogCleared (Err _) ->
+            ( { model | status = "Failed to clear the log." }, Cmd.none )
+
         AddBoon ->
             ( model, stonesCmd model "/stones/add-boon" )
 
