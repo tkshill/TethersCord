@@ -799,10 +799,10 @@ writing aspects at character creation.
 Do it after section 22 step 4 (the `View/` split), which is done — step 4's
 record-props layout is what the tooltip and glossary work builds on.
 
-### 21.1 — One editable copy source — `Copy.elm`
+### 21.1 — One editable copy source — `Copy.elm` — done
 
-- [ ] **`client/src/Copy.elm`** — a module of named `String` constants for every
-      player-facing string currently inline in `View.elm` and `View/*`: card
+- [x] **`client/src/Copy.elm`** — named `String` constants for every
+      player-facing string that was inline in `View.elm` and `View/*`: card
       titles, section hints ("Once per session", "Any time", "Start overcome",
       "Session pool", "Floating boons", "Bag of N"), empty states ("No session
       running.", "No messages yet.", "No character sheets."), placeholders
@@ -810,13 +810,14 @@ record-props layout is what the tooltip and glossary work builds on.
       `describeProposal` phrases, the connection notes, the untether-banner
       sentence, and the game-action button labels (Roll, Reroll, Press Fate,
       Accept, Add boon, Help Out, Add a Detail, Gain Insight, Accept Compel, End
-      session, Resolve untether, …). Grouped by card with comment headers.
-- [ ] Chosen over a `copy.json` compiled into the bundle: type-checked, no
+      session, Resolve untether, …). Grouped by card with comment headers; a few
+      spliced-value strings (bag count, carried-Bane note, "Overcome — <name>",
+      the Suggest Compel description) are small functions rather than constants.
+- [x] Chosen over a `copy.json` compiled into the bundle: type-checked, no
       decoder, no runtime fetch, a missing key fails the build.
-- [ ] Each `View/*` module imports `Copy` and reads from it; no behaviour
-      change, `pnpm run build:client` is the gate. Mechanical diff, one string at
-      a time. Structural field labels that are not game vocabulary ("Name",
-      "Notes") may stay inline — the target is prose that expresses the game.
+- [x] Each `View/*` module imports `Copy` and reads from it; no behaviour
+      change, the client bundle and both test suites are the gate. Structural
+      field labels that are not game vocabulary ("Name", "Notes") stay inline.
 
 ### 21.2 — Glossary content — `Copy.Term`
 
