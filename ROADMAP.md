@@ -197,7 +197,10 @@ its own stone pool that fills up from the rolls made during it.
       a placeholder pending playtesting.)
 - [ ] Trim or paginate history — the DO currently loads the last 200 messages
       and the client keeps 200. Fine for now; revisit if a campaign outgrows it.
-- [ ] Surface past `game_sessions` rows somewhere (a session history view).
+- [x] Surface past `game_sessions` rows somewhere. The worker reads the last
+      twenty completed sessions into `GameState.sessionHistory` (seeded on
+      Durable Object start, refreshed on `/session/end`); the client shows them
+      in the Session card as date / goal / outcome, newest first.
 
 ## 8. Connection polish
 

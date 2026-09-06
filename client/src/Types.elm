@@ -13,6 +13,7 @@ module Types exposing
     , Proposal
     , Role(..)
     , Session
+    , SessionSummary
     , committedBoonsForSlot
     , decodeRole
     , roleLabel
@@ -127,6 +128,18 @@ type alias Session =
     }
 
 
+{-| A completed session, as read back from the `game_sessions` rows for the
+table's history view. The running session is not included here.
+-}
+type alias SessionSummary =
+    { id : String
+    , goal : String
+    , startedAt : Time.Posix
+    , endedAt : Time.Posix
+    , outcome : String
+    }
+
+
 type alias CharacterSheet =
     { id : String
     , slot : Int
@@ -188,6 +201,7 @@ type alias GameState =
     , proposals : List Proposal
     , session : Maybe Session
     , characters : List CharacterSheet
+    , sessionHistory : List SessionSummary
     }
 
 

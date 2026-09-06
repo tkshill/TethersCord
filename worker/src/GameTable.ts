@@ -15,6 +15,7 @@ import type {
   Proposal,
   Role,
   SessionState,
+  SessionSummary,
   StartSessionInput,
   StoneKind,
   CharacterSheet,
@@ -364,6 +365,7 @@ export class GameTable implements DurableObject {
     const messages = rows.results ? [...rows.results].reverse() : [];
     const characters = await this.loadOrCreateCharacters(sessionId);
     const stones = await this.loadStoneState();
+    const sessionHistory = await this.loadSessionHistory(sessionId);
 
     this.gameState = {
       sessionId,
@@ -373,6 +375,7 @@ export class GameTable implements DurableObject {
       committedBoons: stones.committedBoons,
       proposals: stones.proposals,
       session: stones.session,
+      sessionHistory,
       characters,
     };
 
@@ -424,6 +427,30 @@ export class GameTable implements DurableObject {
       proposals: state.proposals,
       session: state.session,
     } satisfies StoneState);
+  }
+
+  /**
+   * The most recent completed sessions for this table, newest first, read
+   * straight from D1. The running session is excluded (`ended_at IS NULL`); it
+   * is already carried in `gameState.session`. Refreshed on `/session/end`
+   * rather than kept live, since that is the only event that adds a row here.
+   */
+  private async loadSessionHistory(
+    sessionId: string,
+  ): Promise<SessionSummary[]> {
+    const rows = await this.env.DB.prepare(
+      `
+      SELECT id, goal, started_at AS startedAt, ended_at AS endedAt, outcome
+      FROM game_sessions
+      WHERE session_id = ? AND ended_at IS NOT NULL
+      ORDER BY started_at DESC
+      LIMIT 20
+    `,
+    )
+      .bind(sessionId)
+      .all<SessionSummary>();
+
+    return rows.results ?? [];
   }
 
   private async loadOrCreateCharacters(
@@ -764,7 +791,10 @@ export class GameTable implements DurableObject {
       .bind(Date.now(), outcome, session.id)
       .run();
 
-    this.gameState = { ...this.gameState!, session: null };
+    const sessionHistory = await this.loadSessionHistory(
+      this.gameState!.sessionId,
+    );
+    this.gameState = { ...this.gameState!, session: null, sessionHistory };
     await this.saveStoneState(this.gameState);
 
     await this.appendMessage({

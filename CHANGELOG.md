@@ -10,6 +10,11 @@ version yet, so headings are dates.
 
 ### Added
 
+- Session history: the Session card now lists the table's completed sessions
+  (start date, goal, and met / partial / failed outcome), newest first. The
+  worker reads the last twenty `game_sessions` rows into a new
+  `GameState.sessionHistory`, seeded on Durable Object start and refreshed when a
+  session ends.
 - Characters can pledge their boons into a roll: a "Pledged" control on each
   sheet (`POST /api/table/:id/stones/commit`), tracked in
   `GameState.committedBoons`. A roll draws two stones at random from the shared
