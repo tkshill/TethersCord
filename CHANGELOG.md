@@ -67,6 +67,12 @@ version yet, so headings are dates.
     by default (`Model.guideExpanded`, `ToggleGuide`), it lays out every term
     grouped in order of play. It is the path for touch, where `title` tooltips
     do not fire.
+- **Aspect examples for character creation** (roadmap section 21, step 5).
+  `ASPECTS.md` at the repo root is a bank of example Archetypes, Desires, and
+  Quests with guidance on writing strong ones and a set of worked characters.
+  A curated subset (`Copy.aspectExamples`) shows in the Activity under a "see
+  examples" toggle on each aspect field while the sheet is editable
+  (`Model.aspectExamplesOpen`, `ToggleAspectExamples`, one open at a time).
 
 ### Changed
 

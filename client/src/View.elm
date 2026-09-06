@@ -67,7 +67,11 @@ view model =
                 , View.Session.untetherBanner ctx model.confirming gs
                 , View.Stones.view ctx { inflight = model.inflight, drafts = model.proposalDrafts } gs
                 , View.Moves.view ctx gs
-                , View.Characters.view ctx { selectedSlot = model.selectedSlot } gs
+                , View.Characters.view ctx
+                    { selectedSlot = model.selectedSlot
+                    , aspectExamplesOpen = model.aspectExamplesOpen
+                    }
+                    gs
                 , View.Entities.view ctx Npc gs
                 , View.Entities.view ctx Location gs
                 , View.Log.view ctx

@@ -8,11 +8,12 @@ small functions that keep the whole phrase together.
 Structural field labels that are not game vocabulary ("Name", "Notes") are left
 inline in the view — the target here is the prose that expresses the game.
 
-Section 21.2 adds the glossary `Term` list alongside these; 21.1 is the constants
-only.
+The glossary `Term` list lives next door in `Copy.Terms`; `aspectExamples` here
+is the character-creation prompt list, a curated subset of `ASPECTS.md`.
 -}
 
 import Format
+import Types exposing (Aspect(..))
 
 
 
@@ -557,3 +558,49 @@ loadEarlierMessages =
 clearLog : String
 clearLog =
     "Clear log"
+
+
+
+-- ASPECT EXAMPLES (View/Characters.elm) — a curated subset of ASPECTS.md,
+-- shown under "see examples" on each aspect field during character creation.
+
+
+aspectExamplesLabel : String
+aspectExamplesLabel =
+    "see examples"
+
+
+aspectExamplesHideLabel : String
+aspectExamplesHideLabel =
+    "hide examples"
+
+
+aspectExamples : Aspect -> List String
+aspectExamples aspect =
+    case aspect of
+        Archetype ->
+            [ "The soldier who was told the war was over"
+            , "Youngest heir of a house that no longer exists"
+            , "The healer who is afraid of their own hands"
+            , "The cartographer of a country being erased"
+            , "The family disappointment, home again"
+            , "Keeper of a shrine to a god that left"
+            ]
+
+        Desire ->
+            [ "To be believed, just once, by the person who raised them"
+            , "To go one season without owing anyone"
+            , "To be the one who stays"
+            , "To keep a promise they made to someone who is gone"
+            , "To be forgiven without having to ask"
+            , "To hold power long enough to give it away well"
+            ]
+
+        Quest ->
+            [ "Get the last shipment across the border before the pass closes"
+            , "Keep the lights on in the house until spring"
+            , "Deliver the letter without reading it"
+            , "Get the child to the coast and onto a boat"
+            , "Hold the bridge until the others are across"
+            , "Convince one more family to leave"
+            ]
