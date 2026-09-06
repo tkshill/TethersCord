@@ -210,31 +210,7 @@ first-class model support, not just log markers.
 - [ ] Retry `getGameState` on transient failure instead of parking on
       "Failed to load game state."
 
-## 9. Effect pattern + tests
-
-`update` currently returns `( Model, Cmd Msg )` and calls `Api` / `Ports` /
-`Browser.Dom` directly. The [Effect pattern](https://elm-radio.com/episode/single-out-effects/)
-replaces the `Cmd` with a custom `Effect Msg` type that only *describes* side
-effects, turning `update` into a pure function that returns data.
-
-Worth doing, but the main payoff — a `update` that can be asserted on without
-mocking `Cmd` — only lands with a test suite, so treat these as one unit of
-work rather than a standalone reorganisation.
-
-- [ ] `Effect.elm` — an `Effect msg` type with one constructor per side effect
-      the app performs (`GetGameState`, `PostMessage`, `PostStones`,
-      `PostCharacterUpdate`, `PostFate`, `Authorize`, `GetTimeZone`,
-      `ScrollLogToBottom`, `None`, `Batch`). `Api` and `Ports` keep the "how";
-      `Effect` names the "what".
-- [ ] `Effect.perform : Effect Msg -> Cmd Msg`, called once at the `Main`
-      boundary. `update : Msg -> Model -> ( Model, Effect Msg )`.
-- [ ] Add `elm-explorations/test` and `avh4/elm-program-test`; cover the
-      snapshot-merge logic in `Main.applyServerState` (keeping the sheet under
-      the cursor), the empty-message send guard, and the auth → load-state
-      sequence.
-- [ ] Wire `pnpm run test:client` into `pnpm run build`.
-
-## 10. Character sheet layout and stone visualisation
+## 9. Character sheet layout and stone visualisation
 
 The three sheets in a `wrappedRow` and the roll panel's text-and-number
 summaries are getting dense. This pass is about seeing the current roll at a
@@ -256,7 +232,7 @@ glance.
       boons as extra stone shapes in the bag rather than the
       "(N boon pledged)" caption.
 
-## 11. The overcome action and player moves
+## 10. The overcome action and player moves
 
 The rules layer over the roll mechanic. An **overcome** is the attempt to do
 something risky; everything else here is how the other players feed into it.
@@ -311,6 +287,31 @@ interface (section 5).
       rejects), reused by every ability and the compel moves.
 - [ ] A compel handshake: suggest → target accepts → facilitator approves, then
       the boon payouts.
+
+## 11. Effect pattern + tests
+
+`update` currently returns `( Model, Cmd Msg )` and calls `Api` / `Ports` /
+`Browser.Dom` directly. The [Effect pattern](https://elm-radio.com/episode/single-out-effects/)
+replaces the `Cmd` with a custom `Effect Msg` type that only *describes* side
+effects, turning `update` into a pure function that returns data.
+
+Worth doing, but the main payoff — a `update` that can be asserted on without
+mocking `Cmd` — only lands with a test suite, so treat these as one unit of
+work rather than a standalone reorganisation. Sequenced after the gameplay
+sections above so the shape of `update` has settled first.
+
+- [ ] `Effect.elm` — an `Effect msg` type with one constructor per side effect
+      the app performs (`GetGameState`, `PostMessage`, `PostStones`,
+      `PostCharacterUpdate`, `PostFate`, `Authorize`, `GetTimeZone`,
+      `ScrollLogToBottom`, `None`, `Batch`). `Api` and `Ports` keep the "how";
+      `Effect` names the "what".
+- [ ] `Effect.perform : Effect Msg -> Cmd Msg`, called once at the `Main`
+      boundary. `update : Msg -> Model -> ( Model, Effect Msg )`.
+- [ ] Add `elm-explorations/test` and `avh4/elm-program-test`; cover the
+      snapshot-merge logic in `Main.applyServerState` (keeping the sheet under
+      the cursor), the empty-message send guard, and the auth → load-state
+      sequence.
+- [ ] Wire `pnpm run test:client` into `pnpm run build`.
 
 ---
 
