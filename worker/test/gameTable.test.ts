@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { aspectBaneBag, routeOvercomeDraw } from "../src/GameTable";
+import { aspectBaneBag, routeOvercomeDraw } from "../src/gameLogic";
 import { call, claim, readState, seedAuth } from "./helpers";
 
 async function firstProposalId(table: string, token: string): Promise<string> {

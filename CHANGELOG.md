@@ -86,6 +86,21 @@ version yet, so headings are dates.
   client decodes it to a `SessionOutcome` type and `View.verdictWord` /
   `verdictColor` switch on it instead of parsing the prose with
   `String.contains`. No behaviour change.
+- Maintainability pass — worker pure-logic extraction (roadmap section 22,
+  step 5). `GameTable.ts` sheds three files' worth of code with no behaviour
+  change:
+  - **`worker/src/gameLogic.ts`** — the pure rules helpers (`applyPledge`,
+    `routeOvercomeDraw`, `aspectBaneBag`, `markAbilityUsed`,
+    `clearSlotPendingState`, `pickTwoRandom`, `randomInt`, `describeStones`,
+    `characterLabel`, `totalCommittedBoons`), now unit-tested directly in
+    `worker/test/gameLogic.test.ts`.
+  - **`worker/src/characters.ts`** — every write to the `characters` table
+    behind a named helper (`setFate`, `setOwner`, `incrementAspectBane`,
+    `clearAspectBanes`, `updateFields`, `rowToCharacterSheet`); the four
+    copies of `UPDATE characters SET fate = ?` are now one path.
+  - **`worker/src/migrateStoneState.ts`** — the `KEY_STONES` load-time
+    compatibility handling (colour-named stones, defaulted fields) as a pure
+    `migrateStoneState(stored, initialPool)`.
 - Maintainability pass — `View.elm` split (roadmap section 22, step 4). The
   ~1500-line single view module is now a thin `View.elm` shell (the page
   frame, `header`, `connectionNote`, `composer`, and the ordered section list)
