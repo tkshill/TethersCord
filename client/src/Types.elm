@@ -3,6 +3,7 @@ module Types exposing
     , CharacterField(..)
     , CharacterSheet
     , CommittedBoon
+    , Connection(..)
     , Flags
     , GameState
     , Message
@@ -11,6 +12,7 @@ module Types exposing
     , PendingRoll
     , Proposal
     , Role(..)
+    , Session
     , committedBoonsForSlot
     , decodeRole
     , roleLabel
@@ -115,6 +117,16 @@ type alias Proposal =
     }
 
 
+{-| The running game session. `pool` is the session stone pool, which grows one
+stone per accepted roll.
+-}
+type alias Session =
+    { id : String
+    , goal : String
+    , pool : List Stone
+    }
+
+
 type alias CharacterSheet =
     { id : String
     , slot : Int
@@ -174,6 +186,7 @@ type alias GameState =
     , pendingRoll : Maybe PendingRoll
     , committedBoons : List CommittedBoon
     , proposals : List Proposal
+    , session : Maybe Session
     , characters : List CharacterSheet
     }
 
@@ -198,10 +211,30 @@ type alias Model =
     -- is left where they are.
     , logAtBottom : Bool
 
+    -- Draft goal in the facilitator's "start session" field.
+    , newSessionGoal : String
+
+    -- Backend WebSocket connection state, as last reported by the JS socket.
+    , connection : Connection
+
+    -- How many times the initial game-state load has been retried after a
+    -- transient failure. The live socket is the real source of state; this is
+    -- only the first-paint seed.
+    , gameStateAttempts : Int
+
     -- Viewer's local time zone, used to render message timestamps. Starts at
     -- UTC and is replaced once Time.here resolves.
     , timeZone : Time.Zone
     }
+
+
+{-| Backend WebSocket health, driven by the `wsStatus` port.
+-}
+type Connection
+    = Connected
+    | Reconnecting
+    | Offline
+    | Rejected
 
 
 
@@ -227,6 +260,12 @@ type Msg
     | AcceptProposal String
     | RejectProposal String
     | ProposalResolved (Result Http.Error ())
+    | SessionGoalChanged String
+    | StartSession
+    | EndSession
+    | SessionUpdated (Result Http.Error ())
+    | WsStatusChanged String
+    | RetryGetGameState
     | RollStones
     | RerollStones
     | AcceptRoll

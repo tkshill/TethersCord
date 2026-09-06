@@ -10,10 +10,34 @@ import Browser
 import Browser.Dom
 import Json.Decode as Decode
 import Ports
+import Process
 import Task
 import Time
 import Types exposing (..)
 import View
+
+
+{-| How many times the initial game-state seed is retried before giving up.
+-}
+maxGameStateAttempts : Int
+maxGameStateAttempts =
+    3
+
+
+connectionFromString : String -> Connection
+connectionFromString raw =
+    case raw of
+        "connected" ->
+            Connected
+
+        "reconnecting" ->
+            Reconnecting
+
+        "rejected" ->
+            Rejected
+
+        _ ->
+            Offline
 
 
 main : Program Flags Model Msg
@@ -35,6 +59,9 @@ init flags =
       , status = "Authorizing with Discord…"
       , editingSlot = Nothing
       , logAtBottom = True
+      , newSessionGoal = ""
+      , connection = Connected
+      , gameStateAttempts = 0
       , timeZone = Time.utc
       }
     , Cmd.batch
@@ -49,6 +76,7 @@ subscriptions _ =
     Sub.batch
         [ Ports.fromDiscord FromDiscordRaw
         , Ports.wsGameState WsGameStateRaw
+        , Ports.wsStatus WsStatusChanged
         ]
 
 
@@ -84,18 +112,30 @@ update msg model =
         GotGameState (Ok gs) ->
             case model.gameState of
                 Just _ ->
-                    ( { model | status = "Connected." }, Cmd.none )
+                    ( { model | status = "Connected.", gameStateAttempts = 0 }, Cmd.none )
 
                 Nothing ->
                     ( { model
                         | gameState = Just (applyServerState model gs)
                         , status = "Connected."
+                        , gameStateAttempts = 0
                       }
                     , scrollLogToBottom
                     )
 
+        -- The live socket is the real source of state, so a failed seed load is
+        -- retried a few times with a short backoff before giving up.
         GotGameState (Err _) ->
-            ( { model | status = "Failed to load game state." }, Cmd.none )
+            if model.gameState == Nothing && model.gameStateAttempts < maxGameStateAttempts then
+                ( { model
+                    | status = "Reconnecting to the table…"
+                    , gameStateAttempts = model.gameStateAttempts + 1
+                  }
+                , Process.sleep 2000 |> Task.perform (\_ -> RetryGetGameState)
+                )
+
+            else
+                ( { model | status = "Failed to load game state." }, Cmd.none )
 
         NewMessageChanged s ->
             ( { model | newMessage = s }, Cmd.none )
@@ -175,6 +215,44 @@ update msg model =
         ProposalResolved (Err _) ->
             ( { model | status = "Failed to resolve the proposal." }, Cmd.none )
 
+        SessionGoalChanged s ->
+            ( { model | newSessionGoal = s }, Cmd.none )
+
+        StartSession ->
+            case ( model.auth, String.trim model.newSessionGoal == "" ) of
+                ( Just auth, False ) ->
+                    ( { model | newSessionGoal = "" }
+                    , Api.postStartSession model.flags auth model.newSessionGoal SessionUpdated
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        EndSession ->
+            case model.auth of
+                Just auth ->
+                    ( model, Api.postEndSession model.flags auth SessionUpdated )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        SessionUpdated (Ok ()) ->
+            ( model, Cmd.none )
+
+        SessionUpdated (Err _) ->
+            ( { model | status = "Failed to update the session." }, Cmd.none )
+
+        WsStatusChanged raw ->
+            ( { model | connection = connectionFromString raw }, Cmd.none )
+
+        RetryGetGameState ->
+            case ( model.auth, model.gameState ) of
+                ( Just auth, Nothing ) ->
+                    ( model, Api.getGameState model.flags auth GotGameState )
+
+                _ ->
+                    ( model, Cmd.none )
+
         RollStones ->
             ( model, stonesCmd model "/stones/roll" )
 
@@ -232,7 +310,10 @@ update msg model =
         WsGameStateRaw value ->
             case Decode.decodeValue Api.decodeGameState value of
                 Ok gs ->
-                    ( { model | gameState = Just (applyServerState model gs) }
+                    ( { model
+                        | gameState = Just (applyServerState model gs)
+                        , connection = Connected
+                      }
                     , if model.logAtBottom then
                         scrollLogToBottom
 

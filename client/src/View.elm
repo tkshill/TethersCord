@@ -51,12 +51,34 @@ view model =
     in
     Ui.page
         [ header model
+        , connectionNote model.connection
         , Ui.banner model.status
+        , sessionPanel facilitator model.newSessionGoal model.gameState
         , rollPanel facilitator myId model.gameState
         , characterSheets facilitator myId model.gameState
         , messageLog facilitator model.timeZone model.gameState
         , composer model
         ]
+
+
+connectionNote : Connection -> Element msg
+connectionNote conn =
+    let
+        note color label =
+            el [ Font.size 11, Font.color color ] (text label)
+    in
+    case conn of
+        Connected ->
+            none
+
+        Reconnecting ->
+            note Ui.inkSoft "Reconnecting to the table…"
+
+        Offline ->
+            note Ui.danger "Connection lost. Reload the Activity to reconnect."
+
+        Rejected ->
+            note Ui.danger "Session rejected — reload the Activity to sign in again."
 
 
 isFacilitator : Model -> Bool
@@ -88,6 +110,50 @@ header model =
 
             Nothing ->
                 none
+        ]
+
+
+
+-- SESSION
+
+
+sessionPanel : Bool -> String -> Maybe GameState -> Element Msg
+sessionPanel facilitator draftGoal maybeGs =
+    Ui.card
+        [ Ui.sectionTitle "Session"
+        , case maybeGs |> Maybe.andThen .session of
+            Just s ->
+                Element.column [ spacing Ui.sm, width fill ]
+                    [ Element.paragraph [ Font.size 13 ]
+                        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Goal  ")
+                        , text s.goal
+                        ]
+                    , Element.wrappedRow [ spacing Ui.xs, Element.centerY ]
+                        (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Session pool")
+                            :: List.map stoneChip s.pool
+                        )
+                    , if facilitator then
+                        Ui.ghostButton { onPress = Just EndSession, label = "End session" }
+
+                      else
+                        none
+                    ]
+
+            Nothing ->
+                if facilitator then
+                    Element.row [ spacing Ui.sm, width fill ]
+                        [ Input.text
+                            (inputAttrs ++ [ width fill, Ui.onEnter StartSession ])
+                            { onChange = SessionGoalChanged
+                            , text = draftGoal
+                            , placeholder = Just (Input.placeholder [] (text "Session goal…"))
+                            , label = Input.labelHidden "Session goal"
+                            }
+                        , Ui.primaryButton { onPress = Just StartSession, label = "Start session" }
+                        ]
+
+                else
+                    placeholder "No session running."
         ]
 
 

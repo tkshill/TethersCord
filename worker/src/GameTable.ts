@@ -14,6 +14,8 @@ import type {
   PostMessageInput,
   Proposal,
   Role,
+  SessionState,
+  StartSessionInput,
   StoneKind,
   CharacterSheet,
   UpdateCharacterInput,
@@ -29,6 +31,15 @@ const CHARACTER_SLOT_COUNT = 3;
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_FIELD_LENGTH = 500;
 const MAX_NOTES_LENGTH = 4000;
+const MAX_GOAL_LENGTH = 500;
+
+/** A session's pool starts here, then grows one stone per accepted roll. */
+const INITIAL_SESSION_POOL: readonly StoneKind[] = [
+  "Boon",
+  "Bane",
+  "Boon",
+  "Bane",
+];
 
 /** Durable Object storage keys. */
 const KEY_SESSION_ID = "sessionId";
@@ -39,6 +50,7 @@ type StoneState = {
   pendingRoll: PendingRoll | null;
   committedBoons: CommittedBoon[];
   proposals: Proposal[];
+  session: SessionState | null;
 };
 
 /** Shape of `KEY_STONES` as written by builds that still used colour names. */
@@ -51,6 +63,7 @@ type LegacyStoneState = {
   } | null;
   committedBoons?: CommittedBoon[];
   proposals?: Proposal[];
+  session?: SessionState | null;
 };
 
 function migrateStoneKind(kind: LegacyStoneKind): StoneKind {
@@ -194,6 +207,20 @@ export class GameTable implements DurableObject {
       return (
         facilitatorOnly(authInfo) ??
         this.withLock(() => this.handleAcceptRoll())
+      );
+    }
+
+    if (url.pathname === "/session/start" && request.method === "POST") {
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleStartSession(request, authInfo))
+      );
+    }
+
+    if (url.pathname === "/session/end" && request.method === "POST") {
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleEndSession(authInfo))
       );
     }
 
@@ -345,6 +372,7 @@ export class GameTable implements DurableObject {
       pendingRoll: stones.pendingRoll,
       committedBoons: stones.committedBoons,
       proposals: stones.proposals,
+      session: stones.session,
       characters,
     };
 
@@ -373,6 +401,7 @@ export class GameTable implements DurableObject {
           : null,
         committedBoons: stored.committedBoons ?? [],
         proposals: stored.proposals ?? [],
+        session: stored.session ?? null,
       };
     }
 
@@ -381,6 +410,7 @@ export class GameTable implements DurableObject {
       pendingRoll: null,
       committedBoons: [],
       proposals: [],
+      session: null,
     };
     await this.state.storage.put(KEY_STONES, initial);
     return initial;
@@ -392,6 +422,7 @@ export class GameTable implements DurableObject {
       pendingRoll: state.pendingRoll,
       committedBoons: state.committedBoons,
       proposals: state.proposals,
+      session: state.session,
     } satisfies StoneState);
   }
 
@@ -651,6 +682,17 @@ export class GameTable implements DurableObject {
       characters = characters.map((c) => (c.slot === slot ? { ...c, fate } : c));
     }
 
+    // One of the two result stones, at random, feeds the running session pool.
+    const priorSession = this.gameState!.session;
+    const drawn = this.gameState!.pendingRoll?.chosen ?? [];
+    const session: SessionState | null =
+      priorSession && drawn.length > 0
+        ? {
+            ...priorSession,
+            pool: [...priorSession.pool, drawn[randomInt(drawn.length)]],
+          }
+        : priorSession;
+
     this.gameState = {
       ...this.gameState!,
       characters,
@@ -659,8 +701,78 @@ export class GameTable implements DurableObject {
       committedBoons: [],
       // A resolved roll clears the slate; unaccepted proposals do not carry over.
       proposals: [],
+      session,
     };
     await this.saveStoneState(this.gameState);
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  private async handleStartSession(
+    request: Request,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    if (this.gameState!.session) {
+      return new Response("A session is already running", { status: 409 });
+    }
+
+    const input = (await readJson(request)) as StartSessionInput | null;
+    const goal = boundedString(input?.goal, MAX_GOAL_LENGTH).trim();
+    if (!goal) {
+      return new Response("A session goal is required", { status: 400 });
+    }
+
+    const id = crypto.randomUUID();
+    await this.env.DB.prepare(
+      `INSERT INTO game_sessions (id, session_id, goal, started_at) VALUES (?, ?, ?, ?)`,
+    )
+      .bind(id, this.gameState!.sessionId, goal, Date.now())
+      .run();
+
+    this.gameState = {
+      ...this.gameState!,
+      session: { id, goal, pool: [...INITIAL_SESSION_POOL] },
+    };
+    await this.saveStoneState(this.gameState);
+
+    await this.appendMessage({
+      authorId: authInfo.discordUserId,
+      authorName: authInfo.username,
+      role: authInfo.role,
+      content: `Session started — ${goal}`,
+    });
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  private async handleEndSession(authInfo: AuthInfo): Promise<Response> {
+    const session = this.gameState!.session;
+    if (!session) {
+      return new Response("No session is running", { status: 400 });
+    }
+
+    const draw = pickTwoRandom(session.pool).chosen;
+    const boons = draw.filter((s) => s === "Boon").length;
+    const verdict = boons === 2 ? "met" : boons === 1 ? "partial" : "failed";
+    const outcome = `${verdict} (${draw.join(", ")})`;
+
+    await this.env.DB.prepare(
+      `UPDATE game_sessions SET ended_at = ?, outcome = ? WHERE id = ?`,
+    )
+      .bind(Date.now(), outcome, session.id)
+      .run();
+
+    this.gameState = { ...this.gameState!, session: null };
+    await this.saveStoneState(this.gameState);
+
+    await this.appendMessage({
+      authorId: authInfo.discordUserId,
+      authorName: authInfo.username,
+      role: authInfo.role,
+      content: `Session ended — goal ${verdict}: ${session.goal} (${draw.join(", ")})`,
+    });
 
     this.broadcast(this.gameState);
     return ackResponse();

@@ -76,6 +76,17 @@ export type CharacterSheetFields = Omit<
   "id" | "slot" | "fate" | "ownerId"
 >;
 
+/**
+ * The running game session, if one is open. `id` ties back to the
+ * `game_sessions` D1 row; `pool` is the session stone pool, held in Durable
+ * Object storage and grown one stone per accepted roll.
+ */
+export type SessionState = {
+  id: string;
+  goal: string;
+  pool: StoneKind[];
+};
+
 export type GameState = {
   sessionId: string;
   messages: Message[];
@@ -83,6 +94,7 @@ export type GameState = {
   pendingRoll: PendingRoll | null;
   committedBoons: CommittedBoon[];
   proposals: Proposal[];
+  session: SessionState | null;
   characters: CharacterSheet[];
 };
 
@@ -98,6 +110,10 @@ export type UpdateFateInput = {
 
 export type CommitBoonInput = {
   delta: number;
+};
+
+export type StartSessionInput = {
+  goal: string;
 };
 
 export type BackendAuthResult = {

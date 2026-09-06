@@ -6,9 +6,11 @@ module Api exposing
     , postClearMessages
     , postCommitBoon
     , postFate
+    , postEndSession
     , postMessage
     , postProposalDecision
     , postReleaseSlot
+    , postStartSession
     , postStones
     )
 
@@ -26,7 +28,7 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 import Roll exposing (Stone(..))
 import Time
-import Types exposing (Auth, CharacterSheet, CommittedBoon, Flags, GameState, PendingRoll, Proposal, decodeRole)
+import Types exposing (Auth, CharacterSheet, CommittedBoon, Flags, GameState, PendingRoll, Proposal, Session, decodeRole)
 
 
 
@@ -193,6 +195,36 @@ postProposalDecision flags auth proposalId decision toMsg =
         }
 
 
+{-| Facilitator-only: open a session with a goal.
+-}
+postStartSession : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postStartSession flags auth goal toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth ++ [ jsonContentType ]
+        , url = tableUrl flags "/session/start"
+        , body = Http.jsonBody (Encode.object [ ( "goal", Encode.string goal ) ])
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+{-| Facilitator-only: end the running session and roll its pool for the outcome.
+-}
+postEndSession : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
+postEndSession flags auth toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth
+        , url = tableUrl flags "/session/end"
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
 jsonContentType : Http.Header
 jsonContentType =
     Http.header "Content-Type" "application/json"
@@ -253,6 +285,14 @@ decodeProposal =
         (Decode.field "delta" Decode.int)
 
 
+decodeSession : Decode.Decoder Session
+decodeSession =
+    Decode.map3 Session
+        (Decode.field "id" Decode.string)
+        (Decode.field "goal" Decode.string)
+        (Decode.field "pool" decodeStoneList)
+
+
 decodeCharacterSheet : Decode.Decoder CharacterSheet
 decodeCharacterSheet =
     Decode.map8
@@ -290,11 +330,12 @@ decodeCharacterSheet =
 
 decodeGameState : Decode.Decoder GameState
 decodeGameState =
-    Decode.map7 GameState
+    Decode.map8 GameState
         (Decode.field "sessionId" Decode.string)
         (Decode.field "messages" (Decode.list decodeMessage))
         (Decode.field "stonePool" decodeStoneList)
         (Decode.field "pendingRoll" (Decode.nullable decodePendingRoll))
         (Decode.field "committedBoons" (Decode.list decodeCommittedBoon))
         (Decode.field "proposals" (Decode.list decodeProposal))
+        (Decode.field "session" (Decode.nullable decodeSession))
         (Decode.field "characters" (Decode.list decodeCharacterSheet))

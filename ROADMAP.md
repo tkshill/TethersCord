@@ -180,35 +180,34 @@ directly — sheets are not shared state in that sense.
 ## 7. Session / campaign structure
 
 A **session** is one game day with a goal the players work toward, and it carries
-its own stone pool that fills up from the rolls made during it. This needs
-first-class model support, not just log markers.
+its own stone pool that fills up from the rolls made during it.
 
-- [ ] **Session goal.** Every session records what the players are trying to
-      accomplish. Set by the facilitator at the start (section 5) and shown to
-      the whole table for the session's duration. Likely a `sessions` table row
-      (`id`, `session_id`, `goal`, `started_at`, `ended_at`, `outcome`) rather
-      than another column on `characters`.
-- [ ] **Start / end session** actions the facilitator triggers, replacing the
-      log-marker idea. Starting opens a goal and a fresh session pool; ending
-      runs the session roll below. The log gets a system line for each.
-- [ ] **Session stone pool.** Separate from the per-roll bag in section 4. It
-      starts at two Boon + two Bane and persists for the life of the session
-      (Durable Object storage, like the per-roll pool). After each *accepted*
-      roll in the session, one of that roll's two result stones — chosen at
-      random — is added to the session pool, so the pool drifts toward however
-      the session has been going.
-- [ ] **Session roll.** At end of session the facilitator rolls against the
-      session pool to decide whether the players met the goal. Resolved the same
-      way as a normal roll (draw from the bag); the result and the goal outcome
-      are written to the `sessions` row and logged as a distinct system line.
+- [x] **Session goal** in a `game_sessions` D1 row (`id`, `session_id`, `goal`,
+      `started_at`, `ended_at`, `outcome`; migration `0007`). Shown to the whole
+      table in a "Session" card for the session's duration.
+- [x] **Start / end session** — facilitator-only `POST /session/start`
+      (`{ goal }`) and `/session/end`. Start opens the goal and a fresh session
+      pool; end runs the session roll. Each writes a system line to the log.
+- [x] **Session stone pool** — separate from the per-roll bag, starts at two
+      Boon + two Bane, held in the Durable Object's stone storage. Each accepted
+      roll adds one of that roll's two result stones, chosen at random.
+- [x] **Session roll** — `/session/end` draws two from the session pool: two
+      Boon → `met`, one → `partial`, none → `failed`. Written to
+      `game_sessions.outcome` and logged. (The met/partial/failed thresholds are
+      a placeholder pending playtesting.)
 - [ ] Trim or paginate history — the DO currently loads the last 200 messages
       and the client keeps 200. Fine for now; revisit if a campaign outgrows it.
+- [ ] Surface past `game_sessions` rows somewhere (a session history view).
 
 ## 8. Connection polish
 
-- [ ] Surface WebSocket disconnect/reconnect state in the UI.
-- [ ] Retry `getGameState` on transient failure instead of parking on
-      "Failed to load game state."
+- [x] WebSocket state in the UI. `GameSocket.ts` reports `connected` /
+      `reconnecting` / `offline` / `rejected` over a new `wsStatus` port;
+      `Model.connection` drives a one-line note above the status banner (nothing
+      shown while connected).
+- [x] Retry the initial `getGameState` up to three times, two seconds apart
+      (`Process.sleep` + `RetryGetGameState`), before parking on "Failed to load
+      game state." The live socket remains the real source of state.
 
 ## 9. Character sheet layout and stone visualisation
 
@@ -317,9 +316,9 @@ sections above so the shape of `update` has settled first.
 
 ## Flushing test messages before the campaign
 
-Until the `messages/clear` route exists, wipe the log manually. The Durable
-Object only reads `messages` from D1 on a cold start, so the in-memory copy must
-be evicted too.
+The facilitator's "Clear log" button (the `messages/clear` route) is the normal
+way to wipe a log. To do it by hand instead — the Durable Object only reads
+`messages` from D1 on a cold start, so the in-memory copy must be evicted too:
 
 1. Make sure no one is connected to the table (close all Activity windows).
 2. Delete the rows from the deployed database:

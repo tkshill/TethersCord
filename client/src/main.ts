@@ -11,6 +11,7 @@ declare const Elm: {
         toDiscord: { subscribe: (handler: (message: unknown) => void) => void };
         fromDiscord: { send: (message: unknown) => void };
         wsGameState: { send: (message: unknown) => void };
+        wsStatus: { send: (status: string) => void };
       };
     };
   };
