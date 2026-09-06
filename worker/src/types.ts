@@ -94,4 +94,6 @@ export type Env = {
   GAME_TABLE: DurableObjectNamespace;
   DISCORD_CLIENT_ID: string;
   DISCORD_CLIENT_SECRET: string;
+  /** Discord user id always treated as facilitator; "" to rely on table rows. */
+  BOOTSTRAP_FACILITATOR_ID: string;
 };

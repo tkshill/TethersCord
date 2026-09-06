@@ -12,7 +12,12 @@
   },
 
   "vars": {
-    "DISCORD_CLIENT_ID": "1540421919982231692"
+    "DISCORD_CLIENT_ID": "1540421919982231692",
+    // Discord user id that is always treated as the facilitator, on top of any
+    // rows in the `facilitators` table. Not a secret, just a snowflake — fill it
+    // in here (or override in `.dev.vars` locally). Empty means "table rows
+    // only".
+    "BOOTSTRAP_FACILITATOR_ID": ""
   },
   // DISCORD_CLIENT_SECRET is a secret, not a var: `wrangler secret put` in
   // production, `.dev.vars` (next to this file) locally.

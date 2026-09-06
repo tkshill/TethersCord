@@ -138,6 +138,13 @@ export class GameTable implements DurableObject {
       return this.withLock(() => this.handlePostMessage(request, authInfo));
     }
 
+    if (url.pathname === "/messages/clear" && request.method === "POST") {
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleClearMessages())
+      );
+    }
+
     if (url.pathname === "/stones/add-boon" && request.method === "POST") {
       return this.withLock(() => this.handleAddBoon());
     }
@@ -147,15 +154,24 @@ export class GameTable implements DurableObject {
     }
 
     if (url.pathname === "/stones/roll" && request.method === "POST") {
-      return this.withLock(() => this.handleRoll(authInfo, "Rolled"));
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleRoll(authInfo, "Rolled"))
+      );
     }
 
     if (url.pathname === "/stones/reroll" && request.method === "POST") {
-      return this.withLock(() => this.handleRoll(authInfo, "Rerolled"));
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleRoll(authInfo, "Rerolled"))
+      );
     }
 
     if (url.pathname === "/stones/accept" && request.method === "POST") {
-      return this.withLock(() => this.handleAcceptRoll());
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleAcceptRoll())
+      );
     }
 
     const charUpdateMatch = url.pathname.match(/^\/characters\/(\d+)\/update$/);
@@ -167,8 +183,11 @@ export class GameTable implements DurableObject {
 
     const charFateMatch = url.pathname.match(/^\/characters\/(\d+)\/fate$/);
     if (charFateMatch && request.method === "POST") {
-      return this.withLock(() =>
-        this.handleUpdateFate(request, Number(charFateMatch[1])),
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() =>
+          this.handleUpdateFate(request, Number(charFateMatch[1])),
+        )
       );
     }
 
@@ -395,6 +414,21 @@ export class GameTable implements DurableObject {
     });
 
     this.broadcast(this.gameState!);
+    return ackResponse();
+  }
+
+  /**
+   * Wipe this table's log: delete the D1 rows and drop the in-memory copy. The
+   * supported alternative to cycling the Durable Object by hand.
+   */
+  private async handleClearMessages(): Promise<Response> {
+    await this.env.DB.prepare(`DELETE FROM messages WHERE session_id = ?`)
+      .bind(this.gameState!.sessionId)
+      .run();
+
+    this.gameState = { ...this.gameState!, messages: [] };
+
+    this.broadcast(this.gameState);
     return ackResponse();
   }
 
@@ -753,6 +787,17 @@ type AuthInfo = {
   role: Role;
 };
 
+/**
+ * Gate for routes only the facilitator may call. Returns a 403 to short-circuit
+ * the route, or `undefined` to let it run: `facilitatorOnly(authInfo) ?? run()`.
+ */
+function facilitatorOnly(authInfo: AuthInfo): Response | undefined {
+  if (authInfo.role !== "facilitator") {
+    return new Response("Facilitator only", { status: 403 });
+  }
+  return undefined;
+}
+
 function parseTokenFromProtocol(header: string | null): string | null {
   if (!header) return null;
 
@@ -797,7 +842,10 @@ async function getAuthFromToken(
 
   if (!row) return null;
 
-  const role: Role = row.dm_id ? "facilitator" : "player";
+  const isBootstrap =
+    !!env.BOOTSTRAP_FACILITATOR_ID &&
+    env.BOOTSTRAP_FACILITATOR_ID === row.discord_user_id;
+  const role: Role = row.dm_id || isBootstrap ? "facilitator" : "player";
 
   return {
     discordUserId: row.discord_user_id,
