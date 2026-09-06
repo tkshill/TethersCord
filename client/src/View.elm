@@ -228,9 +228,45 @@ rollPanel facilitator myId maybeGs =
 
                     myAddBoons =
                         countProposals myId "add-boon" gs.proposals
+
+                    target =
+                        gs.overcome
+                            |> Maybe.andThen
+                                (\oc -> characterAtSlot oc.targetSlot gs.characters)
+
+                    amTarget =
+                        case target of
+                            Just t ->
+                                t.ownerId /= Nothing && t.ownerId == myId
+
+                            Nothing ->
+                                False
+
+                    -- The facilitator can always roll; during an overcome the
+                    -- target player can too.
+                    canRoll =
+                        facilitator || amTarget
+
+                    -- A reroll during an overcome is bought with the target's
+                    -- boons, so it needs at least that many.
+                    rerollAffordable =
+                        case target of
+                            Just t ->
+                                t.fate >= overcomeRerollCost
+
+                            Nothing ->
+                                True
+
+                    rerollLabel =
+                        if gs.overcome == Nothing then
+                            "Reroll"
+
+                        else
+                            "Reroll (" ++ String.fromInt overcomeRerollCost ++ " boons)"
                 in
                 Element.column [ spacing Ui.md, width fill ]
-                    [ Element.wrappedRow [ spacing Ui.xs ]
+                    [ overcomeBlock facilitator target gs.characters
+                    , Element.wrappedRow [ spacing Ui.xs ]
                         (List.map stoneChip gs.stonePool
                             ++ List.repeat committed
                                 (Ui.pledgedStoneChip Ui.boonFill "Pledged")
@@ -242,26 +278,72 @@ rollPanel facilitator myId maybeGs =
                             Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
                                 (Ui.ghostButton { onPress = Just AddBoon, label = "Add boon" }
                                     :: pendingHint myAddBoons
-                                    ++ onlyFacilitator facilitator
+                                    ++ onlyWhen canRoll
                                         [ Ui.primaryButton { onPress = Just RollStones, label = "Roll" } ]
                                 )
 
                         Just pending ->
                             Element.column [ spacing Ui.sm, width fill ]
-                                (Element.wrappedRow [ spacing Ui.xs ]
+                                [ Element.wrappedRow [ spacing Ui.xs ]
                                     (el [ Font.size 12, Font.color Ui.inkSoft ] (text "Rolled")
                                         :: List.map stoneChip pending.chosen
                                     )
-                                    :: onlyFacilitator facilitator
-                                        [ Element.wrappedRow [ spacing Ui.sm ]
-                                            [ Ui.ghostButton { onPress = Just RerollStones, label = "Reroll" }
-                                            , Ui.primaryButton { onPress = Just AcceptRoll, label = "Accept" }
-                                            ]
+                                , Element.wrappedRow [ spacing Ui.sm ]
+                                    (onlyWhen canRoll
+                                        [ Ui.ghostButton
+                                            { onPress =
+                                                if rerollAffordable then
+                                                    Just RerollStones
+
+                                                else
+                                                    Nothing
+                                            , label = rerollLabel
+                                            }
                                         ]
-                                )
+                                        ++ onlyWhen facilitator
+                                            [ Ui.primaryButton { onPress = Just AcceptRoll, label = "Accept" } ]
+                                    )
+                                ]
                     , proposalsPanel facilitator gs.proposals
                     ]
         ]
+
+
+{-| The overcome line. When one is open it names the target and, for the
+facilitator, offers "Call off"; otherwise the facilitator gets a button per
+character to open one. Nothing shows for a player with no overcome running. -}
+overcomeBlock : Bool -> Maybe CharacterSheet -> List CharacterSheet -> Element Msg
+overcomeBlock facilitator target characters =
+    case target of
+        Just t ->
+            Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
+                (el [ Font.size 12, Font.semiBold ]
+                    (text ("Overcome — " ++ characterLabel t))
+                    :: onlyWhen facilitator
+                        [ Ui.ghostButton { onPress = Just CancelOvercome, label = "Call off" } ]
+                )
+
+        Nothing ->
+            if facilitator then
+                Element.wrappedRow [ spacing Ui.xs, Element.centerY ]
+                    (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Start overcome")
+                        :: List.map
+                            (\c ->
+                                Ui.ghostButton
+                                    { onPress = Just (StartOvercome c.slot)
+                                    , label = characterLabel c
+                                    }
+                            )
+                            characters
+                    )
+
+            else
+                none
+
+
+characterAtSlot : Int -> List CharacterSheet -> Maybe CharacterSheet
+characterAtSlot slot characters =
+    characters |> List.filter (\c -> c.slot == slot) |> List.head
 
 
 {-| Facilitator's queue of player-initiated stone changes awaiting a decision.
@@ -330,17 +412,23 @@ pendingHint n =
         ]
 
 
-{-| The given elements, but only for the facilitator; an empty list otherwise.
-Keeps the roll lifecycle and boon grants out of players' hands until player
-moves become facilitator-approved proposals (roadmap section 5).
+{-| The given elements when `cond` holds, an empty list otherwise. Used to keep
+roll-lifecycle controls out of the hands of anyone who may not use them.
 -}
-onlyFacilitator : Bool -> List (Element msg) -> List (Element msg)
-onlyFacilitator facilitator elements =
-    if facilitator then
+onlyWhen : Bool -> List (Element msg) -> List (Element msg)
+onlyWhen cond elements =
+    if cond then
         elements
 
     else
         []
+
+
+{-| Boons the overcome target spends to Reroll. Mirrors the worker's
+`REROLL_COST`. -}
+overcomeRerollCost : Int
+overcomeRerollCost =
+    2
 
 
 stoneChip : Stone -> Element msg
@@ -400,19 +488,22 @@ tabStrip myId selectedSlot characters =
 
 tabLabel : Maybe String -> CharacterSheet -> String
 tabLabel myId ch =
-    let
-        base =
-            if String.trim ch.name /= "" then
-                ch.name
-
-            else
-                "Character " ++ String.fromInt (ch.slot + 1)
-    in
     if ch.ownerId /= Nothing && ch.ownerId == myId then
-        base ++ " (you)"
+        characterLabel ch ++ " (you)"
 
     else
-        base
+        characterLabel ch
+
+
+{-| A character's name, falling back to its slot number. Matches the worker's
+`characterLabel` used in log lines. -}
+characterLabel : CharacterSheet -> String
+characterLabel ch =
+    if String.trim ch.name /= "" then
+        ch.name
+
+    else
+        "Character " ++ String.fromInt (ch.slot + 1)
 
 
 characterSheet : Bool -> Maybe String -> GameState -> CharacterSheet -> Element Msg

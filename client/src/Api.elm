@@ -8,8 +8,10 @@ module Api exposing
     , postFate
     , postEndSession
     , postMessage
+    , postCancelOvercome
     , postProposalDecision
     , postReleaseSlot
+    , postStartOvercome
     , postStartSession
     , postStones
     )
@@ -28,7 +30,7 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 import Roll exposing (Stone(..))
 import Time
-import Types exposing (Auth, CharacterSheet, CommittedBoon, Flags, GameState, PendingRoll, Proposal, Session, SessionSummary, decodeRole)
+import Types exposing (Auth, CharacterSheet, CommittedBoon, Flags, GameState, Overcome, PendingRoll, Proposal, Session, SessionSummary, decodeRole)
 
 
 
@@ -225,6 +227,36 @@ postEndSession flags auth toMsg =
         }
 
 
+{-| Facilitator-only: open an overcome against the character in `slot`.
+-}
+postStartOvercome : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
+postStartOvercome flags auth slot toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth ++ [ jsonContentType ]
+        , url = tableUrl flags "/overcome/start"
+        , body = Http.jsonBody (Encode.object [ ( "slot", Encode.int slot ) ])
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+{-| Facilitator-only: call off the open overcome without resolving it.
+-}
+postCancelOvercome : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
+postCancelOvercome flags auth toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth
+        , url = tableUrl flags "/overcome/cancel"
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
 jsonContentType : Http.Header
 jsonContentType =
     Http.header "Content-Type" "application/json"
@@ -293,6 +325,11 @@ decodeSession =
         (Decode.field "pool" decodeStoneList)
 
 
+decodeOvercome : Decode.Decoder Overcome
+decodeOvercome =
+    Decode.map Overcome (Decode.field "targetSlot" Decode.int)
+
+
 decodeSessionSummary : Decode.Decoder SessionSummary
 decodeSessionSummary =
     Decode.map5 SessionSummary
@@ -358,3 +395,4 @@ decodeGameState =
         (Decode.field "session" (Decode.nullable decodeSession))
         (Decode.field "characters" (Decode.list decodeCharacterSheet))
         |> andMap (Decode.field "sessionHistory" (Decode.list decodeSessionSummary))
+        |> andMap (Decode.field "overcome" (Decode.nullable decodeOvercome))

@@ -273,6 +273,28 @@ update msg model =
         StonesUpdated (Err _) ->
             ( { model | status = "Failed to update stones." }, Cmd.none )
 
+        StartOvercome slot ->
+            case model.auth of
+                Just auth ->
+                    ( model, Api.postStartOvercome model.flags auth slot OvercomeUpdated )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        CancelOvercome ->
+            case model.auth of
+                Just auth ->
+                    ( model, Api.postCancelOvercome model.flags auth OvercomeUpdated )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        OvercomeUpdated (Ok ()) ->
+            ( model, Cmd.none )
+
+        OvercomeUpdated (Err _) ->
+            ( { model | status = "Failed to update the overcome." }, Cmd.none )
+
         CharacterFieldInput slot fieldTag value ->
             ( { model
                 | gameState =

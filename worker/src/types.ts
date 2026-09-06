@@ -99,11 +99,23 @@ export type SessionSummary = {
   outcome: string;
 };
 
+/**
+ * An open overcome: the facilitator has framed a risky attempt and named one
+ * character as its target. While it is set, that character's player may Roll and
+ * Reroll to resolve it (otherwise a facilitator-only action), and a Reroll costs
+ * the target boons. Lives alongside `pendingRoll` in Durable Object storage;
+ * cleared when the roll is accepted or the overcome is called off.
+ */
+export type Overcome = {
+  targetSlot: number;
+};
+
 export type GameState = {
   sessionId: string;
   messages: Message[];
   stonePool: StoneKind[];
   pendingRoll: PendingRoll | null;
+  overcome: Overcome | null;
   committedBoons: CommittedBoon[];
   proposals: Proposal[];
   session: SessionState | null;
@@ -127,6 +139,10 @@ export type CommitBoonInput = {
 
 export type StartSessionInput = {
   goal: string;
+};
+
+export type StartOvercomeInput = {
+  slot: number;
 };
 
 export type BackendAuthResult = {

@@ -10,6 +10,13 @@ version yet, so headings are dates.
 
 ### Added
 
+- The overcome: the facilitator frames a risky attempt and names one character
+  as its target (`POST /api/table/:id/overcome/{start,cancel}`, new
+  `GameState.overcome`). While an overcome is open, the target's player — not
+  just the facilitator — may Roll and Reroll to resolve it, and a Reroll costs
+  the target 2 boons. Accepting the roll resolves the overcome and logs whether
+  it succeeded, was partial, or failed. Shown as an "Overcome — <name>" line in
+  the Stones card.
 - Character sheets are shown one at a time behind a tab strip (`Model.selectedSlot`)
   instead of three columns that collapsed to a cramped stack. Claiming a sheet
   brings its tab forward.

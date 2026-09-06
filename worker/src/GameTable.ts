@@ -10,12 +10,14 @@ import type {
   Env,
   GameState,
   Message,
+  Overcome,
   PendingRoll,
   PostMessageInput,
   Proposal,
   Role,
   SessionState,
   SessionSummary,
+  StartOvercomeInput,
   StartSessionInput,
   StoneKind,
   CharacterSheet,
@@ -28,6 +30,9 @@ import type {
 const INITIAL_STONE_POOL: readonly StoneKind[] = ["Boon", "Bane", "Boon", "Bane"];
 
 const CHARACTER_SLOT_COUNT = 3;
+
+/** Boons the overcome target spends to Reroll while an overcome is open. */
+const REROLL_COST = 2;
 
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_FIELD_LENGTH = 500;
@@ -49,6 +54,7 @@ const KEY_STONES = "stones";
 type StoneState = {
   stonePool: StoneKind[];
   pendingRoll: PendingRoll | null;
+  overcome: Overcome | null;
   committedBoons: CommittedBoon[];
   proposals: Proposal[];
   session: SessionState | null;
@@ -62,6 +68,7 @@ type LegacyStoneState = {
     chosen: LegacyStoneKind[];
     rest: LegacyStoneKind[];
   } | null;
+  overcome?: Overcome | null;
   committedBoons?: CommittedBoon[];
   proposals?: Proposal[];
   session?: SessionState | null;
@@ -192,14 +199,14 @@ export class GameTable implements DurableObject {
 
     if (url.pathname === "/stones/roll" && request.method === "POST") {
       return (
-        facilitatorOnly(authInfo) ??
+        this.rollGate(authInfo) ??
         this.withLock(() => this.handleRoll(authInfo, "Rolled"))
       );
     }
 
     if (url.pathname === "/stones/reroll" && request.method === "POST") {
       return (
-        facilitatorOnly(authInfo) ??
+        this.rollGate(authInfo) ??
         this.withLock(() => this.handleRoll(authInfo, "Rerolled"))
       );
     }
@@ -207,7 +214,21 @@ export class GameTable implements DurableObject {
     if (url.pathname === "/stones/accept" && request.method === "POST") {
       return (
         facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleAcceptRoll())
+        this.withLock(() => this.handleAcceptRoll(authInfo))
+      );
+    }
+
+    if (url.pathname === "/overcome/start" && request.method === "POST") {
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleStartOvercome(request, authInfo))
+      );
+    }
+
+    if (url.pathname === "/overcome/cancel" && request.method === "POST") {
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleCancelOvercome(authInfo))
       );
     }
 
@@ -372,6 +393,7 @@ export class GameTable implements DurableObject {
       messages,
       stonePool: stones.stonePool,
       pendingRoll: stones.pendingRoll,
+      overcome: stones.overcome,
       committedBoons: stones.committedBoons,
       proposals: stones.proposals,
       session: stones.session,
@@ -402,6 +424,7 @@ export class GameTable implements DurableObject {
               rest: stored.pendingRoll.rest.map(migrateStoneKind),
             }
           : null,
+        overcome: stored.overcome ?? null,
         committedBoons: stored.committedBoons ?? [],
         proposals: stored.proposals ?? [],
         session: stored.session ?? null,
@@ -411,6 +434,7 @@ export class GameTable implements DurableObject {
     const initial: StoneState = {
       stonePool: [...INITIAL_STONE_POOL],
       pendingRoll: null,
+      overcome: null,
       committedBoons: [],
       proposals: [],
       session: null,
@@ -423,6 +447,7 @@ export class GameTable implements DurableObject {
     await this.state.storage.put(KEY_STONES, {
       stonePool: state.stonePool,
       pendingRoll: state.pendingRoll,
+      overcome: state.overcome,
       committedBoons: state.committedBoons,
       proposals: state.proposals,
       session: state.session,
@@ -664,10 +689,61 @@ export class GameTable implements DurableObject {
     return ackResponse();
   }
 
+  /**
+   * Gate for `/stones/roll` and `/stones/reroll`. The facilitator may always
+   * roll. While an overcome is open, the player whose sheet is its target may
+   * roll too; nobody else.
+   */
+  private rollGate(authInfo: AuthInfo): Response | undefined {
+    if (authInfo.role === "facilitator") return undefined;
+
+    const overcome = this.gameState!.overcome;
+    if (overcome) {
+      const own = this.gameState!.characters.find(
+        (c) => c.ownerId === authInfo.discordUserId,
+      );
+      if (own && own.slot === overcome.targetSlot) return undefined;
+    }
+
+    return new Response(
+      "Only the facilitator or the overcome target can roll",
+      { status: 403 },
+    );
+  }
+
   private async handleRoll(
     authInfo: AuthInfo,
     verb: "Rolled" | "Rerolled",
   ): Promise<Response> {
+    const overcome = this.gameState!.overcome;
+    let characters = this.gameState!.characters;
+    let costNote = "";
+
+    // A Reroll during an overcome is bought with the target's boons.
+    if (verb === "Rerolled" && overcome) {
+      const target = characters.find((c) => c.slot === overcome.targetSlot);
+      if (!target) {
+        return new Response("The overcome target has no sheet", { status: 400 });
+      }
+      if (target.fate < REROLL_COST) {
+        return new Response(
+          `The overcome target needs ${REROLL_COST} boons to reroll`,
+          { status: 400 },
+        );
+      }
+
+      const fate = target.fate - REROLL_COST;
+      await this.env.DB.prepare(
+        `UPDATE characters SET fate = ?, updated_at = ? WHERE id = ?`,
+      )
+        .bind(fate, Date.now(), target.id)
+        .run();
+      characters = characters.map((c) =>
+        c.slot === target.slot ? { ...c, fate } : c,
+      );
+      costNote = ` — reroll cost ${REROLL_COST} boons`;
+    }
+
     const committed = totalCommittedBoons(this.gameState!.committedBoons);
     const bag: StoneKind[] = [
       ...this.gameState!.stonePool,
@@ -675,22 +751,28 @@ export class GameTable implements DurableObject {
     ];
     const pendingRoll = pickTwoRandom(bag);
 
-    this.gameState = { ...this.gameState!, pendingRoll };
+    this.gameState = { ...this.gameState!, characters, pendingRoll };
     await this.saveStoneState(this.gameState);
 
-    const note = committed > 0 ? ` — ${committed} boon committed` : "";
+    const committedNote =
+      committed > 0 ? ` — ${committed} boon committed` : "";
+    const label = overcome
+      ? verb === "Rerolled"
+        ? "Overcome reroll"
+        : "Overcome roll"
+      : verb;
     await this.appendMessage({
       authorId: authInfo.discordUserId,
       authorName: authInfo.username,
       role: authInfo.role,
-      content: `${verb}: ${describeStones(pendingRoll.chosen)}${note}`,
+      content: `${label}: ${describeStones(pendingRoll.chosen)}${committedNote}${costNote}`,
     });
 
     this.broadcast(this.gameState!);
     return ackResponse();
   }
 
-  private async handleAcceptRoll(): Promise<Response> {
+  private async handleAcceptRoll(authInfo: AuthInfo): Promise<Response> {
     // Spend the pledged boons from each character's stock, then clear the pool
     // and pledges back to the base state.
     const now = Date.now();
@@ -720,17 +802,105 @@ export class GameTable implements DurableObject {
           }
         : priorSession;
 
+    const overcome = this.gameState!.overcome;
+
     this.gameState = {
       ...this.gameState!,
       characters,
       stonePool: [...INITIAL_STONE_POOL],
       pendingRoll: null,
+      // Accepting the roll resolves any open overcome.
+      overcome: null,
       committedBoons: [],
       // A resolved roll clears the slate; unaccepted proposals do not carry over.
       proposals: [],
       session,
     };
     await this.saveStoneState(this.gameState);
+
+    if (overcome) {
+      const target = characters.find((c) => c.slot === overcome.targetSlot);
+      const boons = drawn.filter((s) => s === "Boon").length;
+      const verdict =
+        boons === 2 ? "succeeded" : boons === 1 ? "partial" : "failed";
+      await this.appendMessage({
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: `Overcome ${verdict}${
+          target ? ` — ${characterLabel(target)}` : ""
+        } (${drawn.join(", ")})`,
+      });
+    }
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  private async handleStartOvercome(
+    request: Request,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    if (this.gameState!.overcome) {
+      return new Response("An overcome is already open", { status: 409 });
+    }
+
+    const input = (await readJson(request)) as StartOvercomeInput | null;
+    const slot = input?.slot;
+    if (
+      typeof slot !== "number" ||
+      !Number.isInteger(slot) ||
+      slot < 0 ||
+      slot >= CHARACTER_SLOT_COUNT
+    ) {
+      return new Response("slot out of range", { status: 400 });
+    }
+
+    const target = this.gameState!.characters.find((c) => c.slot === slot);
+    if (!target) {
+      return new Response("Not found", { status: 404 });
+    }
+
+    // A fresh attempt: drop any roll still sitting on the table.
+    this.gameState = {
+      ...this.gameState!,
+      overcome: { targetSlot: slot },
+      pendingRoll: null,
+    };
+    await this.saveStoneState(this.gameState);
+
+    await this.appendMessage({
+      authorId: authInfo.discordUserId,
+      authorName: authInfo.username,
+      role: authInfo.role,
+      content: `Overcome — ${characterLabel(target)} attempts something risky`,
+    });
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  private async handleCancelOvercome(authInfo: AuthInfo): Promise<Response> {
+    const overcome = this.gameState!.overcome;
+    if (!overcome) {
+      return new Response("No overcome is open", { status: 400 });
+    }
+
+    const target = this.gameState!.characters.find(
+      (c) => c.slot === overcome.targetSlot,
+    );
+
+    this.gameState = { ...this.gameState!, overcome: null };
+    await this.saveStoneState(this.gameState);
+
+    await this.appendMessage({
+      authorId: authInfo.discordUserId,
+      authorName: authInfo.username,
+      role: authInfo.role,
+      content: `Overcome called off${
+        target ? ` — ${characterLabel(target)}` : ""
+      }`,
+    });
 
     this.broadcast(this.gameState);
     return ackResponse();
@@ -1102,6 +1272,12 @@ function randomInt(maxExclusive: number): number {
 
 function describeStones(stones: StoneKind[]): string {
   return stones.join(", ");
+}
+
+/** A character's name for the log, falling back to its slot number. */
+function characterLabel(character: CharacterSheet): string {
+  const name = character.name.trim();
+  return name || `Character ${character.slot + 1}`;
 }
 
 function totalCommittedBoons(committed: CommittedBoon[]): number {
