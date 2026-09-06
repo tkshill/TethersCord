@@ -45,12 +45,15 @@ view model =
     let
         facilitator =
             isFacilitator model
+
+        myId =
+            Maybe.map .userId model.auth
     in
     Ui.page
         [ header model
         , Ui.banner model.status
-        , rollPanel facilitator model.gameState
-        , characterSheets facilitator (Maybe.map .userId model.auth) model.gameState
+        , rollPanel facilitator myId model.gameState
+        , characterSheets facilitator myId model.gameState
         , messageLog facilitator model.timeZone model.gameState
         , composer model
         ]
@@ -92,8 +95,8 @@ header model =
 -- STONES
 
 
-rollPanel : Bool -> Maybe GameState -> Element Msg
-rollPanel facilitator maybeGs =
+rollPanel : Bool -> Maybe String -> Maybe GameState -> Element Msg
+rollPanel facilitator myId maybeGs =
     Ui.card
         [ Ui.sectionTitle "Stones"
         , case maybeGs of
@@ -104,6 +107,9 @@ rollPanel facilitator maybeGs =
                 let
                     committed =
                         List.foldl (\c acc -> acc + c.count) 0 gs.committedBoons
+
+                    myAddBoons =
+                        countProposals myId "add-boon" gs.proposals
                 in
                 Element.column [ spacing Ui.md, width fill ]
                     [ Element.wrappedRow [ spacing Ui.xs ] (List.map stoneChip gs.stonePool)
@@ -111,9 +117,10 @@ rollPanel facilitator maybeGs =
                         (text (poolSummary (List.length gs.stonePool) committed))
                     , case gs.pendingRoll of
                         Nothing ->
-                            Element.wrappedRow [ spacing Ui.sm ]
+                            Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
                                 (Ui.ghostButton { onPress = Just AddBoon, label = "Add boon" }
-                                    :: onlyFacilitator facilitator
+                                    :: pendingHint myAddBoons
+                                    ++ onlyFacilitator facilitator
                                         [ Ui.primaryButton { onPress = Just RollStones, label = "Roll" } ]
                                 )
 
@@ -130,7 +137,74 @@ rollPanel facilitator maybeGs =
                                             ]
                                         ]
                                 )
+                    , proposalsPanel facilitator gs.proposals
                     ]
+        ]
+
+
+{-| Facilitator's queue of player-initiated stone changes awaiting a decision.
+Hidden for players and when empty.
+-}
+proposalsPanel : Bool -> List Proposal -> Element Msg
+proposalsPanel facilitator proposals =
+    if not facilitator || List.isEmpty proposals then
+        none
+
+    else
+        Element.column [ spacing Ui.sm, width fill ]
+            (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Proposals")
+                :: List.map proposalRow proposals
+            )
+
+
+proposalRow : Proposal -> Element Msg
+proposalRow p =
+    Element.row [ width fill, spacing Ui.sm, Element.centerY ]
+        [ Element.paragraph [ Font.size 12 ]
+            [ text (p.proposerName ++ " — " ++ describeProposal p) ]
+        , el [ Element.alignRight ]
+            (Ui.ghostButton { onPress = Just (RejectProposal p.id), label = "Reject" })
+        , Ui.primaryButton { onPress = Just (AcceptProposal p.id), label = "Accept" }
+        ]
+
+
+describeProposal : Proposal -> String
+describeProposal p =
+    case ( p.kind, p.delta >= 0 ) of
+        ( "add-boon", _ ) ->
+            "add a boon to the pool"
+
+        ( "pledge", True ) ->
+            "pledge a boon"
+
+        ( "pledge", False ) ->
+            "withdraw a boon"
+
+        _ ->
+            p.kind
+
+
+countProposals : Maybe String -> String -> List Proposal -> Int
+countProposals myId kind proposals =
+    case myId of
+        Just id ->
+            List.length
+                (List.filter (\p -> p.proposerId == id && p.kind == kind) proposals)
+
+        Nothing ->
+            0
+
+
+{-| A muted "(n pending)" note for the proposer, or nothing when there are none.
+-}
+pendingHint : Int -> List (Element msg)
+pendingHint n =
+    if n <= 0 then
+        []
+
+    else
+        [ el [ Font.size 11, Font.color Ui.inkSoft ]
+            (text ("(" ++ String.fromInt n ++ " pending)"))
         ]
 
 
@@ -184,18 +258,25 @@ characterSheets facilitator myId maybeGs =
 
             Just gs ->
                 Element.wrappedRow [ spacing Ui.md, width fill ]
-                    (List.map (characterSheet facilitator myId gs.committedBoons) gs.characters)
+                    (List.map (characterSheet facilitator myId gs) gs.characters)
         ]
 
 
-characterSheet : Bool -> Maybe String -> List CommittedBoon -> CharacterSheet -> Element Msg
-characterSheet facilitator myId committedBoons ch =
+characterSheet : Bool -> Maybe String -> GameState -> CharacterSheet -> Element Msg
+characterSheet facilitator myId gs ch =
     let
         mine =
             ch.ownerId /= Nothing && ch.ownerId == myId
 
         editable =
             facilitator || mine || ch.ownerId == Nothing
+
+        pendingPledges =
+            if mine then
+                countProposals myId "pledge" gs.proposals
+
+            else
+                0
     in
     Element.column
         [ spacing Ui.sm
@@ -214,7 +295,7 @@ characterSheet facilitator myId committedBoons ch =
         , field editable ch ConditionField "Condition" ch.condition
         , notesField editable ch
         , fateRow facilitator ch
-        , commitRow mine (committedBoonsForSlot ch.slot committedBoons)
+        , commitRow mine (committedBoonsForSlot ch.slot gs.committedBoons) pendingPledges
         ]
 
 
@@ -315,17 +396,17 @@ fateRow facilitator ch =
 
 
 {-| Boons pledged into the next roll. The count shows on every sheet; only the
-sheet's owner gets the `+` / `−`. -}
-commitRow : Bool -> Int -> Element Msg
-commitRow mine pledged =
+sheet's owner gets the `+` / `−` and a note of their unresolved pledges. -}
+commitRow : Bool -> Int -> Int -> Element Msg
+commitRow mine pledged pending =
     Element.row [ spacing Ui.sm, Element.centerY ]
         ([ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Pledged")
          , el [ Font.semiBold, width (px 20), Font.center ] (text (String.fromInt pledged))
          ]
             ++ (if mine then
-                    [ Ui.ghostButton { onPress = Just CommitBoonDecrement, label = "−" }
-                    , Ui.ghostButton { onPress = Just CommitBoonIncrement, label = "+" }
-                    ]
+                    Ui.ghostButton { onPress = Just CommitBoonDecrement, label = "−" }
+                        :: Ui.ghostButton { onPress = Just CommitBoonIncrement, label = "+" }
+                        :: pendingHint pending
 
                 else
                     []

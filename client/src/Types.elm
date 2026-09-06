@@ -9,6 +9,7 @@ module Types exposing
     , Model
     , Msg(..)
     , PendingRoll
+    , Proposal
     , Role(..)
     , committedBoonsForSlot
     , decodeRole
@@ -101,6 +102,19 @@ committedBoonsForSlot slot committed =
         |> Maybe.withDefault 0
 
 
+{-| A player-initiated change to shared stone state awaiting the facilitator.
+`kind` is `"add-boon"` or `"pledge"`; `delta` is `1` or `-1`.
+-}
+type alias Proposal =
+    { id : String
+    , kind : String
+    , proposerId : String
+    , proposerName : String
+    , slot : Maybe Int
+    , delta : Int
+    }
+
+
 type alias CharacterSheet =
     { id : String
     , slot : Int
@@ -159,6 +173,7 @@ type alias GameState =
     , stonePool : List Stone
     , pendingRoll : Maybe PendingRoll
     , committedBoons : List CommittedBoon
+    , proposals : List Proposal
     , characters : List CharacterSheet
     }
 
@@ -209,6 +224,9 @@ type Msg
     | ClaimSlot Int
     | ReleaseSlot Int
     | SlotClaimed (Result Http.Error ())
+    | AcceptProposal String
+    | RejectProposal String
+    | ProposalResolved (Result Http.Error ())
     | RollStones
     | RerollStones
     | AcceptRoll

@@ -163,6 +163,18 @@ update msg model =
         SlotClaimed (Err _) ->
             ( { model | status = "Couldn't claim that character sheet." }, Cmd.none )
 
+        AcceptProposal id ->
+            ( model, proposalCmd model id "accept" )
+
+        RejectProposal id ->
+            ( model, proposalCmd model id "reject" )
+
+        ProposalResolved (Ok ()) ->
+            ( model, Cmd.none )
+
+        ProposalResolved (Err _) ->
+            ( { model | status = "Failed to resolve the proposal." }, Cmd.none )
+
         RollStones ->
             ( model, stonesCmd model "/stones/roll" )
 
@@ -290,6 +302,16 @@ releaseCmd model slot =
     case model.auth of
         Just auth ->
             Api.postReleaseSlot model.flags auth slot SlotClaimed
+
+        Nothing ->
+            Cmd.none
+
+
+proposalCmd : Model -> String -> String -> Cmd Msg
+proposalCmd model id decision =
+    case model.auth of
+        Just auth ->
+            Api.postProposalDecision model.flags auth id decision ProposalResolved
 
         Nothing ->
             Cmd.none

@@ -7,6 +7,7 @@ module Api exposing
     , postCommitBoon
     , postFate
     , postMessage
+    , postProposalDecision
     , postReleaseSlot
     , postStones
     )
@@ -25,7 +26,7 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 import Roll exposing (Stone(..))
 import Time
-import Types exposing (Auth, CharacterSheet, CommittedBoon, Flags, GameState, PendingRoll, decodeRole)
+import Types exposing (Auth, CharacterSheet, CommittedBoon, Flags, GameState, PendingRoll, Proposal, decodeRole)
 
 
 
@@ -177,6 +178,21 @@ slotAction flags auth slot action toMsg =
         }
 
 
+{-| Facilitator-only: `decision` is `"accept"` or `"reject"` for the proposal.
+-}
+postProposalDecision : Flags -> Auth -> String -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postProposalDecision flags auth proposalId decision toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth
+        , url = tableUrl flags ("/proposals/" ++ proposalId ++ "/" ++ decision)
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
 jsonContentType : Http.Header
 jsonContentType =
     Http.header "Content-Type" "application/json"
@@ -226,6 +242,17 @@ decodeCommittedBoon =
         (Decode.field "count" Decode.int)
 
 
+decodeProposal : Decode.Decoder Proposal
+decodeProposal =
+    Decode.map6 Proposal
+        (Decode.field "id" Decode.string)
+        (Decode.field "kind" Decode.string)
+        (Decode.field "proposerId" Decode.string)
+        (Decode.field "proposerName" Decode.string)
+        (Decode.field "slot" (Decode.nullable Decode.int))
+        (Decode.field "delta" Decode.int)
+
+
 decodeCharacterSheet : Decode.Decoder CharacterSheet
 decodeCharacterSheet =
     Decode.map8
@@ -263,10 +290,11 @@ decodeCharacterSheet =
 
 decodeGameState : Decode.Decoder GameState
 decodeGameState =
-    Decode.map6 GameState
+    Decode.map7 GameState
         (Decode.field "sessionId" Decode.string)
         (Decode.field "messages" (Decode.list decodeMessage))
         (Decode.field "stonePool" decodeStoneList)
         (Decode.field "pendingRoll" (Decode.nullable decodePendingRoll))
         (Decode.field "committedBoons" (Decode.list decodeCommittedBoon))
+        (Decode.field "proposals" (Decode.list decodeProposal))
         (Decode.field "characters" (Decode.list decodeCharacterSheet))

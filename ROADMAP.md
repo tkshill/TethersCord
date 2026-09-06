@@ -131,24 +131,27 @@ directly — sheets are not shared state in that sense.
       player and nobody can roll, grant boons, or clear the log.**
 - [x] Facilitator-only routes, enforced in the Worker with a `facilitatorOnly`
       gate returning 403: `stones/roll`, `stones/reroll`, `stones/accept`,
-      `characters/:slot/fate`, and `messages/clear`. Players keep `message`,
-      `characters/:slot/update`, `stones/add-boon`, and `stones/commit` (pledge).
+      `characters/:slot/fate`, `messages/clear`, and `proposals/:id/{accept,reject}`.
 - [x] Role-gated `View`: `isFacilitator model` hides the Roll / Reroll / Accept
       buttons, the boon `+` / `−`, and Clear log from players. The pool, the
       pending roll, and a player's own pledge control stay visible.
 
-### The proposal flow — still to build
+### The proposal flow — done
 
-- [ ] A pending-proposals list in the Durable Object: a player action on shared
-      state (pledging a boon, and later every section 11 move) writes a proposal
-      instead of mutating; it is broadcast in `GameState`.
-- [ ] Facilitator accept / reject. Accept applies the effect and clears the
-      proposal; reject just clears it. Both broadcast.
-- [ ] Client: players see their proposal as pending; the facilitator sees a
-      queue with accept / reject. Decide what the proposer sees in the meantime
-      (optimistic vs. plain "waiting").
-- [ ] Fold `stones/commit` into this once it exists — pledging becomes a
-      proposal rather than a direct player route.
+- [x] `GameState.proposals` — a `Proposal` list in the Durable Object's stone
+      storage (`{ id, kind, proposerId, proposerName, slot, delta, createdAt }`),
+      broadcast with the rest of the state.
+- [x] Every player-side change to shared stone state is a proposal, one per
+      click: `stones/add-boon` (player) and `stones/commit` (pledge, `delta` ±1)
+      write a proposal instead of mutating. The facilitator's own `add-boon`
+      still applies directly.
+- [x] `proposals/:id/accept` applies the effect clamped to current state
+      (`add-boon` → one Boon in the pool; `pledge` → adjust that slot's
+      `committedBoons`), `/reject` just drops it; both leave the queue and
+      broadcast. Accepting a roll clears any unresolved proposals.
+- [x] Client: a facilitator-only **Proposals** panel in the stones card lists
+      each as "*proposer* — *what*" with Accept / Reject; the proposer sees a
+      muted "(n pending)" next to the control they used (no optimistic apply).
 
 ### Deferred
 

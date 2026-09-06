@@ -12,6 +12,7 @@ import type {
   Message,
   PendingRoll,
   PostMessageInput,
+  Proposal,
   Role,
   StoneKind,
   CharacterSheet,
@@ -37,6 +38,7 @@ type StoneState = {
   stonePool: StoneKind[];
   pendingRoll: PendingRoll | null;
   committedBoons: CommittedBoon[];
+  proposals: Proposal[];
 };
 
 /** Shape of `KEY_STONES` as written by builds that still used colour names. */
@@ -48,6 +50,7 @@ type LegacyStoneState = {
     rest: LegacyStoneKind[];
   } | null;
   committedBoons?: CommittedBoon[];
+  proposals?: Proposal[];
 };
 
 function migrateStoneKind(kind: LegacyStoneKind): StoneKind {
@@ -146,11 +149,31 @@ export class GameTable implements DurableObject {
     }
 
     if (url.pathname === "/stones/add-boon" && request.method === "POST") {
-      return this.withLock(() => this.handleAddBoon());
+      return this.withLock(() =>
+        authInfo.role === "facilitator"
+          ? this.applyAddBoon()
+          : this.proposeAddBoon(authInfo),
+      );
     }
 
     if (url.pathname === "/stones/commit" && request.method === "POST") {
       return this.withLock(() => this.handleCommitBoon(request, authInfo));
+    }
+
+    const proposalMatch = url.pathname.match(
+      /^\/proposals\/([0-9a-fA-F-]{36})\/(accept|reject)$/,
+    );
+    if (proposalMatch && request.method === "POST") {
+      const [, proposalId, decision] = proposalMatch;
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() =>
+          this.handleProposalDecision(
+            proposalId,
+            decision as "accept" | "reject",
+          ),
+        )
+      );
     }
 
     if (url.pathname === "/stones/roll" && request.method === "POST") {
@@ -321,6 +344,7 @@ export class GameTable implements DurableObject {
       stonePool: stones.stonePool,
       pendingRoll: stones.pendingRoll,
       committedBoons: stones.committedBoons,
+      proposals: stones.proposals,
       characters,
     };
 
@@ -348,6 +372,7 @@ export class GameTable implements DurableObject {
             }
           : null,
         committedBoons: stored.committedBoons ?? [],
+        proposals: stored.proposals ?? [],
       };
     }
 
@@ -355,6 +380,7 @@ export class GameTable implements DurableObject {
       stonePool: [...INITIAL_STONE_POOL],
       pendingRoll: null,
       committedBoons: [],
+      proposals: [],
     };
     await this.state.storage.put(KEY_STONES, initial);
     return initial;
@@ -365,6 +391,7 @@ export class GameTable implements DurableObject {
       stonePool: state.stonePool,
       pendingRoll: state.pendingRoll,
       committedBoons: state.committedBoons,
+      proposals: state.proposals,
     } satisfies StoneState);
   }
 
@@ -454,7 +481,8 @@ export class GameTable implements DurableObject {
     return ackResponse();
   }
 
-  private async handleAddBoon(): Promise<Response> {
+  /** Add one Boon to the shared pool. Direct only for the facilitator. */
+  private async applyAddBoon(): Promise<Response> {
     // Read `this.gameState` fresh rather than from a snapshot taken before an
     // await, so concurrent requests cannot clobber each other's writes.
     this.gameState = {
@@ -467,11 +495,21 @@ export class GameTable implements DurableObject {
     return ackResponse();
   }
 
+  /** A player asking to add a boon to the pool — queued for the facilitator. */
+  private async proposeAddBoon(authInfo: AuthInfo): Promise<Response> {
+    return this.addProposal({
+      kind: "add-boon",
+      proposerId: authInfo.discordUserId,
+      proposerName: authInfo.username,
+      slot: null,
+      delta: 1,
+    });
+  }
+
   /**
-   * Pledge (or withdraw) the caller's own boons into the next roll. The slot is
-   * resolved from the sheet the caller has claimed, so there is no slot to pass.
-   * The pledge is clamped to what the character holds in `fate`; it is only
-   * spent when the roll is accepted.
+   * Pledge (or withdraw) one of the caller's own boons on the next roll. The
+   * slot is the sheet they have claimed. Queued as a proposal; the effect only
+   * lands when the facilitator accepts it.
    */
   private async handleCommitBoon(
     request: Request,
@@ -479,8 +517,8 @@ export class GameTable implements DurableObject {
   ): Promise<Response> {
     const input = (await readJson(request)) as CommitBoonInput | null;
     const delta = input?.delta;
-    if (typeof delta !== "number" || !Number.isInteger(delta)) {
-      return new Response("delta must be an integer", { status: 400 });
+    if (delta !== 1 && delta !== -1) {
+      return new Response("delta must be 1 or -1", { status: 400 });
     }
 
     const character = this.gameState!.characters.find(
@@ -489,21 +527,79 @@ export class GameTable implements DurableObject {
     if (!character) {
       return new Response("Claim a character sheet first", { status: 400 });
     }
-    const slot = character.slot;
 
-    const current =
-      this.gameState!.committedBoons.find((c) => c.slot === slot)?.count ?? 0;
-    const next = Math.max(0, Math.min(character.fate, current + delta));
+    return this.addProposal({
+      kind: "pledge",
+      proposerId: authInfo.discordUserId,
+      proposerName: authInfo.username,
+      slot: character.slot,
+      delta,
+    });
+  }
 
-    const committedBoons = this.gameState!.committedBoons.filter(
-      (c) => c.slot !== slot,
-    );
-    if (next > 0) {
-      committedBoons.push({ slot, count: next });
+  private async addProposal(
+    fields: Omit<Proposal, "id" | "createdAt">,
+  ): Promise<Response> {
+    const proposal: Proposal = {
+      ...fields,
+      id: crypto.randomUUID(),
+      createdAt: Date.now(),
+    };
+    this.gameState = {
+      ...this.gameState!,
+      proposals: [...this.gameState!.proposals, proposal],
+    };
+    await this.saveStoneState(this.gameState);
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  /**
+   * Facilitator resolves one proposal. Accept applies its effect (clamped to
+   * current state); reject just drops it. Either way it leaves the queue.
+   */
+  private async handleProposalDecision(
+    proposalId: string,
+    decision: "accept" | "reject",
+  ): Promise<Response> {
+    const proposal = this.gameState!.proposals.find((p) => p.id === proposalId);
+    if (!proposal) {
+      return new Response("No such proposal", { status: 404 });
     }
-    committedBoons.sort((a, b) => a.slot - b.slot);
 
-    this.gameState = { ...this.gameState!, committedBoons };
+    let state: GameState = {
+      ...this.gameState!,
+      proposals: this.gameState!.proposals.filter((p) => p.id !== proposalId),
+    };
+
+    if (decision === "accept" && proposal.kind === "add-boon") {
+      state = { ...state, stonePool: [...state.stonePool, "Boon"] };
+    } else if (
+      decision === "accept" &&
+      proposal.kind === "pledge" &&
+      proposal.slot !== null
+    ) {
+      const character = state.characters.find((c) => c.slot === proposal.slot);
+      if (character) {
+        const current =
+          state.committedBoons.find((c) => c.slot === proposal.slot)?.count ?? 0;
+        const next = Math.max(
+          0,
+          Math.min(character.fate, current + proposal.delta),
+        );
+        const committedBoons = state.committedBoons.filter(
+          (c) => c.slot !== proposal.slot,
+        );
+        if (next > 0) {
+          committedBoons.push({ slot: proposal.slot, count: next });
+        }
+        committedBoons.sort((a, b) => a.slot - b.slot);
+        state = { ...state, committedBoons };
+      }
+    }
+
+    this.gameState = state;
     await this.saveStoneState(this.gameState);
 
     this.broadcast(this.gameState);
@@ -561,6 +657,8 @@ export class GameTable implements DurableObject {
       stonePool: [...INITIAL_STONE_POOL],
       pendingRoll: null,
       committedBoons: [],
+      // A resolved roll clears the slate; unaccepted proposals do not carry over.
+      proposals: [],
     };
     await this.saveStoneState(this.gameState);
 

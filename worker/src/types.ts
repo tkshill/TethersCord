@@ -39,6 +39,23 @@ export type CommittedBoon = {
   count: number;
 };
 
+export type ProposalKind = "add-boon" | "pledge";
+
+/**
+ * A player-initiated change to shared stone state, waiting on the facilitator.
+ * One per click — `delta` is +1 / -1. `slot` is the proposer's claimed sheet
+ * for a pledge, null for add-boon.
+ */
+export type Proposal = {
+  id: string;
+  kind: ProposalKind;
+  proposerId: string;
+  proposerName: string;
+  slot: number | null;
+  delta: number;
+  createdAt: number;
+};
+
 export type CharacterSheet = {
   id: string;
   slot: number;
@@ -65,6 +82,7 @@ export type GameState = {
   stonePool: StoneKind[];
   pendingRoll: PendingRoll | null;
   committedBoons: CommittedBoon[];
+  proposals: Proposal[];
   characters: CharacterSheet[];
 };
 
