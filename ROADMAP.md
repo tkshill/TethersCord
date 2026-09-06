@@ -903,26 +903,30 @@ the Worker.
       `ViewContext` type live in `View/Helpers.elm`.
 - [x] Section 1 note below and the `CLAUDE.md` module-layout list updated.
 
-### Step 5 — worker pure-logic extraction (no behaviour change)
+### Step 5 — worker pure-logic extraction (no behaviour change) — mostly done
 
-- [ ] **`worker/src/gameLogic.ts`** — move the already-pure helpers out of
+- [x] **`worker/src/gameLogic.ts`** — the pure helpers moved out of
       `GameTable.ts`: `applyPledge`, `routeOvercomeDraw`, `markAbilityUsed`,
       `clearSlotPendingState`, `aspectBaneBag`, `pickTwoRandom`, `randomInt`,
-      `totalCommittedBoons`, `characterLabel`, `describeStones`. Direct unit
-      tests instead of only exercising them through `SELF.fetch`.
-- [ ] **`worker/src/characters.ts`** — a persistence helper owning the raw
-      `characters` SQL: `setFate`, `setOwner`, `incrementAspectBane`,
-      `updateFields`, `rowToCharacterSheet`. The four duplicated
-      `UPDATE characters SET fate = ?` sites (`bumpFate`, the reroll cost in
-      `handleRoll`, the pledge spend loop in `handleAcceptRoll`,
-      `handleUpdateFate`) all route through one path.
-- [ ] **`handleProposalDecision` per-kind resolvers** — extract each arm of the
-      ~180-line `switch` to a pure
-      `(state, proposal, ctx) => { state, logLine } | Response`, matching the
-      `routeOvercomeDraw` pattern. Unit-test each.
-- [ ] **`migrateStoneState.ts`** — move `LegacyStoneKind` / `LegacyStoneState` /
-      `migrateStoneKind` and the `?? default` fan-out in `loadStoneState` out of
-      the main flow, so the load-time cruft is easy to delete later.
+      `totalCommittedBoons`, `characterLabel`, `describeStones`, plus the
+      `ASPECT_NAMES` constant. New `worker/test/gameLogic.test.ts` exercises
+      them directly (10 cases); the two existing `routeOvercomeDraw` /
+      `aspectBaneBag` tests re-point their import.
+- [x] **`worker/src/characters.ts`** — the raw `characters` SQL: `setFate`,
+      `setOwner`, `incrementAspectBane`, `clearAspectBanes`, `updateFields`,
+      `rowToCharacterSheet` (+ the `CharacterRow` type and the private
+      `ASPECT_BANE_COLUMNS` map). The four `UPDATE characters SET fate = ?`
+      sites (`bumpFate`, the reroll cost, the pledge-spend loop,
+      `handleUpdateFate`), the owner writes, the aspect-Bane increment, the
+      untether clear, and the sheet-fields update all route through it.
+- [x] **`migrateStoneState.ts`** — `StoneState` / `LegacyStoneKind` /
+      `LegacyStoneState` / `migrateStoneKind` and the `?? default` fan-out are
+      now a pure `migrateStoneState(stored, initialPool)`; `loadStoneState` is
+      the storage read plus the cold-table `put`.
+- [ ] **`handleProposalDecision` per-kind resolvers** — deferred to step 6,
+      where it becomes the `handlers/proposals` module. Its arms lean on
+      `drawFromBag` / `bumpFate` / `readJson`, so extracting pure resolvers is
+      better done alongside the `HandlerContext` those handlers get.
 
 ### Step 6 — split `GameTable.ts`
 

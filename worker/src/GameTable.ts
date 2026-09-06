@@ -37,6 +37,33 @@ import type {
   UseAbilityInput,
   UseFloatingBoonInput,
 } from "./types";
+import {
+  applyPledge,
+  aspectBaneBag,
+  ASPECT_NAMES,
+  characterLabel,
+  clearSlotPendingState,
+  describeStones,
+  markAbilityUsed,
+  pickTwoRandom,
+  randomInt,
+  routeOvercomeDraw,
+  totalCommittedBoons,
+} from "./gameLogic";
+import {
+  type LegacyStoneState,
+  type StoneState,
+  migrateStoneState,
+} from "./migrateStoneState";
+import {
+  type CharacterRow,
+  clearAspectBanes,
+  incrementAspectBane,
+  rowToCharacterSheet,
+  setFate,
+  setOwner,
+  updateFields,
+} from "./characters";
 
 // Every roll starts from this base — two Boon, two Bane — before any boons a
 // character pledges into it. Accepting a roll resets the pool to this.
@@ -61,14 +88,6 @@ const ABILITY_KINDS: readonly AbilityKind[] = [
   "gain-insight",
   "suggest-compel",
 ];
-
-/** The three fixed aspects, and the D1 column each Bane count lives in. */
-const ASPECT_NAMES: readonly AspectName[] = ["archetype", "desire", "quest"];
-const ASPECT_BANE_COLUMNS: Record<AspectName, string> = {
-  archetype: "archetype_banes",
-  desire: "desire_banes",
-  quest: "quest_banes",
-};
 
 /** Sanity bound on a single coalesced pledge delta; `applyPledge` clamps the
  * real effect to what the character holds anyway. */
@@ -106,49 +125,6 @@ const KEY_STONES = "stones";
  * in exchange for one D1 read per token per minute instead of per request.
  */
 const AUTH_CACHE_TTL_MS = 60_000;
-
-type StoneState = {
-  stonePool: StoneKind[];
-  pendingRoll: PendingRoll | null;
-  overcome: Overcome | null;
-  committedBoons: CommittedBoon[];
-  floatingBoons: FloatingBoon[];
-  usedAbilities: UsedAbilities[];
-  proposals: Proposal[];
-  session: SessionState | null;
-  /** Banes the next session's pool inherits (section 19). Boons never carry. */
-  carriedBanes: number;
-  /** Whether the most recently ended session failed its goal — blocks a second
-   * consecutive untether. */
-  lastSessionFailed: boolean;
-  /** An in-progress reckoning, or null. */
-  untether: Untether | null;
-};
-
-/** Shape of `KEY_STONES` as written by builds that still used colour names. */
-type LegacyStoneKind = StoneKind | "WhiteStone" | "BlackStone";
-type LegacyStoneState = {
-  stonePool: LegacyStoneKind[];
-  pendingRoll: {
-    chosen: LegacyStoneKind[];
-    rest: LegacyStoneKind[];
-  } | null;
-  overcome?: Overcome | null;
-  committedBoons?: CommittedBoon[];
-  floatingBoons?: FloatingBoon[];
-  usedAbilities?: UsedAbilities[];
-  proposals?: Proposal[];
-  session?: (Omit<SessionState, "carriedBanes"> & { carriedBanes?: number }) | null;
-  carriedBanes?: number;
-  lastSessionFailed?: boolean;
-  untether?: Untether | null;
-};
-
-function migrateStoneKind(kind: LegacyStoneKind): StoneKind {
-  if (kind === "WhiteStone") return "Boon";
-  if (kind === "BlackStone") return "Bane";
-  return kind;
-}
 
 export class GameTable implements DurableObject {
   private state: DurableObjectState;
@@ -599,52 +575,13 @@ export class GameTable implements DurableObject {
    */
   private async loadStoneState(): Promise<StoneState> {
     const stored = await this.state.storage.get<LegacyStoneState>(KEY_STONES);
-    if (stored) {
-      // Fold the colour-named stones of earlier builds into Boon / Bane.
-      return {
-        stonePool: stored.stonePool.map(migrateStoneKind),
-        pendingRoll: stored.pendingRoll
-          ? {
-              chosen: stored.pendingRoll.chosen.map(migrateStoneKind),
-              rest: stored.pendingRoll.rest.map(migrateStoneKind),
-            }
-          : null,
-        overcome: stored.overcome ?? null,
-        committedBoons: stored.committedBoons ?? [],
-        floatingBoons: stored.floatingBoons ?? [],
-        usedAbilities: stored.usedAbilities ?? [],
-        // Proposals from before the moves work carry no `floatingId` /
-        // `targetSlot`.
-        proposals: (stored.proposals ?? []).map((p) => ({
-          ...p,
-          floatingId: p.floatingId ?? null,
-          targetSlot: p.targetSlot ?? null,
-        })),
-        // Sessions from before section 19 carry no `carriedBanes`.
-        session: stored.session
-          ? { ...stored.session, carriedBanes: stored.session.carriedBanes ?? 0 }
-          : null,
-        carriedBanes: stored.carriedBanes ?? 0,
-        lastSessionFailed: stored.lastSessionFailed ?? false,
-        untether: stored.untether ?? null,
-      };
+    const migrated = migrateStoneState(stored, INITIAL_STONE_POOL);
+    // A cold table writes the base blob once; a stored one is left as-is and
+    // persisted by the first mutation that actually changes it.
+    if (!stored) {
+      await this.state.storage.put(KEY_STONES, migrated);
     }
-
-    const initial: StoneState = {
-      stonePool: [...INITIAL_STONE_POOL],
-      pendingRoll: null,
-      overcome: null,
-      committedBoons: [],
-      floatingBoons: [],
-      usedAbilities: [],
-      proposals: [],
-      session: null,
-      carriedBanes: 0,
-      lastSessionFailed: false,
-      untether: null,
-    };
-    await this.state.storage.put(KEY_STONES, initial);
-    return initial;
+    return migrated;
   }
 
   /**
@@ -1366,11 +1303,7 @@ export class GameTable implements DurableObject {
     if (!character || amount === 0) return characters;
 
     const fate = Math.max(0, character.fate + amount);
-    await this.env.DB.prepare(
-      `UPDATE characters SET fate = ?, updated_at = ? WHERE id = ?`,
-    )
-      .bind(fate, Date.now(), character.id)
-      .run();
+    await setFate(this.env.DB, character.id, fate, Date.now());
     return characters.map((c) => (c.slot === slot ? { ...c, fate } : c));
   }
 
@@ -1418,11 +1351,7 @@ export class GameTable implements DurableObject {
       }
 
       const fate = target.fate - REROLL_COST;
-      await this.env.DB.prepare(
-        `UPDATE characters SET fate = ?, updated_at = ? WHERE id = ?`,
-      )
-        .bind(fate, Date.now(), target.id)
-        .run();
+      await setFate(this.env.DB, target.id, fate, Date.now());
       characters = characters.map((c) =>
         c.slot === target.slot ? { ...c, fate } : c,
       );
@@ -1470,11 +1399,7 @@ export class GameTable implements DurableObject {
       if (!character || count <= 0) continue;
 
       const fate = Math.max(0, character.fate - count);
-      await this.env.DB.prepare(
-        `UPDATE characters SET fate = ?, updated_at = ? WHERE id = ?`,
-      )
-        .bind(fate, now, character.id)
-        .run();
+      await setFate(this.env.DB, character.id, fate, now);
       characters = characters.map((c) => (c.slot === slot ? { ...c, fate } : c));
     }
 
@@ -1501,12 +1426,7 @@ export class GameTable implements DurableObject {
         const aspect = ASPECT_NAMES[randomInt(ASPECT_NAMES.length)];
         const target = characters.find((c) => c.slot === overcome.targetSlot);
         if (target) {
-          const column = ASPECT_BANE_COLUMNS[aspect];
-          await this.env.DB.prepare(
-            `UPDATE characters SET ${column} = ${column} + 1, updated_at = ? WHERE id = ?`,
-          )
-            .bind(now, target.id)
-            .run();
+          await incrementAspectBane(this.env.DB, target.id, aspect, now);
           characters = characters.map((c) =>
             c.slot === target.slot
               ? {
@@ -1728,13 +1648,7 @@ export class GameTable implements DurableObject {
         const pick = bag[randomInt(bag.length)];
         untether = { slot: pick.slot, aspect: pick.aspect };
         const target = characters.find((c) => c.slot === pick.slot)!;
-        await this.env.DB.prepare(
-          `UPDATE characters
-             SET archetype_banes = 0, desire_banes = 0, quest_banes = 0, updated_at = ?
-           WHERE id = ?`,
-        )
-          .bind(now, target.id)
-          .run();
+        await clearAspectBanes(this.env.DB, target.id, now);
         characters = characters.map((c) =>
           c.slot === pick.slot
             ? { ...c, aspectBanes: { archetype: 0, desire: 0, quest: 0 } }
@@ -1903,25 +1817,7 @@ export class GameTable implements DurableObject {
       notes: boundedField(input.notes, character.notes, MAX_NOTES_LENGTH),
     };
 
-    await this.env.DB.prepare(
-      `
-      UPDATE characters
-      SET name = ?, notable_features = ?, archetype = ?, desire = ?, quest = ?, condition = ?, notes = ?, updated_at = ?
-      WHERE id = ?
-    `,
-    )
-      .bind(
-        updated.name,
-        updated.notableFeatures,
-        updated.archetype,
-        updated.desire,
-        updated.quest,
-        updated.condition,
-        updated.notes,
-        Date.now(),
-        updated.id,
-      )
-      .run();
+    await updateFields(this.env.DB, updated, Date.now());
 
     this.gameState = {
       ...this.gameState!,
@@ -2020,16 +1916,12 @@ export class GameTable implements DurableObject {
     return ackResponse();
   }
 
-  private async setSheetOwner(
+  private setSheetOwner(
     id: string,
     ownerId: string | null,
     now: number,
   ): Promise<void> {
-    await this.env.DB.prepare(
-      `UPDATE characters SET discord_user_id = ?, updated_at = ? WHERE id = ?`,
-    )
-      .bind(ownerId, now, id)
-      .run();
+    return setOwner(this.env.DB, id, ownerId, now);
   }
 
   private async handleUpdateFate(
@@ -2049,11 +1941,7 @@ export class GameTable implements DurableObject {
 
     const fate = Math.max(0, character.fate + delta);
 
-    await this.env.DB.prepare(
-      `UPDATE characters SET fate = ?, updated_at = ? WHERE id = ?`,
-    )
-      .bind(fate, Date.now(), character.id)
-      .run();
+    await setFate(this.env.DB, character.id, fate, Date.now());
 
     this.gameState = {
       ...this.gameState!,
@@ -2249,185 +2137,12 @@ function boundedField(
   return typeof value === "string" ? value.slice(0, max) : fallback;
 }
 
-function pickTwoRandom(pool: StoneKind[]): PendingRoll {
-  const indices = pool.map((_, i) => i);
-
-  for (let i = indices.length - 1; i > 0; i--) {
-    const j = randomInt(i + 1);
-    [indices[i], indices[j]] = [indices[j], indices[i]];
-  }
-
-  const chosenIndices = new Set(indices.slice(0, Math.min(2, indices.length)));
-  const chosen: StoneKind[] = [];
-  const rest: StoneKind[] = [];
-
-  pool.forEach((stone, i) => {
-    if (chosenIndices.has(i)) {
-      chosen.push(stone);
-    } else {
-      rest.push(stone);
-    }
-  });
-
-  return { chosen, rest };
-}
-
-/**
- * Section 19 stone routing for an accepted overcome roll, kept pure so it can be
- * unit-tested exhaustively. `marksAspect` is true only for a mixed draw against
- * a not-untethered target — the caller then picks which aspect at random and
- * writes it; otherwise every drawn stone is returned in `poolAdds`.
- */
-export function routeOvercomeDraw(
-  drawn: StoneKind[],
-  untetheredTarget: boolean,
-): { poolAdds: StoneKind[]; marksAspect: boolean } {
-  const boons = drawn.filter((s) => s === "Boon").length;
-  if (drawn.length === 2 && boons === 1 && !untetheredTarget) {
-    return { poolAdds: ["Boon"], marksAspect: true };
-  }
-  return { poolAdds: [...drawn], marksAspect: false };
-}
-
-/**
- * The weighted draw bag for untethering: one `{ slot, aspect }` entry per Bane
- * on every aspect of every character. Pure; the caller draws from it at random.
- */
-export function aspectBaneBag(
-  characters: readonly Pick<CharacterSheet, "slot" | "aspectBanes">[],
-): { slot: number; aspect: AspectName }[] {
-  const bag: { slot: number; aspect: AspectName }[] = [];
-  for (const c of characters) {
-    for (const aspect of ASPECT_NAMES) {
-      for (let i = 0; i < c.aspectBanes[aspect]; i++) {
-        bag.push({ slot: c.slot, aspect });
-      }
-    }
-  }
-  return bag;
-}
-
-/** Rejection sampling, so the low indices are not favoured by modulo bias. */
-function randomInt(maxExclusive: number): number {
-  const limit = Math.floor(0x100000000 / maxExclusive) * maxExclusive;
-  const buf = new Uint32Array(1);
-
-  do {
-    crypto.getRandomValues(buf);
-  } while (buf[0] >= limit);
-
-  return buf[0] % maxExclusive;
-}
-
-function describeStones(stones: StoneKind[]): string {
-  return stones.join(", ");
-}
-
-/** A character's name for the log, falling back to its slot number. */
-function characterLabel(character: CharacterSheet): string {
-  const name = character.name.trim();
-  return name || `Character ${character.slot + 1}`;
-}
-
-function totalCommittedBoons(committed: CommittedBoon[]): number {
-  return committed.reduce((sum, c) => sum + c.count, 0);
-}
-
-/**
- * Pledge (`delta` +1) or withdraw (-1) one of a character's own boons on the
- * next roll, clamped to what they hold. Shared by the direct pledge route and
- * an accepted `pledge` proposal.
- */
-function applyPledge(state: GameState, slot: number, delta: number): GameState {
-  const character = state.characters.find((c) => c.slot === slot);
-  if (!character) return state;
-
-  const current =
-    state.committedBoons.find((c) => c.slot === slot)?.count ?? 0;
-  const next = Math.max(0, Math.min(character.fate, current + delta));
-
-  const committedBoons = state.committedBoons.filter((c) => c.slot !== slot);
-  if (next > 0) {
-    committedBoons.push({ slot, count: next });
-  }
-  committedBoons.sort((a, b) => a.slot - b.slot);
-  return { ...state, committedBoons };
-}
-
-/**
- * Drop a slot's pledged boons and any proposal that points at it (as the
- * proposer's own slot or as a `suggest-compel` target). Called when a sheet
- * changes hands, so an accepted roll or proposal cannot spend or target the
- * wrong character's boons.
- */
-function clearSlotPendingState(state: GameState, slot: number): GameState {
-  return {
-    ...state,
-    committedBoons: state.committedBoons.filter((c) => c.slot !== slot),
-    proposals: state.proposals.filter(
-      (p) => p.slot !== slot && p.targetSlot !== slot,
-    ),
-  };
-}
-
-/** Record `kind` as spent for `slot` this session; idempotent. */
-function markAbilityUsed(
-  used: UsedAbilities[],
-  slot: number,
-  kind: AbilityKind,
-): UsedAbilities[] {
-  const row = used.find((u) => u.slot === slot);
-  if (!row) return [...used, { slot, kinds: [kind] }];
-  if (row.kinds.includes(kind)) return used;
-  return used.map((u) =>
-    u.slot === slot ? { ...u, kinds: [...u.kinds, kind] } : u,
-  );
-}
-
 /**
  * The D1 table backing an entity kind. An explicit allowlist so the name is
  * never anything but one of these two literals when it reaches a SQL string.
  */
 function entityTable(kind: EntityKind): "npcs" | "locations" {
   return kind === "npcs" ? "npcs" : "locations";
-}
-
-type CharacterRow = {
-  id: string;
-  slot: number;
-  name: string;
-  notable_features: string;
-  archetype: string;
-  desire: string;
-  quest: string;
-  condition: string;
-  notes: string;
-  fate: number;
-  discord_user_id: string | null;
-  archetype_banes: number;
-  desire_banes: number;
-  quest_banes: number;
-};
-
-function rowToCharacterSheet(row: CharacterRow): CharacterSheet {
-  return {
-    id: row.id,
-    slot: row.slot,
-    name: row.name,
-    notableFeatures: row.notable_features,
-    archetype: row.archetype,
-    desire: row.desire,
-    quest: row.quest,
-    condition: row.condition,
-    notes: row.notes,
-    fate: row.fate,
-    aspectBanes: {
-      archetype: row.archetype_banes,
-      desire: row.desire_banes,
-      quest: row.quest_banes,
-    },
-    ownerId: row.discord_user_id,
-  };
 }
 
 type AuthInfo = {
