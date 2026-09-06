@@ -20,6 +20,7 @@ module Api exposing
     , postStartSession
     , postStones
     , postSuggestCompel
+    , postUntetherResolve
     , postUpdateEntity
     , postUseAbility
     , postUseFloatingBoon
@@ -366,6 +367,21 @@ postEndSession flags auth toMsg =
         }
 
 
+{-| Facilitator-only: close an in-progress reckoning (section 19).
+-}
+postUntetherResolve : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
+postUntetherResolve flags auth toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth
+        , url = tableUrl flags "/untether/resolve"
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
 {-| Facilitator-only: open an overcome against the character in `slot`.
 -}
 postStartOvercome : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
@@ -526,15 +542,51 @@ decodeUsedAbility =
 
 decodeSession : Decode.Decoder Session
 decodeSession =
-    Decode.map3 Session
+    Decode.map4 Session
         (Decode.field "id" Decode.string)
         (Decode.field "goal" Decode.string)
         (Decode.field "pool" decodeStoneList)
+        (Decode.field "carriedBanes" Decode.int)
 
 
 decodeOvercome : Decode.Decoder Overcome
 decodeOvercome =
     Decode.map Overcome (Decode.field "targetSlot" Decode.int)
+
+
+decodeAspect : Decode.Decoder Types.Aspect
+decodeAspect =
+    Decode.string
+        |> Decode.andThen
+            (\s ->
+                case s of
+                    "archetype" ->
+                        Decode.succeed Types.Archetype
+
+                    "desire" ->
+                        Decode.succeed Types.Desire
+
+                    "quest" ->
+                        Decode.succeed Types.Quest
+
+                    _ ->
+                        Decode.fail ("Unknown aspect " ++ s)
+            )
+
+
+decodeAspectBanes : Decode.Decoder Types.AspectBanes
+decodeAspectBanes =
+    Decode.map3 Types.AspectBanes
+        (Decode.field "archetype" Decode.int)
+        (Decode.field "desire" Decode.int)
+        (Decode.field "quest" Decode.int)
+
+
+decodeUntether : Decode.Decoder Types.Untether
+decodeUntether =
+    Decode.map2 Types.Untether
+        (Decode.field "slot" Decode.int)
+        (Decode.field "aspect" decodeAspect)
 
 
 decodeTableEntity : Decode.Decoder TableEntity
@@ -559,7 +611,7 @@ decodeCharacterSheet : Decode.Decoder CharacterSheet
 decodeCharacterSheet =
     Decode.map8
         (\id slot name notableFeatures archetype desire quest condition ->
-            \notes fate ownerId ->
+            \notes fate aspectBanes ownerId ->
                 { id = id
                 , slot = slot
                 , name = name
@@ -570,6 +622,7 @@ decodeCharacterSheet =
                 , condition = condition
                 , notes = notes
                 , fate = fate
+                , aspectBanes = aspectBanes
                 , ownerId = ownerId
                 }
         )
@@ -583,9 +636,10 @@ decodeCharacterSheet =
         (Decode.field "condition" Decode.string)
         |> Decode.andThen
             (\toSheet ->
-                Decode.map3 toSheet
+                Decode.map4 toSheet
                     (Decode.field "notes" Decode.string)
                     (Decode.field "fate" Decode.int)
+                    (Decode.field "aspectBanes" decodeAspectBanes)
                     (Decode.field "ownerId" (Decode.nullable Decode.string))
             )
 
@@ -615,3 +669,4 @@ decodeGameState =
         |> andMap (Decode.field "usedAbilities" (Decode.list decodeUsedAbility))
         |> andMap (Decode.field "npcs" (Decode.list decodeTableEntity))
         |> andMap (Decode.field "locations" (Decode.list decodeTableEntity))
+        |> andMap (Decode.field "untether" (Decode.nullable decodeUntether))

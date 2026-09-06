@@ -525,6 +525,15 @@ update msg model =
         SessionUpdated (Err _) ->
             fail "Failed to update the session." (clearInflight "session:" model)
 
+        ResolveUntether ->
+            guard "untether:resolve" { model | confirming = Nothing } Effect.PostUntetherResolve
+
+        UntetherResolved (Ok ()) ->
+            ( clearInflight "untether:" model, Effect.None )
+
+        UntetherResolved (Err _) ->
+            fail "Failed to resolve the untether." (clearInflight "untether:" model)
+
         RequestConfirm key ->
             ( { model | confirming = Just key }, Effect.None )
 

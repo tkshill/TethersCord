@@ -56,6 +56,7 @@ type Effect
     | PostStartSession Auth String
     | PostSessionGoal Auth String
     | PostEndSession Auth
+    | PostUntetherResolve Auth
     | PostStartOvercome Auth Int
     | PostCancelOvercome Auth
     | PostCreateEntity Auth EntityKind
@@ -152,6 +153,9 @@ perform flags effect =
 
         PostEndSession auth ->
             Api.postEndSession flags auth SessionUpdated
+
+        PostUntetherResolve auth ->
+            Api.postUntetherResolve flags auth UntetherResolved
 
         PostStartOvercome auth slot ->
             Api.postStartOvercome flags auth slot OvercomeUpdated

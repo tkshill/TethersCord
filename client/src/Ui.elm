@@ -1,5 +1,6 @@
 module Ui exposing
     ( accent
+    , baneDot
     , baneFill
     , banner
     , boonDot
@@ -413,6 +414,14 @@ sheet. Marked with a centre dot when the boon is pledged into the current roll.
 boonDot : Bool -> Element msg
 boonDot marked =
     stoneCircle boonFill marked 16
+
+
+{-| A small bane circle with no caption, for the Banes an aspect carries
+(section 19).
+-}
+baneDot : Element msg
+baneDot =
+    stoneCircle baneFill False 12
 
 
 {-| The bare circle both stone shapes are built from. `marked` draws an accent

@@ -93,11 +93,26 @@ suite =
                 decoded
                     |> Result.map (.characters >> List.map (\c -> ( c.name, c.fate, c.ownerId )))
                     |> Expect.equal (Ok [ ( "Ada", 3, Just "u1" ) ])
+        , test "reads each aspect's Bane count" <|
+            \_ ->
+                decoded
+                    |> Result.map (.characters >> List.map .aspectBanes)
+                    |> Expect.equal (Ok [ { archetype = 2, desire = 0, quest = 1 } ])
+        , test "reads the session's carried Banes" <|
+            \_ ->
+                decoded
+                    |> Result.map (.session >> Maybe.map .carriedBanes)
+                    |> Expect.equal (Ok (Just 1))
+        , test "reads an in-progress untether" <|
+            \_ ->
+                decoded
+                    |> Result.map .untether
+                    |> Expect.equal (Ok (Just { slot = 1, aspect = Types.Quest }))
         , test "reads completed sessions in history" <|
             \_ ->
                 decoded
                     |> Result.map (.sessionHistory >> List.map .outcome)
-                    |> Expect.equal (Ok [ "mixed" ])
+                    |> Expect.equal (Ok [ "goal failed — drew Bane (pool flushed)" ])
         , test "reads NPC and location reference rows" <|
             \_ ->
                 decoded
