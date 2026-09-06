@@ -54,6 +54,14 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **Player-facing copy pulled into one `client/src/Copy.elm`** (roadmap section
+  21, step 1). Every card title, hint line, empty state, placeholder, proposal
+  description, connection note, and game-action button label the view rendered
+  as a string literal is now a named constant (or a small formatting function
+  where a value is spliced in), grouped by card. `View.elm` and every `View/*`
+  module read from `Copy`; structural field labels that are not game vocabulary
+  ("Name", "Notes") stay inline. No behaviour change — the client bundle and the
+  Elm test suite are the gate.
 - Maintainability pass — client quick wins (roadmap section 22, step 1). No
   behaviour change; the client bundle, both typecheckers, and both test suites
   are the gate.

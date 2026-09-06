@@ -5,6 +5,7 @@ sheet itself — owner row, boons (grant / highlight), the text fields, and the
 three aspects with their accumulated Banes or an untethered flag.
 -}
 
+import Copy
 import Element exposing (Element, el, fill, height, none, padding, px, spacing, text, width)
 import Element.Border as Border
 import Element.Font as Font
@@ -32,7 +33,7 @@ type alias Props =
 view : ViewContext -> Props -> GameState -> Element Msg
 view ctx props gs =
     Ui.card
-        [ Ui.sectionTitle "Characters"
+        [ Ui.sectionTitle Copy.charactersTitle
         , let
             selected =
                 case List.filter (\c -> c.slot == props.selectedSlot) gs.characters of
@@ -49,7 +50,7 @@ view ctx props gs =
                     characterSheet ctx.facilitator ctx.myId gs ch
 
                 Nothing ->
-                    placeholder "No character sheets."
+                    placeholder Copy.noCharacterSheets
             ]
         ]
 
@@ -69,7 +70,7 @@ tabStrip myId selectedSlot characters =
 tabLabel : Maybe String -> CharacterSheet -> String
 tabLabel myId ch =
     if ch.ownerId /= Nothing && ch.ownerId == myId then
-        characterLabel ch ++ " (you)"
+        characterLabel ch ++ Copy.youMarker
 
     else
         characterLabel ch
@@ -109,11 +110,11 @@ characterSheet facilitator myId gs ch =
         [ ownerRow facilitator mine ch
         , boonsBlock facilitator mine ch (committedBoonsForSlot ch.slot gs.committedBoons) pendingPledges pendingPledgeId
         , field editable ch NameField "Name" ch.name
-        , field editable ch NotableFeaturesField "Notable features" ch.notableFeatures
+        , field editable ch NotableFeaturesField Copy.notableFeaturesLabel ch.notableFeatures
         , aspectField editable ch gs.untether Archetype ArchetypeField ch.archetype
         , aspectField editable ch gs.untether Desire DesireField ch.desire
         , aspectField editable ch gs.untether Quest QuestField ch.quest
-        , field editable ch ConditionField "Condition" ch.condition
+        , field editable ch ConditionField Copy.conditionLabel ch.condition
         , notesField editable ch
         ]
 
@@ -139,14 +140,14 @@ aspectField editable ch untether aspect fieldTag value =
         extras =
             if broken then
                 [ el [ Font.size 10, Font.color Ui.danger, Font.semiBold ]
-                    (text "untethered — rewrite or replace this aspect")
+                    (text Copy.untetheredAspectFlag)
                 ]
 
             else if count > 0 then
                 [ Element.row [ spacing Ui.xs, Element.centerY ]
                     (List.repeat count Ui.baneDot
                         ++ [ el [ Font.size 10, Font.color Ui.inkSoft ]
-                                (text (String.fromInt count ++ " " ++ Format.pluralize count "Bane"))
+                                (text (String.fromInt count ++ " " ++ Format.pluralize count Copy.baneStone))
                            ]
                     )
                 ]
@@ -166,21 +167,21 @@ ownerRow facilitator mine ch =
     let
         ( label, action ) =
             if mine then
-                ( "Your character"
-                , Just (Ui.ghostButton { onPress = Just (ReleaseSlot ch.slot), label = "Release" })
+                ( Copy.ownerMine
+                , Just (Ui.ghostButton { onPress = Just (ReleaseSlot ch.slot), label = Copy.ownerRelease })
                 )
 
             else if ch.ownerId == Nothing then
-                ( "Unclaimed"
+                ( Copy.ownerUnclaimed
                 , if facilitator then
                     Nothing
 
                   else
-                    Just (Ui.ghostButton { onPress = Just (ClaimSlot ch.slot), label = "Claim" })
+                    Just (Ui.ghostButton { onPress = Just (ClaimSlot ch.slot), label = Copy.ownerClaim })
                 )
 
             else
-                ( "Claimed", Nothing )
+                ( Copy.ownerClaimed, Nothing )
     in
     Element.row [ width fill, spacing Ui.sm, Element.centerY ]
         (el [ Font.size 11, Font.color Ui.inkSoft ] (text label)
@@ -251,7 +252,7 @@ and a note of any unresolved pledge proposals.
 boonsBlock : Bool -> Bool -> CharacterSheet -> Int -> Int -> Maybe String -> Element Msg
 boonsBlock facilitator mine ch pledged pending pendingId =
     Element.column [ spacing Ui.xs, width fill ]
-        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Boons")
+        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.boonsLabel)
         , boonCircles ch.fate pledged
         , Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
             (grantControls facilitator ch ++ pledgeControls mine pending pendingId)
@@ -264,7 +265,7 @@ next roll.
 boonCircles : Int -> Int -> Element msg
 boonCircles total pledged =
     if total <= 0 then
-        el [ Font.size 12, Font.color Ui.inkSoft ] (text "None")
+        el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.boonsNone)
 
     else
         Element.wrappedRow [ spacing Ui.xs ]
@@ -276,7 +277,7 @@ boonCircles total pledged =
 grantControls : Bool -> CharacterSheet -> List (Element Msg)
 grantControls facilitator ch =
     if facilitator then
-        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Grant")
+        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.grant)
         , Ui.ghostButton { onPress = Just (FateDecrement ch.slot), label = "−" }
         , Ui.ghostButton { onPress = Just (FateIncrement ch.slot), label = "+" }
         ]
@@ -289,7 +290,7 @@ pledgeControls : Bool -> Int -> Maybe String -> List (Element Msg)
 pledgeControls mine pending pendingId =
     if mine then
         -- "Highlight" is the player-facing name for pledging a boon to the roll.
-        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Highlight")
+        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.highlight)
         , Ui.ghostButton { onPress = Just CommitBoonDecrement, label = "−" }
         , Ui.ghostButton { onPress = Just CommitBoonIncrement, label = "+" }
         ]

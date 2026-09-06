@@ -6,6 +6,7 @@ Delete per row; players get a plain read-only list, and the card is hidden from
 them entirely while it is empty.
 -}
 
+import Copy
 import Element exposing (Element, el, fill, height, none, padding, px, spacing, text, width)
 import Element.Border as Border
 import Element.Font as Font
@@ -21,10 +22,10 @@ view ctx kind gs =
         ( title, singular ) =
             case kind of
                 Npc ->
-                    ( "NPCs", "NPC" )
+                    ( Copy.npcsTitle, Copy.npcSingular )
 
                 Location ->
-                    ( "Locations", "location" )
+                    ( Copy.locationsTitle, Copy.locationSingular )
 
         entities =
             entitiesForKind kind gs
@@ -36,7 +37,7 @@ view ctx kind gs =
         Ui.card
             (Ui.sectionTitle title
                 :: (if List.isEmpty entities then
-                        [ placeholder ("No " ++ title ++ " yet.") ]
+                        [ placeholder (Copy.noEntitiesYet title) ]
 
                     else
                         List.map (entityRow kind ctx.facilitator) entities
@@ -45,7 +46,7 @@ view ctx kind gs =
                         [ el []
                             (Ui.ghostButton
                                 { onPress = Just (AddEntity kind)
-                                , label = "Add " ++ singular
+                                , label = Copy.addEntity singular
                                 }
                             )
                         ]
@@ -81,7 +82,7 @@ entityRow kind facilitator entity =
                         }
                     )
                 , el [ Element.alignRight ]
-                    (Ui.ghostButton { onPress = Just (DeleteEntity kind entity.id), label = "Delete" })
+                    (Ui.ghostButton { onPress = Just (DeleteEntity kind entity.id), label = Copy.entityDelete })
                 ]
             , Input.multiline
                 (inputAttrs ++ [ height (px 60), Ui.onBlur (EntityFieldBlur kind entity.id) ])
@@ -98,7 +99,7 @@ entityRow kind facilitator entity =
             [ el [ Font.semiBold, Font.size 13 ]
                 (text
                     (if String.trim entity.name == "" then
-                        "Unnamed"
+                        Copy.entityUnnamed
 
                      else
                         entity.name

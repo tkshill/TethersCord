@@ -6,6 +6,7 @@ another claimed sheet, and the any-time Accept Compel. Every one is a request
 the facilitator approves.
 -}
 
+import Copy
 import Element exposing (Element, el, fill, none, spacing, text, width)
 import Element.Font as Font
 import Kind
@@ -22,7 +23,7 @@ view ctx gs =
 
         Just ch ->
             Ui.card
-                [ Ui.sectionTitle "Moves"
+                [ Ui.sectionTitle Copy.movesTitle
                 , abilityRow ctx.myId gs ch
                 , suggestCompelRow ctx.myId gs ch
                 , let
@@ -30,8 +31,8 @@ view ctx gs =
                         latestProposalId ctx.myId Kind.AcceptCompel gs.proposals
                   in
                   Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
-                    (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Any time")
-                        :: moveButton (pendingId /= Nothing) "Accept Compel" AcceptCompelMove
+                    (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.anyTime)
+                        :: moveButton (pendingId /= Nothing) Copy.acceptCompel AcceptCompelMove
                         :: (if pendingId == Nothing then
                                 []
 
@@ -53,7 +54,7 @@ abilityRow : Maybe String -> GameState -> CharacterSheet -> Element Msg
 abilityRow myId gs ch =
     if gs.session == Nothing then
         el [ Font.size 12, Font.color Ui.inkSoft ]
-            (text "Abilities open once a session is running.")
+            (text Copy.abilitiesNeedSession)
 
     else
         let
@@ -73,10 +74,10 @@ abilityRow myId gs ch =
 
                     suffix =
                         if used then
-                            " (used)"
+                            Copy.usedSuffix
 
                         else if pending then
-                            " (pending)"
+                            Copy.pendingSuffix
 
                         else
                             ""
@@ -91,10 +92,10 @@ abilityRow myId gs ch =
                     btn
         in
         Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
-            [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Once per session")
-            , button Kind.HelpOut "Help Out" overcomeRoll
-            , button Kind.AddDetail "Add a Detail" True
-            , button Kind.GainInsight "Gain Insight" True
+            [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.oncePerSession)
+            , button Kind.HelpOut Copy.helpOut overcomeRoll
+            , button Kind.AddDetail Copy.addDetail True
+            , button Kind.GainInsight Copy.gainInsight True
             ]
 
 
@@ -124,16 +125,16 @@ suggestCompelRow myId gs ch =
 
             suffix =
                 if used then
-                    " (used)"
+                    Copy.usedSuffix
 
                 else if pending then
-                    " (pending)"
+                    Copy.pendingSuffix
 
                 else
                     ""
         in
         Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
-            (el [ Font.size 11, Font.color Ui.inkSoft ] (text ("Suggest Compel" ++ suffix))
+            (el [ Font.size 11, Font.color Ui.inkSoft ] (text (Copy.suggestCompel ++ suffix))
                 :: (if used then
                         []
 
@@ -141,7 +142,7 @@ suggestCompelRow myId gs ch =
                         [ withdrawLink pendingId ]
 
                     else if List.isEmpty targets then
-                        [ el [ Font.size 12, Font.color Ui.inkSoft ] (text "no other players") ]
+                        [ el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.noOtherPlayers) ]
 
                     else
                         List.map

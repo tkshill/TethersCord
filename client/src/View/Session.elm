@@ -5,6 +5,7 @@ pool, the carried-Bane note, End session — plus the past-sessions list and the
 table-wide untether (reckoning) banner that sits just below it.
 -}
 
+import Copy
 import Element exposing (Element, el, fill, none, padding, px, spacing, text, width)
 import Element.Border as Border
 import Element.Font as Font
@@ -26,7 +27,7 @@ type alias Props =
 view : ViewContext -> Props -> GameState -> Element Msg
 view ctx props gs =
     Ui.card
-        [ Ui.sectionTitle "Session"
+        [ Ui.sectionTitle Copy.sessionTitle
         , case gs.session of
             Just s ->
                 Element.column [ spacing Ui.sm, width fill ]
@@ -35,31 +36,24 @@ view ctx props gs =
 
                       else
                         Element.paragraph [ Font.size 13 ]
-                            [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Goal  ")
+                            [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.goalLabel)
                             , text s.goal
                             ]
                     , Element.wrappedRow [ spacing Ui.xs, Element.centerY ]
-                        (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Session pool")
+                        (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.sessionPool)
                             :: List.map stoneChip s.pool
                         )
                     , if s.carriedBanes > 0 then
                         el [ Font.size 11, Font.color Ui.inkSoft ]
-                            (text
-                                ("Carrying "
-                                    ++ String.fromInt s.carriedBanes
-                                    ++ " "
-                                    ++ Format.pluralize s.carriedBanes "Bane"
-                                    ++ " in from the last session"
-                                )
-                            )
+                            (text (Copy.carryingBanes s.carriedBanes))
 
                       else
                         none
                     , if ctx.facilitator then
                         Ui.confirmButton
                             { armed = props.confirming == Just "end-session"
-                            , idle = "End session"
-                            , confirm = "End session"
+                            , idle = Copy.endSession
+                            , confirm = Copy.endSession
                             , onArm = RequestConfirm "end-session"
                             , onConfirm = EndSession
                             , onCancel = CancelConfirm
@@ -76,14 +70,14 @@ view ctx props gs =
                             (inputAttrs ++ [ width fill, Ui.onEnter StartSession ])
                             { onChange = SessionGoalChanged
                             , text = props.newSessionGoal
-                            , placeholder = Just (Input.placeholder [] (text "Session goal…"))
+                            , placeholder = Just (Input.placeholder [] (text Copy.sessionGoalPlaceholder))
                             , label = Input.labelHidden "Session goal"
                             }
-                        , Ui.primaryButton { onPress = Just StartSession, label = "Start session" }
+                        , Ui.primaryButton { onPress = Just StartSession, label = Copy.startSession }
                         ]
 
                 else
-                    placeholder "No session running."
+                    placeholder Copy.noSessionRunning
         , sessionHistoryView ctx.zone gs.sessionHistory
         ]
 
@@ -116,8 +110,8 @@ goalEditor confirming goalEdit currentGoal =
         , if changed then
             Ui.confirmButton
                 { armed = confirming == Just "edit-goal"
-                , idle = "Save goal"
-                , confirm = "Save goal"
+                , idle = Copy.saveGoal
+                , confirm = Copy.saveGoal
                 , onArm = RequestConfirm "edit-goal"
                 , onConfirm = SaveSessionGoal
                 , onCancel = CancelConfirm
@@ -143,7 +137,7 @@ untetherBanner ctx confirming gs =
                 who =
                     characterAtSlot u.slot gs.characters
                         |> Maybe.map characterLabel
-                        |> Maybe.withDefault ("Character " ++ String.fromInt (u.slot + 1))
+                        |> Maybe.withDefault (Copy.characterFallback u.slot)
             in
             Element.column
                 [ width fill
@@ -154,18 +148,14 @@ untetherBanner ctx confirming gs =
                 , Border.rounded 6
                 ]
                 [ Element.paragraph [ Font.size 13 ]
-                    [ el [ Font.semiBold, Font.color Ui.danger ] (text (who ++ " is untethered"))
-                    , text
-                        (" on their "
-                            ++ String.toLower (Types.aspectLabel u.aspect)
-                            ++ " — the reckoning resolves by the end of the following session, and afterward the aspect is rewritten or replaced."
-                        )
+                    [ el [ Font.semiBold, Font.color Ui.danger ] (text (Copy.untetheredHeadline who))
+                    , text (Copy.untetheredExplanation (String.toLower (Types.aspectLabel u.aspect)))
                     ]
                 , if ctx.facilitator then
                     Ui.confirmButton
                         { armed = confirming == Just "resolve-untether"
-                        , idle = "Resolve untether"
-                        , confirm = "Resolve untether"
+                        , idle = Copy.resolveUntether
+                        , confirm = Copy.resolveUntether
                         , onArm = RequestConfirm "resolve-untether"
                         , onConfirm = ResolveUntether
                         , onCancel = CancelConfirm
@@ -186,7 +176,7 @@ sessionHistoryView zone history =
 
     else
         Element.column [ spacing Ui.xs, width fill ]
-            (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Past sessions")
+            (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.pastSessions)
                 :: List.map (pastSessionRow zone) history
             )
 
@@ -217,13 +207,13 @@ verdictWord : SessionOutcome -> String
 verdictWord outcome =
     case outcome of
         OutcomeMet ->
-            "met"
+            Copy.verdictMet
 
         OutcomeFailed ->
-            "failed"
+            Copy.verdictFailed
 
         OutcomePartial ->
-            "partial"
+            Copy.verdictPartial
 
 
 verdictColor : SessionOutcome -> Element.Color

@@ -5,6 +5,7 @@ module View.Log exposing (logDomId, view)
 speaker-coloured rows (folded behind `Element.Lazy`).
 -}
 
+import Copy
 import Dict exposing (Dict)
 import Element exposing (Element, el, fill, height, maximum, none, px, spacing, text, width)
 import Element.Font as Font
@@ -45,7 +46,7 @@ view ctx props gs =
     Ui.card
         [ logHeader ctx.facilitator props.confirming gs
         , if List.isEmpty gs.messages then
-            placeholder "No messages yet."
+            placeholder Copy.noMessages
 
           else
             Element.column
@@ -84,10 +85,10 @@ loadEarlierRow loadingHistory noMoreHistory messages =
     else
         el [ Element.centerX ]
             (if loadingHistory then
-                el [ Font.size 11, Font.color Ui.inkSoft ] (text "Loading earlier messages…")
+                el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.loadingEarlierMessages)
 
              else
-                Ui.ghostButton { onPress = Just LoadEarlierMessages, label = "Load earlier messages" }
+                Ui.ghostButton { onPress = Just LoadEarlierMessages, label = Copy.loadEarlierMessages }
             )
 
 
@@ -98,13 +99,13 @@ logHeader facilitator confirming gs =
             not (List.isEmpty gs.messages)
     in
     Element.row [ width fill, spacing Ui.md ]
-        (Ui.sectionTitle "Log"
+        (Ui.sectionTitle Copy.logTitle
             :: (if facilitator && hasMessages then
                     [ el [ Element.alignRight ]
                         (Ui.confirmButton
                             { armed = confirming == Just "clear-log"
-                            , idle = "Clear log"
-                            , confirm = "Clear log"
+                            , idle = Copy.clearLog
+                            , confirm = Copy.clearLog
                             , onArm = RequestConfirm "clear-log"
                             , onConfirm = ClearLog
                             , onCancel = CancelConfirm

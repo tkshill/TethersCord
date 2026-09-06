@@ -93,6 +93,7 @@ Elm (`client/src/`), dependency direction `Types` ← everything, `Main` → `Ef
 - **`View.elm`** — the page shell only: `view` (which computes a `ViewContext` once and composes the ordered section list), `header`, `connectionNote`, `composer`, `logDomId`.
 - **`View/*.elm`** — one module per section card: `Session` (+ the untether banner), `Stones`, `Moves`, `Characters`, `Entities`, `Log`. Each exposes `view : ViewContext -> <props record> -> GameState -> Element Msg` (a couple take no extra props). `View/Helpers.elm` holds the `ViewContext` type and the cross-section helpers (`placeholder`, `inputAttrs`, `characterLabel`, `countProposals` / `latestProposalId`, `pendingHint` / `withdrawLink`, `stoneChip`).
 - **`Ui.elm`** — the elm-ui design system: palette, `xs`…`xl` spacing scale, type sizes, and building blocks (`page`, `card`, `primaryButton`, `stoneChip`, `banner`, `onEnter`, …), plus the `press` (in-flight gate) and `onlyWhen` list helpers. New UI goes through these, not raw `Element` styling. Aesthetic is deliberately spare.
+- **`Copy.elm`** — every player-facing string the view renders, as named constants grouped by card (small formatting functions where a value is spliced in). `View.elm` and each `View/*` module read from it, so the game's wording is tuned in one place. Structural field labels that are not game vocabulary ("Name", "Notes") stay inline in the view.
 - **`Format.elm`** / **`Roll.elm`** — pure helpers; stone type.
 
 TypeScript (`client/src/`):

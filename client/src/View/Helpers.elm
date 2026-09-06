@@ -16,6 +16,7 @@ latest-id lookups, the "(n pending) · withdraw" hint, the bordered-input
 attributes, and the plain placeholder line.
 -}
 
+import Copy
 import Element exposing (Element, el, none, spacing, text, width)
 import Element.Border as Border
 import Element.Font as Font
@@ -62,17 +63,17 @@ characterLabel ch =
         ch.name
 
     else
-        "Character " ++ String.fromInt (ch.slot + 1)
+        Copy.characterFallback ch.slot
 
 
 stoneChip : Stone -> Element msg
 stoneChip stone =
     case stone of
         Boon ->
-            Ui.stoneChip Ui.boonFill "Boon"
+            Ui.stoneChip Ui.boonFill Copy.boonStone
 
         Bane ->
-            Ui.stoneChip Ui.baneFill "Bane"
+            Ui.stoneChip Ui.baneFill Copy.baneStone
 
 
 countProposals : Maybe String -> Kind.ProposalKind -> List Proposal -> Int
@@ -134,7 +135,7 @@ withdrawLink maybeId =
                 , Font.underline
                 , Element.mouseOver [ Font.color Ui.accent ]
                 ]
-                { onPress = Just (WithdrawProposal pid), label = text "withdraw" }
+                { onPress = Just (WithdrawProposal pid), label = text Copy.withdraw }
 
         Nothing ->
             none
