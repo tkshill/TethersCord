@@ -1,9 +1,22 @@
-module Format exposing (clock, date, timestamp)
+module Format exposing (clock, date, pluralize, timestamp)
 
 {-| Small pure formatting helpers.
 -}
 
 import Time
+
+
+{-| `word` for a count of one, `word ++ "s"` for anything else — the naive
+English plural, enough for the game's "1 Bane" / "3 Banes" counters. The count
+is passed so call sites read as `pluralize n "Bane"`.
+-}
+pluralize : Int -> String -> String
+pluralize n word =
+    if n == 1 then
+        word
+
+    else
+        word ++ "s"
 
 
 {-| Render a message's creation time as `YYYY-MM-DD HH:MM` in the given zone.

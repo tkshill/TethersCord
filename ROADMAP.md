@@ -834,27 +834,27 @@ the Worker.
 - The only wire-format change anywhere here is one *additive* field
   (`outcomeKind`, step 3); no D1 migration, no `KEY_STONES` shape change.
 
-### Step 1 — client quick wins (low risk, independently shippable)
+### Step 1 — client quick wins (low risk, independently shippable) — done
 
-- [ ] **`Api.elm` request helpers.** Collapse the 24 `Http.request` builders
+- [x] **`Api.elm` request helpers.** Collapse the 24 `Http.request` builders
       behind three privates — `postJson` / `postEmpty` / `get` — that own
       `method`, `authHeaders`, `jsonContentType`, `timeout`, `tracker`, and the
       `expectWhatever` / `expectJson`. `slotAction` already hints at this.
       Each endpoint becomes one line; the module roughly halves.
-- [ ] **Collapse the mutation-result branches in `update`.** The ~11
+- [x] **Collapse the mutation-result branches in `update`.** The ~11
       `…Updated (Ok ()) -> ( clearInflight "x:" model, None )` /
       `(Err _) -> fail "…" (clearInflight "x:" model)` pairs become one
       `MutationDone { family : String, failMsg : String } (Result Http.Error ())`
       message (or a shared helper). Removes ~11 `Msg` constructors and their
       `Effect` → `Api` wiring, ~60 lines net.
-- [ ] **Unwrap `Maybe GameState` once** in `View.view`: a single top-level
+- [x] **Unwrap `Maybe GameState` once** in `View.view`: a single top-level
       loading branch, and every section function takes `GameState`, not
       `Maybe GameState`. Removes the ~6 repeated `case maybeGs of Nothing …`
       blocks.
-- [ ] **`Format.pluralize : Int -> String -> String`** for the
+- [x] **`Format.pluralize : Int -> String -> String`** for the
       `"Bane" ++ (if n == 1 then "" else "s")` pattern (three sites in `View`,
       more in the Worker).
-- [ ] **`Types.characterAtSlot`** — one shared slot lookup, replacing
+- [x] **`Types.characterAtSlot`** — one shared slot lookup, replacing
       `Main.findCharacterAtSlot` and `View.characterAtSlot`.
 
 ### Step 2 — typed proposal and ability kinds

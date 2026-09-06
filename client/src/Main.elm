@@ -237,7 +237,7 @@ flushFieldSaves model =
                         |> List.filterMap
                             (\slot ->
                                 model.gameState
-                                    |> Maybe.andThen (findCharacterAtSlot slot)
+                                    |> Maybe.andThen (\gs -> characterAtSlot slot gs.characters)
                                     |> Maybe.map (Effect.PostCharacterUpdate auth slot)
                             )
 
@@ -373,21 +373,19 @@ update msg model =
                 _ ->
                     ( model, Effect.None )
 
-        -- Mutations acknowledge only; the resulting state arrives on the socket.
-        MessagePosted (Ok ()) ->
-            ( model, Effect.None )
+        -- Every acknowledge-only mutation (the Worker replies 204) lands here:
+        -- release the family's in-flight keys, and on failure show the transient
+        -- note. The resulting state arrives separately on the socket.
+        MutationDone tag result ->
+            case result of
+                Ok () ->
+                    ( clearInflight tag.family model, Effect.None )
 
-        MessagePosted (Err _) ->
-            fail "Failed to post message." model
+                Err _ ->
+                    fail tag.failMsg (clearInflight tag.family model)
 
         ClearLog ->
             guard "log:clear" { model | confirming = Nothing } Effect.PostClearMessages
-
-        LogCleared (Ok ()) ->
-            ( clearInflight "log:" model, Effect.None )
-
-        LogCleared (Err _) ->
-            fail "Failed to clear the log." (clearInflight "log:" model)
 
         AddBoon ->
             guard "stones:add-boon" model (\auth -> Effect.PostStones auth "/stones/add-boon")
@@ -427,12 +425,6 @@ update msg model =
 
         ReleaseSlot slot ->
             guard "slot:release" model (\auth -> Effect.PostReleaseSlot auth slot)
-
-        SlotClaimed (Ok ()) ->
-            ( clearInflight "slot:" model, Effect.None )
-
-        SlotClaimed (Err _) ->
-            fail "Couldn't claim that character sheet." (clearInflight "slot:" model)
 
         AcceptProposal id ->
             let
@@ -486,12 +478,6 @@ update msg model =
         UseFloatingBoon floatingId ->
             guard "move:use-floating" model (\auth -> Effect.PostUseFloatingBoon auth floatingId)
 
-        MoveRaised (Ok ()) ->
-            ( clearInflight "move:" model, Effect.None )
-
-        MoveRaised (Err _) ->
-            fail "Couldn't raise that move." (clearInflight "move:" model)
-
         SessionGoalChanged s ->
             ( { model | newSessionGoal = s }, Effect.None )
 
@@ -519,20 +505,8 @@ update msg model =
         EndSession ->
             guard "session:end" { model | confirming = Nothing } Effect.PostEndSession
 
-        SessionUpdated (Ok ()) ->
-            ( clearInflight "session:" model, Effect.None )
-
-        SessionUpdated (Err _) ->
-            fail "Failed to update the session." (clearInflight "session:" model)
-
         ResolveUntether ->
             guard "untether:resolve" { model | confirming = Nothing } Effect.PostUntetherResolve
-
-        UntetherResolved (Ok ()) ->
-            ( clearInflight "untether:" model, Effect.None )
-
-        UntetherResolved (Err _) ->
-            fail "Failed to resolve the untether." (clearInflight "untether:" model)
 
         RequestConfirm key ->
             ( { model | confirming = Just key }, Effect.None )
@@ -563,23 +537,11 @@ update msg model =
         AcceptRoll ->
             guard "stones:accept" model (\auth -> Effect.PostStones auth "/stones/accept")
 
-        StonesUpdated (Ok ()) ->
-            ( clearInflight "stones:" model, Effect.None )
-
-        StonesUpdated (Err _) ->
-            fail "Failed to update stones." (clearInflight "stones:" model)
-
         StartOvercome slot ->
             guard "overcome:start" model (\auth -> Effect.PostStartOvercome auth slot)
 
         CancelOvercome ->
             guard "overcome:cancel" model Effect.PostCancelOvercome
-
-        OvercomeUpdated (Ok ()) ->
-            ( clearInflight "overcome:" model, Effect.None )
-
-        OvercomeUpdated (Err _) ->
-            fail "Failed to update the overcome." (clearInflight "overcome:" model)
 
         -- Field edits update the local sheet at once and mark the slot dirty; the
         -- write is deferred to a single debounced flush (`FieldSaveDue`).
@@ -619,12 +581,6 @@ update msg model =
 
         FateDecrement slot ->
             guard ("fate:" ++ String.fromInt slot) model (\auth -> Effect.PostFate auth slot -1)
-
-        CharacterUpdated (Ok ()) ->
-            ( clearInflight "fate:" model, Effect.None )
-
-        CharacterUpdated (Err _) ->
-            fail "Failed to update character sheet." (clearInflight "fate:" model)
 
         AddEntity kind ->
             guard ("entity:create:" ++ entityKindPath kind) model (\auth -> Effect.PostCreateEntity auth kind)
@@ -667,12 +623,6 @@ update msg model =
             guard ("entity:delete:" ++ entityId)
                 { released | dirtyEntities = Set.remove entityId released.dirtyEntities }
                 (\auth -> Effect.PostDeleteEntity auth kind entityId)
-
-        EntityMutated (Ok ()) ->
-            ( clearInflight "entity:" model, Effect.None )
-
-        EntityMutated (Err _) ->
-            fail "Failed to update the table entry." (clearInflight "entity:" model)
 
         WsGameStateRaw value ->
             case Decode.decodeValue Api.decodeGameState value of
@@ -741,7 +691,7 @@ applyServerState model incoming =
 
 keepLocalCharacter : GameState -> Int -> GameState -> GameState
 keepLocalCharacter local slot incoming =
-    case findCharacterAtSlot slot local of
+    case characterAtSlot slot local.characters of
         Just localCharacter ->
             mapCharacterAtSlot slot (\_ -> localCharacter) incoming
 
@@ -810,11 +760,6 @@ prependMessages older gs =
             List.filter (\m -> not (Set.member m.id knownIds)) older
     in
     { gs | messages = fresh ++ gs.messages }
-
-
-findCharacterAtSlot : Int -> GameState -> Maybe CharacterSheet
-findCharacterAtSlot slot gs =
-    List.filter (\c -> c.slot == slot) gs.characters |> List.head
 
 
 mapCharacterAtSlot : Int -> (CharacterSheet -> CharacterSheet) -> GameState -> GameState

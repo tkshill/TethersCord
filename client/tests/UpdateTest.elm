@@ -17,6 +17,14 @@ import Time
 import Types exposing (Model, Msg(..))
 
 
+{-| The collapsed acknowledge-only result for the stones family, standing in for
+the old `StonesUpdated` constructor.
+-}
+stonesDone : Result Http.Error () -> Msg
+stonesDone =
+    MutationDone { family = "stones:", failMsg = "Failed to update stones." }
+
+
 {-| Model after a successful auth + first snapshot: authorised, with game state.
 -}
 ready : Model
@@ -135,7 +143,7 @@ suite =
                             Main.update RollStones ready |> Tuple.first
 
                         settled =
-                            Main.update (StonesUpdated (Ok ())) afterFirst |> Tuple.first
+                            Main.update (stonesDone (Ok ())) afterFirst |> Tuple.first
                     in
                     Main.update RollStones settled
                         |> Tuple.second
@@ -218,7 +226,7 @@ suite =
         , describe "transient errors"
             [ test "a failed mutation sets error, not status, and schedules its dismissal" <|
                 \_ ->
-                    Main.update (StonesUpdated (Err Http.NetworkError)) ready
+                    Main.update (stonesDone (Err Http.NetworkError)) ready
                         |> (\( next, eff ) -> ( next.error, next.status, eff ))
                         |> Expect.equal
                             ( Just "Failed to update stones.", ready.status, Effect.DismissErrorIn 6000 )
