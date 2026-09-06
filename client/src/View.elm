@@ -48,22 +48,34 @@ view model =
 
         myId =
             Maybe.map .userId model.auth
+
+        -- The shell — header, notes, composer — renders with or without game
+        -- state; only the panels between them need a loaded board.
+        shell middle =
+            Ui.page
+                (header model
+                    :: connectionNote model.connection
+                    :: Ui.banner model.status
+                    :: Ui.errorNote model.error
+                    :: middle
+                    ++ [ composer model ]
+                )
     in
-    Ui.page
-        [ header model
-        , connectionNote model.connection
-        , Ui.banner model.status
-        , Ui.errorNote model.error
-        , sessionPanel facilitator model.confirming model.newSessionGoal model.goalEdit model.timeZone model.gameState
-        , untetherBanner facilitator model.confirming model.gameState
-        , rollPanel facilitator myId model.inflight model.proposalDrafts model.gameState
-        , movesCard myId model.gameState
-        , characterSheets facilitator myId model.selectedSlot model.gameState
-        , entityCard Npc facilitator model.gameState
-        , entityCard Location facilitator model.gameState
-        , messageLog facilitator model.confirming model.loadingHistory model.noMoreHistory model.timeZone model.gameState
-        , composer model
-        ]
+    case model.gameState of
+        Nothing ->
+            shell [ placeholder "Loading the table…" ]
+
+        Just gs ->
+            shell
+                [ sessionPanel facilitator model.confirming model.newSessionGoal model.goalEdit model.timeZone gs
+                , untetherBanner facilitator model.confirming gs
+                , rollPanel facilitator myId model.inflight model.proposalDrafts gs
+                , movesCard myId gs
+                , characterSheets facilitator myId model.selectedSlot gs
+                , entityCard Npc facilitator gs
+                , entityCard Location facilitator gs
+                , messageLog facilitator model.confirming model.loadingHistory model.noMoreHistory model.timeZone gs
+                ]
 
 
 connectionNote : Connection -> Element msg
@@ -122,11 +134,11 @@ header model =
 -- SESSION
 
 
-sessionPanel : Bool -> Maybe String -> String -> String -> Time.Zone -> Maybe GameState -> Element Msg
-sessionPanel facilitator confirming draftGoal goalEdit zone maybeGs =
+sessionPanel : Bool -> Maybe String -> String -> String -> Time.Zone -> GameState -> Element Msg
+sessionPanel facilitator confirming draftGoal goalEdit zone gs =
     Ui.card
         [ Ui.sectionTitle "Session"
-        , case maybeGs |> Maybe.andThen .session of
+        , case gs.session of
             Just s ->
                 Element.column [ spacing Ui.sm, width fill ]
                     [ if facilitator then
@@ -146,13 +158,8 @@ sessionPanel facilitator confirming draftGoal goalEdit zone maybeGs =
                             (text
                                 ("Carrying "
                                     ++ String.fromInt s.carriedBanes
-                                    ++ " Bane"
-                                    ++ (if s.carriedBanes == 1 then
-                                            ""
-
-                                        else
-                                            "s"
-                                       )
+                                    ++ " "
+                                    ++ Format.pluralize s.carriedBanes "Bane"
                                     ++ " in from the last session"
                                 )
                             )
@@ -188,8 +195,7 @@ sessionPanel facilitator confirming draftGoal goalEdit zone maybeGs =
 
                 else
                     placeholder "No session running."
-        , sessionHistoryView zone
-            (maybeGs |> Maybe.map .sessionHistory |> Maybe.withDefault [])
+        , sessionHistoryView zone gs.sessionHistory
         ]
 
 
@@ -235,19 +241,16 @@ goalEditor confirming goalEdit currentGoal =
 {-| The reckoning line (section 19). While a character is untethered it shows
 above the roll panel for the whole table; the facilitator gets a confirm-gated
 "Resolve untether" that closes it once the scene has played out. -}
-untetherBanner : Bool -> Maybe String -> Maybe GameState -> Element Msg
-untetherBanner facilitator confirming maybeGs =
-    case maybeGs |> Maybe.andThen .untether of
+untetherBanner : Bool -> Maybe String -> GameState -> Element Msg
+untetherBanner facilitator confirming gs =
+    case gs.untether of
         Nothing ->
             none
 
         Just u ->
             let
                 who =
-                    maybeGs
-                        |> Maybe.map .characters
-                        |> Maybe.withDefault []
-                        |> characterAtSlot u.slot
+                    characterAtSlot u.slot gs.characters
                         |> Maybe.map characterLabel
                         |> Maybe.withDefault ("Character " ++ String.fromInt (u.slot + 1))
             in
@@ -363,16 +366,11 @@ press inflight key msg =
         Just msg
 
 
-rollPanel : Bool -> Maybe String -> Set String -> Dict String String -> Maybe GameState -> Element Msg
-rollPanel facilitator myId inflight drafts maybeGs =
+rollPanel : Bool -> Maybe String -> Set String -> Dict String String -> GameState -> Element Msg
+rollPanel facilitator myId inflight drafts gs =
     Ui.card
         [ Ui.sectionTitle "Stones"
-        , case maybeGs of
-            Nothing ->
-                placeholder "Loading stone pool…"
-
-            Just gs ->
-                let
+        , let
                     committed =
                         List.foldl (\c acc -> acc + c.count) 0 gs.committedBoons
 
@@ -548,11 +546,6 @@ overcomeBlock facilitator target characters =
 
             else
                 none
-
-
-characterAtSlot : Int -> List CharacterSheet -> Maybe CharacterSheet
-characterAtSlot slot characters =
-    characters |> List.filter (\c -> c.slot == slot) |> List.head
 
 
 {-| Facilitator's queue of player-initiated requests awaiting a decision. Hidden
@@ -767,13 +760,13 @@ stoneChip stone =
 {-| The player's own abilities and moves, shown once they hold a sheet. Every
 one is a request the facilitator approves; a button mutes to "(pending)" once
 raised and, for the once-per-session abilities, "(used)" after approval. -}
-movesCard : Maybe String -> Maybe GameState -> Element Msg
-movesCard myId maybeGs =
-    case maybeGs |> Maybe.andThen (\gs -> Maybe.map (Tuple.pair gs) (myOwnedSheet myId gs)) of
+movesCard : Maybe String -> GameState -> Element Msg
+movesCard myId gs =
+    case myOwnedSheet myId gs of
         Nothing ->
             none
 
-        Just ( gs, ch ) ->
+        Just ch ->
             Ui.card
                 [ Ui.sectionTitle "Moves"
                 , abilityRow myId gs ch
@@ -926,33 +919,28 @@ moveButton disabled label msg =
 -- CHARACTERS
 
 
-characterSheets : Bool -> Maybe String -> Int -> Maybe GameState -> Element Msg
-characterSheets facilitator myId selectedSlot maybeGs =
+characterSheets : Bool -> Maybe String -> Int -> GameState -> Element Msg
+characterSheets facilitator myId selectedSlot gs =
     Ui.card
         [ Ui.sectionTitle "Characters"
-        , case maybeGs of
-            Nothing ->
-                placeholder "Loading character sheets…"
+        , let
+            selected =
+                case List.filter (\c -> c.slot == selectedSlot) gs.characters of
+                    first :: _ ->
+                        Just first
 
-            Just gs ->
-                let
-                    selected =
-                        case List.filter (\c -> c.slot == selectedSlot) gs.characters of
-                            first :: _ ->
-                                Just first
+                    [] ->
+                        List.head gs.characters
+          in
+          Element.column [ spacing Ui.md, width fill ]
+            [ tabStrip myId selectedSlot gs.characters
+            , case selected of
+                Just ch ->
+                    characterSheet facilitator myId gs ch
 
-                            [] ->
-                                List.head gs.characters
-                in
-                Element.column [ spacing Ui.md, width fill ]
-                    [ tabStrip myId selectedSlot gs.characters
-                    , case selected of
-                        Just ch ->
-                            characterSheet facilitator myId gs ch
-
-                        Nothing ->
-                            placeholder "No character sheets."
-                    ]
+                Nothing ->
+                    placeholder "No character sheets."
+            ]
         ]
 
 
@@ -1059,13 +1047,8 @@ aspectField editable ch untether aspect fieldTag value =
                         ++ [ el [ Font.size 10, Font.color Ui.inkSoft ]
                                 (text
                                     (String.fromInt count
-                                        ++ " Bane"
-                                        ++ (if count == 1 then
-                                                ""
-
-                                            else
-                                                "s"
-                                           )
+                                        ++ " "
+                                        ++ Format.pluralize count "Bane"
                                     )
                                 )
                            ]
@@ -1240,8 +1223,8 @@ inputAttrs =
 (`Location`). The facilitator gets an editable list with an Add button and a
 Delete per row; players get a plain read-only list, and the card is hidden from
 them entirely while it is empty. -}
-entityCard : EntityKind -> Bool -> Maybe GameState -> Element Msg
-entityCard kind facilitator maybeGs =
+entityCard : EntityKind -> Bool -> GameState -> Element Msg
+entityCard kind facilitator gs =
     let
         ( title, singular ) =
             case kind of
@@ -1250,41 +1233,35 @@ entityCard kind facilitator maybeGs =
 
                 Location ->
                     ( "Locations", "location" )
+
+        entities =
+            entitiesForKind kind gs
     in
-    case maybeGs of
-        Nothing ->
-            none
+    if not facilitator && List.isEmpty entities then
+        none
 
-        Just gs ->
-            let
-                entities =
-                    entitiesForKind kind gs
-            in
-            if not facilitator && List.isEmpty entities then
-                none
+    else
+        Ui.card
+            (Ui.sectionTitle title
+                :: (if List.isEmpty entities then
+                        [ placeholder ("No " ++ title ++ " yet.") ]
 
-            else
-                Ui.card
-                    (Ui.sectionTitle title
-                        :: (if List.isEmpty entities then
-                                [ placeholder ("No " ++ title ++ " yet.") ]
+                    else
+                        List.map (entityRow kind facilitator) entities
+                   )
+                ++ (if facilitator then
+                        [ el []
+                            (Ui.ghostButton
+                                { onPress = Just (AddEntity kind)
+                                , label = "Add " ++ singular
+                                }
+                            )
+                        ]
 
-                            else
-                                List.map (entityRow kind facilitator) entities
-                           )
-                        ++ (if facilitator then
-                                [ el []
-                                    (Ui.ghostButton
-                                        { onPress = Just (AddEntity kind)
-                                        , label = "Add " ++ singular
-                                        }
-                                    )
-                                ]
-
-                            else
-                                []
-                           )
-                    )
+                    else
+                        []
+                   )
+            )
 
 
 entityRow : EntityKind -> Bool -> TableEntity -> Element Msg
@@ -1347,30 +1324,25 @@ entityRow kind facilitator entity =
 -- LOG
 
 
-messageLog : Bool -> Maybe String -> Bool -> Bool -> Time.Zone -> Maybe GameState -> Element Msg
-messageLog facilitator confirming loadingHistory noMoreHistory zone maybeGs =
+messageLog : Bool -> Maybe String -> Bool -> Bool -> Time.Zone -> GameState -> Element Msg
+messageLog facilitator confirming loadingHistory noMoreHistory zone gs =
     Ui.card
-        [ logHeader facilitator confirming maybeGs
-        , case maybeGs of
-            Nothing ->
-                placeholder "Loading messages…"
+        [ logHeader facilitator confirming gs
+        , if List.isEmpty gs.messages then
+            placeholder "No messages yet."
 
-            Just gs ->
-                if List.isEmpty gs.messages then
-                    placeholder "No messages yet."
-
-                else
-                    Element.column
-                        [ width fill
-                        , height (fill |> maximum 360)
-                        , spacing Ui.sm
-                        , Element.scrollbarY
-                        , Element.htmlAttribute (Html.Attributes.id logDomId)
-                        , Ui.onScrolledToBottom 32 LogScrolled
-                        ]
-                        [ loadEarlierRow loadingHistory noMoreHistory gs.messages
-                        , Element.Lazy.lazy2 lazyLogBody zone gs.messages
-                        ]
+          else
+            Element.column
+                [ width fill
+                , height (fill |> maximum 360)
+                , spacing Ui.sm
+                , Element.scrollbarY
+                , Element.htmlAttribute (Html.Attributes.id logDomId)
+                , Ui.onScrolledToBottom 32 LogScrolled
+                ]
+                [ loadEarlierRow loadingHistory noMoreHistory gs.messages
+                , Element.Lazy.lazy2 lazyLogBody zone gs.messages
+                ]
         ]
 
 
@@ -1409,16 +1381,11 @@ logWindow =
     50
 
 
-logHeader : Bool -> Maybe String -> Maybe GameState -> Element Msg
-logHeader facilitator confirming maybeGs =
+logHeader : Bool -> Maybe String -> GameState -> Element Msg
+logHeader facilitator confirming gs =
     let
         hasMessages =
-            case maybeGs of
-                Just gs ->
-                    not (List.isEmpty gs.messages)
-
-                Nothing ->
-                    False
+            not (List.isEmpty gs.messages)
     in
     Element.row [ width fill, spacing Ui.md ]
         (Ui.sectionTitle "Log"

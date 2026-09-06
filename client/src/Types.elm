@@ -14,6 +14,7 @@ module Types exposing
     , Message
     , Model
     , Msg(..)
+    , MutationOutcome
     , Overcome
     , PendingRoll
     , Proposal
@@ -27,6 +28,7 @@ module Types exposing
     , actionPending
     , aspectBaneCount
     , aspectLabel
+    , characterAtSlot
     , committedBoonsForSlot
     , decodeRole
     , entitiesForKind
@@ -130,6 +132,15 @@ type alias CommittedBoon =
     { slot : Int
     , count : Int
     }
+
+
+{-| The character holding `slot`, if any. One shared slot lookup for `Main` (the
+state-merge helpers) and `View` (the panels that resolve an overcome / untether
+target).
+-}
+characterAtSlot : Int -> List CharacterSheet -> Maybe CharacterSheet
+characterAtSlot slot characters =
+    characters |> List.filter (\c -> c.slot == slot) |> List.head
 
 
 committedBoonsForSlot : Int -> List CommittedBoon -> Int
@@ -503,6 +514,18 @@ type Connection
 -- MESSAGES
 
 
+{-| The result of an acknowledge-only mutation (the Worker replies `204`, so
+there is nothing to fold in). `family` is the in-flight key prefix released on
+either outcome; `failMsg` is the transient error shown when the request failed.
+Ten near-identical `…Updated` messages collapsed into `MutationDone` carrying
+this.
+-}
+type alias MutationOutcome =
+    { family : String
+    , failMsg : String
+    }
+
+
 type Msg
     = GotBackendAuth (Result Http.Error Auth)
     | GotGameState (Result Http.Error GameState)
@@ -511,9 +534,7 @@ type Msg
     | LogScrolled Bool
     | LoadEarlierMessages
     | GotEarlierMessages (Result Http.Error (List Message))
-    | MessagePosted (Result Http.Error ())
     | ClearLog
-    | LogCleared (Result Http.Error ())
     | FromDiscordRaw Decode.Value
     | AddBoon
     | CommitBoonIncrement
@@ -522,7 +543,6 @@ type Msg
     | SelectSlot Int
     | ClaimSlot Int
     | ReleaseSlot Int
-    | SlotClaimed (Result Http.Error ())
     | AcceptProposal String
     | RejectProposal String
     | WithdrawProposal String
@@ -532,15 +552,12 @@ type Msg
     | SuggestCompel Int
     | AcceptCompelMove
     | UseFloatingBoon String
-    | MoveRaised (Result Http.Error ())
     | SessionGoalChanged String
     | SessionGoalEditChanged String
     | SaveSessionGoal
     | StartSession
     | EndSession
-    | SessionUpdated (Result Http.Error ())
     | ResolveUntether
-    | UntetherResolved (Result Http.Error ())
     | RequestConfirm String
     | CancelConfirm
     | DismissError
@@ -549,21 +566,18 @@ type Msg
     | RollStones
     | RerollStones
     | AcceptRoll
-    | StonesUpdated (Result Http.Error ())
     | StartOvercome Int
     | CancelOvercome
-    | OvercomeUpdated (Result Http.Error ())
     | CharacterFieldInput Int CharacterField String
     | CharacterFieldBlur Int
     | FieldSaveDue Int
     | FateIncrement Int
     | FateDecrement Int
-    | CharacterUpdated (Result Http.Error ())
     | AddEntity EntityKind
     | EntityFieldInput EntityKind String EntityField String
     | EntityFieldBlur EntityKind String
     | DeleteEntity EntityKind String
-    | EntityMutated (Result Http.Error ())
+    | MutationDone MutationOutcome (Result Http.Error ())
     | WsGameStateRaw Decode.Value
     | AuthFailed String
     | GotTimeZone Time.Zone

@@ -16,6 +16,7 @@ user is authorised — `perform` only translates.
 
 import Api
 import Browser.Dom
+import Http
 import Ports
 import Process
 import Task
@@ -104,28 +105,28 @@ perform flags effect =
             Api.getMessageHistory flags auth before GotEarlierMessages
 
         PostMessage auth content ->
-            Api.postMessage flags auth content MessagePosted
+            Api.postMessage flags auth content messagePosted
 
         PostClearMessages auth ->
-            Api.postClearMessages flags auth LogCleared
+            Api.postClearMessages flags auth logCleared
 
         PostStones auth path ->
-            Api.postStones flags auth path StonesUpdated
+            Api.postStones flags auth path stonesUpdated
 
         PostCommitBoon auth delta ->
-            Api.postCommitBoon flags auth delta StonesUpdated
+            Api.postCommitBoon flags auth delta stonesUpdated
 
         PostFate auth slot delta ->
-            Api.postFate flags auth slot delta CharacterUpdated
+            Api.postFate flags auth slot delta characterUpdated
 
         PostCharacterUpdate auth slot character ->
-            Api.postCharacterUpdate flags auth slot character CharacterUpdated
+            Api.postCharacterUpdate flags auth slot character characterUpdated
 
         PostClaimSlot auth slot ->
-            Api.postClaimSlot flags auth slot SlotClaimed
+            Api.postClaimSlot flags auth slot slotClaimed
 
         PostReleaseSlot auth slot ->
-            Api.postReleaseSlot flags auth slot SlotClaimed
+            Api.postReleaseSlot flags auth slot slotClaimed
 
         PostProposalDecision auth id decision context ->
             Api.postProposalDecision flags auth id decision context (ProposalResolved id)
@@ -134,40 +135,97 @@ perform flags effect =
             Api.postWithdrawProposal flags auth id (ProposalResolved id)
 
         PostUseAbility auth kind ->
-            Api.postUseAbility flags auth kind MoveRaised
+            Api.postUseAbility flags auth kind moveRaised
 
         PostSuggestCompel auth targetSlot ->
-            Api.postSuggestCompel flags auth targetSlot MoveRaised
+            Api.postSuggestCompel flags auth targetSlot moveRaised
 
         PostAcceptCompelMove auth ->
-            Api.postAcceptCompelMove flags auth MoveRaised
+            Api.postAcceptCompelMove flags auth moveRaised
 
         PostUseFloatingBoon auth floatingId ->
-            Api.postUseFloatingBoon flags auth floatingId MoveRaised
+            Api.postUseFloatingBoon flags auth floatingId moveRaised
 
         PostStartSession auth goal ->
-            Api.postStartSession flags auth goal SessionUpdated
+            Api.postStartSession flags auth goal sessionUpdated
 
         PostSessionGoal auth goal ->
-            Api.postSessionGoal flags auth goal SessionUpdated
+            Api.postSessionGoal flags auth goal sessionUpdated
 
         PostEndSession auth ->
-            Api.postEndSession flags auth SessionUpdated
+            Api.postEndSession flags auth sessionUpdated
 
         PostUntetherResolve auth ->
-            Api.postUntetherResolve flags auth UntetherResolved
+            Api.postUntetherResolve flags auth untetherResolved
 
         PostStartOvercome auth slot ->
-            Api.postStartOvercome flags auth slot OvercomeUpdated
+            Api.postStartOvercome flags auth slot overcomeUpdated
 
         PostCancelOvercome auth ->
-            Api.postCancelOvercome flags auth OvercomeUpdated
+            Api.postCancelOvercome flags auth overcomeUpdated
 
         PostCreateEntity auth kind ->
-            Api.postCreateEntity flags auth kind EntityMutated
+            Api.postCreateEntity flags auth kind entityMutated
 
         PostUpdateEntity auth kind entity ->
-            Api.postUpdateEntity flags auth kind entity EntityMutated
+            Api.postUpdateEntity flags auth kind entity entityMutated
 
         PostDeleteEntity auth kind entityId ->
-            Api.postDeleteEntity flags auth kind entityId EntityMutated
+            Api.postDeleteEntity flags auth kind entityId entityMutated
+
+
+{-| The result message for each family of acknowledge-only mutation. Each names
+the in-flight key prefix `update` releases on the ack and the transient error to
+show if the POST failed; `update` has a single `MutationDone` branch that reads
+both off the record. `characterUpdated` uses the `"fate:"` family because the
+Grant `+` / `−` is the only guarded character mutation — the debounced sheet
+save is not in-flight-tracked.
+-}
+messagePosted : Result Http.Error () -> Msg
+messagePosted =
+    MutationDone { family = "message:", failMsg = "Failed to post message." }
+
+
+logCleared : Result Http.Error () -> Msg
+logCleared =
+    MutationDone { family = "log:", failMsg = "Failed to clear the log." }
+
+
+slotClaimed : Result Http.Error () -> Msg
+slotClaimed =
+    MutationDone { family = "slot:", failMsg = "Couldn't claim that character sheet." }
+
+
+moveRaised : Result Http.Error () -> Msg
+moveRaised =
+    MutationDone { family = "move:", failMsg = "Couldn't raise that move." }
+
+
+sessionUpdated : Result Http.Error () -> Msg
+sessionUpdated =
+    MutationDone { family = "session:", failMsg = "Failed to update the session." }
+
+
+untetherResolved : Result Http.Error () -> Msg
+untetherResolved =
+    MutationDone { family = "untether:", failMsg = "Failed to resolve the untether." }
+
+
+stonesUpdated : Result Http.Error () -> Msg
+stonesUpdated =
+    MutationDone { family = "stones:", failMsg = "Failed to update stones." }
+
+
+overcomeUpdated : Result Http.Error () -> Msg
+overcomeUpdated =
+    MutationDone { family = "overcome:", failMsg = "Failed to update the overcome." }
+
+
+characterUpdated : Result Http.Error () -> Msg
+characterUpdated =
+    MutationDone { family = "fate:", failMsg = "Failed to update character sheet." }
+
+
+entityMutated : Result Http.Error () -> Msg
+entityMutated =
+    MutationDone { family = "entity:", failMsg = "Failed to update the table entry." }

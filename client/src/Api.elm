@@ -46,6 +46,10 @@ import Types exposing (Auth, CharacterSheet, CommittedBoon, EntityKind, Floating
 
 
 -- REQUESTS
+--
+-- Every endpoint is one line over the three privates below (`get` / `postEmpty`
+-- / `postJson`), which own the URL shape, the auth header, the JSON content
+-- type, `expect`, and the (always `Nothing`) timeout / tracker.
 
 
 tableUrl : Flags -> String -> String
@@ -58,53 +62,32 @@ authHeaders auth =
     [ Http.header "Authorization" ("Bearer " ++ auth.sessionToken) ]
 
 
-getGameState : Flags -> Auth -> (Result Http.Error GameState -> msg) -> Cmd msg
-getGameState flags auth toMsg =
-    Http.request
-        { method = "GET"
-        , headers = authHeaders auth
-        , url = tableUrl flags "/messages"
-        , body = Http.emptyBody
-        , expect = Http.expectJson toMsg decodeGameState
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+jsonContentType : Http.Header
+jsonContentType =
+    Http.header "Content-Type" "application/json"
 
 
-{-| Older log rows, for the "load earlier" affordance. `before` is a POSIX
-millisecond timestamp; the Worker returns up to a windowful of messages older
-than it, oldest first.
+{-| An authenticated `GET` on a table path, decoding the JSON response.
 -}
-getMessageHistory : Flags -> Auth -> Int -> (Result Http.Error (List Types.Message) -> msg) -> Cmd msg
-getMessageHistory flags auth before toMsg =
+get : Flags -> Auth -> String -> Decode.Decoder a -> (Result Http.Error a -> msg) -> Cmd msg
+get flags auth path decoder toMsg =
     Http.request
         { method = "GET"
         , headers = authHeaders auth
-        , url = tableUrl flags ("/messages/history?before=" ++ String.fromInt before)
+        , url = tableUrl flags path
         , body = Http.emptyBody
-        , expect =
-            Http.expectJson toMsg
-                (Decode.field "messages" (Decode.list decodeMessage))
+        , expect = Http.expectJson toMsg decoder
         , timeout = Nothing
         , tracker = Nothing
         }
 
 
-postMessage : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
-postMessage flags auth content toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth ++ [ jsonContentType ]
-        , url = tableUrl flags "/message"
-        , body = Http.jsonBody (Encode.object [ ( "content", Encode.string content ) ])
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
-
-
-postStones : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
-postStones flags auth path toMsg =
+{-| An authenticated `POST` with no body — the shape of every mutation that
+takes its arguments from the URL. The Worker replies `204`, so the result is
+just `()`.
+-}
+postEmpty : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postEmpty flags auth path toMsg =
     Http.request
         { method = "POST"
         , headers = authHeaders auth
@@ -116,57 +99,83 @@ postStones flags auth path toMsg =
         }
 
 
+{-| An authenticated `POST` carrying a JSON body. Same `204` / `()` reply as
+`postEmpty`.
+-}
+postJson : Flags -> Auth -> String -> Encode.Value -> (Result Http.Error () -> msg) -> Cmd msg
+postJson flags auth path body toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth ++ [ jsonContentType ]
+        , url = tableUrl flags path
+        , body = Http.jsonBody body
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+getGameState : Flags -> Auth -> (Result Http.Error GameState -> msg) -> Cmd msg
+getGameState flags auth toMsg =
+    get flags auth "/messages" decodeGameState toMsg
+
+
+{-| Older log rows, for the "load earlier" affordance. `before` is a POSIX
+millisecond timestamp; the Worker returns up to a windowful of messages older
+than it, oldest first.
+-}
+getMessageHistory : Flags -> Auth -> Int -> (Result Http.Error (List Types.Message) -> msg) -> Cmd msg
+getMessageHistory flags auth before toMsg =
+    get flags
+        auth
+        ("/messages/history?before=" ++ String.fromInt before)
+        (Decode.field "messages" (Decode.list decodeMessage))
+        toMsg
+
+
+postMessage : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postMessage flags auth content toMsg =
+    postJson flags auth "/message" (Encode.object [ ( "content", Encode.string content ) ]) toMsg
+
+
+postStones : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postStones flags auth path toMsg =
+    postEmpty flags auth path toMsg
+
+
 {-| Facilitator-only: wipe this table's log. The resulting empty state arrives
 on the socket like any other mutation.
 -}
 postClearMessages : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
 postClearMessages flags auth toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth
-        , url = tableUrl flags "/messages/clear"
-        , body = Http.emptyBody
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postEmpty flags auth "/messages/clear" toMsg
 
 
 postCharacterUpdate : Flags -> Auth -> Int -> CharacterSheet -> (Result Http.Error () -> msg) -> Cmd msg
 postCharacterUpdate flags auth slot character toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth ++ [ jsonContentType ]
-        , url = tableUrl flags ("/characters/" ++ String.fromInt slot ++ "/update")
-        , body =
-            Http.jsonBody
-                (Encode.object
-                    [ ( "name", Encode.string character.name )
-                    , ( "notableFeatures", Encode.string character.notableFeatures )
-                    , ( "archetype", Encode.string character.archetype )
-                    , ( "desire", Encode.string character.desire )
-                    , ( "quest", Encode.string character.quest )
-                    , ( "condition", Encode.string character.condition )
-                    , ( "notes", Encode.string character.notes )
-                    ]
-                )
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postJson flags
+        auth
+        ("/characters/" ++ String.fromInt slot ++ "/update")
+        (Encode.object
+            [ ( "name", Encode.string character.name )
+            , ( "notableFeatures", Encode.string character.notableFeatures )
+            , ( "archetype", Encode.string character.archetype )
+            , ( "desire", Encode.string character.desire )
+            , ( "quest", Encode.string character.quest )
+            , ( "condition", Encode.string character.condition )
+            , ( "notes", Encode.string character.notes )
+            ]
+        )
+        toMsg
 
 
 postFate : Flags -> Auth -> Int -> Int -> (Result Http.Error () -> msg) -> Cmd msg
 postFate flags auth slot delta toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth ++ [ jsonContentType ]
-        , url = tableUrl flags ("/characters/" ++ String.fromInt slot ++ "/fate")
-        , body = Http.jsonBody (Encode.object [ ( "delta", Encode.int delta ) ])
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postJson flags
+        auth
+        ("/characters/" ++ String.fromInt slot ++ "/fate")
+        (Encode.object [ ( "delta", Encode.int delta ) ])
+        toMsg
 
 
 {-| Pledge (positive `delta`) or withdraw (negative) boons from the next roll.
@@ -175,15 +184,7 @@ clamps the pledge to what that character holds.
 -}
 postCommitBoon : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
 postCommitBoon flags auth delta toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth ++ [ jsonContentType ]
-        , url = tableUrl flags "/stones/commit"
-        , body = Http.jsonBody (Encode.object [ ( "delta", Encode.int delta ) ])
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postJson flags auth "/stones/commit" (Encode.object [ ( "delta", Encode.int delta ) ]) toMsg
 
 
 {-| Claim a character sheet for the calling user, or release one. Releasing is
@@ -201,15 +202,7 @@ postReleaseSlot flags auth slot toMsg =
 
 slotAction : Flags -> Auth -> Int -> String -> (Result Http.Error () -> msg) -> Cmd msg
 slotAction flags auth slot action toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth
-        , url = tableUrl flags ("/characters/" ++ String.fromInt slot ++ "/" ++ action)
-        , body = Http.emptyBody
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postEmpty flags auth ("/characters/" ++ String.fromInt slot ++ "/" ++ action) toMsg
 
 
 {-| Facilitator-only: `decision` is `"accept"` or `"reject"` for the proposal.
@@ -218,21 +211,16 @@ Gain Insight; it is ignored for every other kind and for a reject.
 -}
 postProposalDecision : Flags -> Auth -> String -> String -> Maybe String -> (Result Http.Error () -> msg) -> Cmd msg
 postProposalDecision flags auth proposalId decision context toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth ++ [ jsonContentType ]
-        , url = tableUrl flags ("/proposals/" ++ proposalId ++ "/" ++ decision)
-        , body =
-            case context of
-                Just text ->
-                    Http.jsonBody (Encode.object [ ( "text", Encode.string text ) ])
+    let
+        path =
+            "/proposals/" ++ proposalId ++ "/" ++ decision
+    in
+    case context of
+        Just text ->
+            postJson flags auth path (Encode.object [ ( "text", Encode.string text ) ]) toMsg
 
-                Nothing ->
-                    Http.emptyBody
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+        Nothing ->
+            postEmpty flags auth path toMsg
 
 
 {-| A proposer pulls back their own still-pending proposal. Gated on the caller
@@ -240,15 +228,7 @@ being the proposer, not the facilitator.
 -}
 postWithdrawProposal : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
 postWithdrawProposal flags auth proposalId toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth
-        , url = tableUrl flags ("/proposals/" ++ proposalId ++ "/withdraw")
-        , body = Http.emptyBody
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postEmpty flags auth ("/proposals/" ++ proposalId ++ "/withdraw") toMsg
 
 
 {-| Raise a once-per-session ability: `kind` is `"help-out"`, `"add-detail"`, or
@@ -256,15 +236,7 @@ postWithdrawProposal flags auth proposalId toMsg =
 -}
 postUseAbility : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
 postUseAbility flags auth kind toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth ++ [ jsonContentType ]
-        , url = tableUrl flags "/abilities/use"
-        , body = Http.jsonBody (Encode.object [ ( "kind", Encode.string kind ) ])
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postJson flags auth "/abilities/use" (Encode.object [ ( "kind", Encode.string kind ) ]) toMsg
 
 
 {-| Raise the Accept Compel move — take on a complication for 2 boons on
@@ -272,15 +244,7 @@ facilitator approval.
 -}
 postAcceptCompelMove : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
 postAcceptCompelMove flags auth toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth
-        , url = tableUrl flags "/moves/accept-compel"
-        , body = Http.emptyBody
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postEmpty flags auth "/moves/accept-compel" toMsg
 
 
 {-| Raise the Suggest Compel ability against the character in `targetSlot` — a
@@ -289,21 +253,15 @@ suggester, 2 to the compelled character.
 -}
 postSuggestCompel : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
 postSuggestCompel flags auth targetSlot toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth ++ [ jsonContentType ]
-        , url = tableUrl flags "/abilities/use"
-        , body =
-            Http.jsonBody
-                (Encode.object
-                    [ ( "kind", Encode.string "suggest-compel" )
-                    , ( "targetSlot", Encode.int targetSlot )
-                    ]
-                )
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postJson flags
+        auth
+        "/abilities/use"
+        (Encode.object
+            [ ( "kind", Encode.string "suggest-compel" )
+            , ( "targetSlot", Encode.int targetSlot )
+            ]
+        )
+        toMsg
 
 
 {-| Ask to spend a floating boon on the roll; the facilitator approves it like a
@@ -311,161 +269,78 @@ Highlight.
 -}
 postUseFloatingBoon : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
 postUseFloatingBoon flags auth floatingId toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth ++ [ jsonContentType ]
-        , url = tableUrl flags "/stones/use-floating"
-        , body = Http.jsonBody (Encode.object [ ( "floatingId", Encode.string floatingId ) ])
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postJson flags auth "/stones/use-floating" (Encode.object [ ( "floatingId", Encode.string floatingId ) ]) toMsg
 
 
 {-| Facilitator-only: open a session with a goal.
 -}
 postStartSession : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
 postStartSession flags auth goal toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth ++ [ jsonContentType ]
-        , url = tableUrl flags "/session/start"
-        , body = Http.jsonBody (Encode.object [ ( "goal", Encode.string goal ) ])
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postJson flags auth "/session/start" (Encode.object [ ( "goal", Encode.string goal ) ]) toMsg
 
 
 {-| Facilitator-only: rewrite the running session's goal.
 -}
 postSessionGoal : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
 postSessionGoal flags auth goal toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth ++ [ jsonContentType ]
-        , url = tableUrl flags "/session/goal"
-        , body = Http.jsonBody (Encode.object [ ( "goal", Encode.string goal ) ])
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postJson flags auth "/session/goal" (Encode.object [ ( "goal", Encode.string goal ) ]) toMsg
 
 
 {-| Facilitator-only: end the running session and roll its pool for the outcome.
 -}
 postEndSession : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
 postEndSession flags auth toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth
-        , url = tableUrl flags "/session/end"
-        , body = Http.emptyBody
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postEmpty flags auth "/session/end" toMsg
 
 
 {-| Facilitator-only: close an in-progress reckoning (section 19).
 -}
 postUntetherResolve : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
 postUntetherResolve flags auth toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth
-        , url = tableUrl flags "/untether/resolve"
-        , body = Http.emptyBody
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postEmpty flags auth "/untether/resolve" toMsg
 
 
 {-| Facilitator-only: open an overcome against the character in `slot`.
 -}
 postStartOvercome : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
 postStartOvercome flags auth slot toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth ++ [ jsonContentType ]
-        , url = tableUrl flags "/overcome/start"
-        , body = Http.jsonBody (Encode.object [ ( "slot", Encode.int slot ) ])
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postJson flags auth "/overcome/start" (Encode.object [ ( "slot", Encode.int slot ) ]) toMsg
 
 
 {-| Facilitator-only: call off the open overcome without resolving it.
 -}
 postCancelOvercome : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
 postCancelOvercome flags auth toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth
-        , url = tableUrl flags "/overcome/cancel"
-        , body = Http.emptyBody
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postEmpty flags auth "/overcome/cancel" toMsg
 
 
 {-| Facilitator-only: add a blank NPC / location row for the table.
 -}
 postCreateEntity : Flags -> Auth -> EntityKind -> (Result Http.Error () -> msg) -> Cmd msg
 postCreateEntity flags auth kind toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth ++ [ jsonContentType ]
-        , url = tableUrl flags ("/" ++ entityKindPath kind)
-        , body = Http.jsonBody (Encode.object [])
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postJson flags auth ("/" ++ entityKindPath kind) (Encode.object []) toMsg
 
 
 {-| Facilitator-only: write an NPC / location row's name and notes.
 -}
 postUpdateEntity : Flags -> Auth -> EntityKind -> TableEntity -> (Result Http.Error () -> msg) -> Cmd msg
 postUpdateEntity flags auth kind entity toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth ++ [ jsonContentType ]
-        , url = tableUrl flags ("/" ++ entityKindPath kind ++ "/" ++ entity.id ++ "/update")
-        , body =
-            Http.jsonBody
-                (Encode.object
-                    [ ( "name", Encode.string entity.name )
-                    , ( "notes", Encode.string entity.notes )
-                    ]
-                )
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
+    postJson flags
+        auth
+        ("/" ++ entityKindPath kind ++ "/" ++ entity.id ++ "/update")
+        (Encode.object
+            [ ( "name", Encode.string entity.name )
+            , ( "notes", Encode.string entity.notes )
+            ]
+        )
+        toMsg
 
 
 {-| Facilitator-only: remove an NPC / location row.
 -}
 postDeleteEntity : Flags -> Auth -> EntityKind -> String -> (Result Http.Error () -> msg) -> Cmd msg
 postDeleteEntity flags auth kind entityId toMsg =
-    Http.request
-        { method = "POST"
-        , headers = authHeaders auth
-        , url = tableUrl flags ("/" ++ entityKindPath kind ++ "/" ++ entityId ++ "/delete")
-        , body = Http.emptyBody
-        , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
-
-
-jsonContentType : Http.Header
-jsonContentType =
-    Http.header "Content-Type" "application/json"
+    postEmpty flags auth ("/" ++ entityKindPath kind ++ "/" ++ entityId ++ "/delete") toMsg
 
 
 

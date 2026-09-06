@@ -54,6 +54,23 @@ version yet, so headings are dates.
 
 ### Changed
 
+- Maintainability pass — client quick wins (roadmap section 22, step 1). No
+  behaviour change; the client bundle, both typecheckers, and both test suites
+  are the gate.
+  - **`Api.elm` collapsed behind three request helpers** — `get` / `postEmpty`
+    / `postJson` — that own the URL shape, auth header, JSON content type,
+    `expect`, and timeout / tracker. Each of the 24 endpoints is now one line
+    over them.
+  - **The ten acknowledge-only mutation results merged into one `MutationDone`
+    message** carrying a `{ family, failMsg }` record, replacing
+    `StonesUpdated` / `SessionUpdated` / `EntityMutated` and seven siblings
+    along with their per-result `update` branches and `Effect` wiring.
+  - **`View.view` unwraps `Maybe GameState` once** into a single loading
+    branch; the section functions now take `GameState`, dropping their repeated
+    `case maybeGs of Nothing …` blocks.
+  - **`Format.pluralize`** replaces the inline `"Bane" ++ (if n == 1 …)`
+    pattern, and **`Types.characterAtSlot`** is the one shared slot lookup for
+    `Main` and `View`.
 - Storage and write economy (roadmap section 16):
   - **`saveStoneState` skips the write when nothing changed.** The stone slice
     is serialised and compared to the last write (seeded from the cold-start
