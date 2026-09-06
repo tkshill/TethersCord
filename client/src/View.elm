@@ -313,7 +313,7 @@ rollPanel facilitator myId draft maybeGs =
                                             [ Ui.primaryButton { onPress = Just AcceptRoll, label = "Accept" } ]
                                     )
                                 ]
-                    , proposalsPanel facilitator draft gs.proposals
+                    , proposalsPanel facilitator draft gs.characters gs.proposals
                     ]
         ]
 
@@ -398,20 +398,20 @@ characterAtSlot slot characters =
 {-| Facilitator's queue of player-initiated requests awaiting a decision. Hidden
 for players and when empty. `draft` is the context note typed for whichever
 Add a Detail / Gain Insight is being approved. -}
-proposalsPanel : Bool -> String -> List Proposal -> Element Msg
-proposalsPanel facilitator draft proposals =
+proposalsPanel : Bool -> String -> List CharacterSheet -> List Proposal -> Element Msg
+proposalsPanel facilitator draft characters proposals =
     if not facilitator || List.isEmpty proposals then
         none
 
     else
         Element.column [ spacing Ui.sm, width fill ]
             (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Proposals")
-                :: List.map (proposalRow draft) proposals
+                :: List.map (proposalRow draft characters) proposals
             )
 
 
-proposalRow : String -> Proposal -> Element Msg
-proposalRow draft p =
+proposalRow : String -> List CharacterSheet -> Proposal -> Element Msg
+proposalRow draft characters p =
     let
         needsContext =
             p.kind == "add-detail" || p.kind == "gain-insight"
@@ -436,7 +436,7 @@ proposalRow draft p =
     Element.column [ width fill, spacing Ui.xs ]
         [ Element.wrappedRow [ width fill, spacing Ui.sm, Element.centerY ]
             [ Element.paragraph [ Font.size 12 ]
-                [ text (p.proposerName ++ " — " ++ describeProposal p) ]
+                [ text (p.proposerName ++ " — " ++ describeProposal characters p) ]
             , controls
             ]
         , if needsContext then
@@ -453,8 +453,8 @@ proposalRow draft p =
         ]
 
 
-describeProposal : Proposal -> String
-describeProposal p =
+describeProposal : List CharacterSheet -> Proposal -> String
+describeProposal characters p =
     case ( p.kind, p.delta >= 0 ) of
         ( "add-boon", _ ) ->
             "add a boon to the pool"
@@ -473,6 +473,15 @@ describeProposal p =
 
         ( "gain-insight", _ ) ->
             "Gain Insight — a floating boon"
+
+        ( "suggest-compel", _ ) ->
+            "Suggest Compel on "
+                ++ (p.targetSlot
+                        |> Maybe.andThen (\s -> characterAtSlot s characters)
+                        |> Maybe.map characterLabel
+                        |> Maybe.withDefault "another character"
+                   )
+                ++ " (+1 / +2 boons)"
 
         ( "accept-compel", _ ) ->
             "Accept Compel — take a complication for 2 boons"
@@ -554,6 +563,7 @@ movesCard myId maybeGs =
             Ui.card
                 [ Ui.sectionTitle "Moves"
                 , abilityRow myId gs ch
+                , suggestCompelRow myId gs ch
                 , Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
                     [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Any time")
                     , moveButton
@@ -608,6 +618,57 @@ abilityRow myId gs ch =
             , button "add-detail" "Add a Detail" True
             , button "gain-insight" "Gain Insight" True
             ]
+
+
+{-| Suggest Compel: a once-per-session ability that names another player's
+character. One button per other claimed sheet; the whole row collapses to a
+"(used)" / "(pending)" note once raised. -}
+suggestCompelRow : Maybe String -> GameState -> CharacterSheet -> Element Msg
+suggestCompelRow myId gs ch =
+    if gs.session == Nothing then
+        none
+
+    else
+        let
+            used =
+                abilityUsed ch.slot "suggest-compel" gs.usedAbilities
+
+            pending =
+                countProposals myId "suggest-compel" gs.proposals > 0
+
+            targets =
+                gs.characters
+                    |> List.filter (\c -> c.slot /= ch.slot && c.ownerId /= Nothing)
+
+            suffix =
+                if used then
+                    " (used)"
+
+                else if pending then
+                    " (pending)"
+
+                else
+                    ""
+        in
+        Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
+            (el [ Font.size 11, Font.color Ui.inkSoft ] (text ("Suggest Compel" ++ suffix))
+                :: (if used || pending then
+                        []
+
+                    else if List.isEmpty targets then
+                        [ el [ Font.size 12, Font.color Ui.inkSoft ] (text "no other players") ]
+
+                    else
+                        List.map
+                            (\c ->
+                                Ui.ghostButton
+                                    { onPress = Just (SuggestCompel c.slot)
+                                    , label = characterLabel c
+                                    }
+                            )
+                            targets
+                   )
+            )
 
 
 {-| A ghost button that goes inert (no `onPress`) when `disabled`. -}

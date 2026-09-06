@@ -45,7 +45,8 @@ export type CommittedBoon = {
  * - `add-boon` — add a Boon to the shared pool.
  * - `pledge` — Highlight an Aspect: pledge (`delta` +1) or withdraw (-1) one of
  *   the proposer's own boons on the next roll.
- * - `help-out`, `add-detail`, `gain-insight` — the once-per-session abilities.
+ * - `help-out`, `add-detail`, `gain-insight`, `suggest-compel` — the
+ *   once-per-session abilities.
  * - `accept-compel` — the move: take on a complication for 2 boons.
  * - `use-floating` — spend a floating boon (named by `floatingId`) on the roll.
  */
@@ -55,13 +56,15 @@ export type ProposalKind =
   | "help-out"
   | "add-detail"
   | "gain-insight"
+  | "suggest-compel"
   | "accept-compel"
   | "use-floating";
 
 /**
  * A player-initiated change to shared state, waiting on the facilitator. One per
  * click. `delta` is +1 / -1 for a pledge. `slot` is the proposer's claimed sheet
- * (null only for `add-boon`). `floatingId` names the boon for `use-floating`.
+ * (null only for `add-boon`). `floatingId` names the boon for `use-floating`;
+ * `targetSlot` names the compelled character for `suggest-compel`.
  */
 export type Proposal = {
   id: string;
@@ -71,11 +74,16 @@ export type Proposal = {
   slot: number | null;
   delta: number;
   floatingId: string | null;
+  targetSlot: number | null;
   createdAt: number;
 };
 
 /** Once-per-session abilities a player calls on, each gated by facilitator approval. */
-export type AbilityKind = "help-out" | "add-detail" | "gain-insight";
+export type AbilityKind =
+  | "help-out"
+  | "add-detail"
+  | "gain-insight"
+  | "suggest-compel";
 
 /**
  * A boon owned by no character. The facilitator creates one — with a note of the
@@ -189,6 +197,8 @@ export type StartOvercomeInput = {
 
 export type UseAbilityInput = {
   kind: AbilityKind;
+  /** Required for `suggest-compel`: the slot of the character being compelled. */
+  targetSlot?: number;
 };
 
 export type UseFloatingBoonInput = {

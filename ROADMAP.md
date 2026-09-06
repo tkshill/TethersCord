@@ -232,7 +232,7 @@ glance.
       `Ui.pledgedStoneChip` per pledged boon to the bag; the caption is now just
       "Bag of N".
 
-## 10. The overcome action and player moves
+## 10. The overcome action and player moves — done
 
 The rules layer over the roll mechanic. An **overcome** is the attempt to do
 something risky; everything else here is how the other players feed into it.
@@ -257,8 +257,8 @@ something risky; everything else here is how the other players feed into it.
 
 Per character, reset when a session starts (section 7). Each is queued as a
 proposal (section 5) and only marked used when the facilitator accepts;
-`gameState.usedAbilities` holds the per-slot flags. All three below need a
-running session. Raised from the **Moves** card once a player holds a sheet.
+`gameState.usedAbilities` holds the per-slot flags. All four need a running
+session. Raised from the **Moves** card once a player holds a sheet.
 
 - [x] **Help Out** — approved → the open overcome roll is rerolled for free
       (`drawFromBag`, no Press Fate cost). Available only while an overcome roll
@@ -267,9 +267,11 @@ running session. Raised from the **Moves** card once a player holds a sheet.
       a `FloatingBoon` enters `gameState.floatingBoons`.
 - [x] **Gain Insight** — same effect and note as Add a Detail; the "ask the
       facilitator a question" part is table talk.
-- [ ] **Suggest Compel** — deferred to its own branch with the compel handshake
-      below (suggest → target accepts → facilitator approves → 1 boon to the
-      suggester, 2 to the target).
+- [x] **Suggest Compel** — `/abilities/use` with `{ kind, targetSlot }`, naming
+      another player's character; approved → `SUGGEST_COMPEL_SUGGESTER_BOONS` (1)
+      to the suggester and `SUGGEST_COMPEL_TARGET_BOONS` (2) to the compelled
+      character. The compelee's consent is table talk, so it runs on the plain
+      proposal / accept path — no separate handshake.
 
 ### Moves — no per-session limit
 
@@ -284,15 +286,15 @@ running session. Raised from the **Moves** card once a player holds a sheet.
 
 - [x] Per-character, per-session ability-usage tracking. `gameState.usedAbilities`
       (`{ slot, kinds }[]`) in `KEY_STONES`, cleared on session start and end.
-      Three flags, not four — the fourth (Suggest Compel) lands with the
-      handshake.
+      Four flags: `help-out`, `add-detail`, `gain-insight`, `suggest-compel`.
 - [x] Floating boons — `gameState.floatingBoons`, a `FloatingBoon` list distinct
       from `committedBoons`; each carries the facilitator's context note, is
       spent via a `use-floating` proposal, and is discarded at session end.
 - [x] The section 5 proposal flow, extended with the `help-out`, `add-detail`,
-      `gain-insight`, `accept-compel`, and `use-floating` kinds.
-- [ ] A compel handshake: suggest → target accepts → facilitator approves, then
-      the boon payouts. Deferred to its own branch.
+      `gain-insight`, `suggest-compel`, `accept-compel`, and `use-floating` kinds.
+- [x] The compel payouts run on the plain proposal / accept path: the compelee
+      agreeing is handled at the table, so no suggest → accept → approve
+      handshake was needed.
 
 ## 11. Effect pattern + tests
 

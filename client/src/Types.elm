@@ -119,9 +119,10 @@ committedBoonsForSlot slot committed =
 
 {-| A player-initiated request the facilitator resolves through the accept /
 reject queue. `kind` is `"add-boon"`, `"pledge"`, one of the ability kinds
-(`"help-out"`, `"add-detail"`, `"gain-insight"`), `"accept-compel"`, or
-`"use-floating"`. `delta` is `±1` for a pledge; `floatingId` names the boon for
-`use-floating`.
+(`"help-out"`, `"add-detail"`, `"gain-insight"`, `"suggest-compel"`),
+`"accept-compel"`, or `"use-floating"`. `delta` is `±1` for a pledge;
+`floatingId` names the boon for `use-floating`; `targetSlot` names the compelled
+character for `suggest-compel`.
 -}
 type alias Proposal =
     { id : String
@@ -131,6 +132,7 @@ type alias Proposal =
     , slot : Maybe Int
     , delta : Int
     , floatingId : Maybe String
+    , targetSlot : Maybe Int
     }
 
 
@@ -336,6 +338,7 @@ type Msg
     | ProposalResolved (Result Http.Error ())
     | ProposalDraftChanged String
     | UseAbility String
+    | SuggestCompel Int
     | AcceptCompelMove
     | UseFloatingBoon String
     | MoveRaised (Result Http.Error ())
