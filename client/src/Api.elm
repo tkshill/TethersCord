@@ -475,12 +475,13 @@ decodeTableEntity =
 
 decodeSessionSummary : Decode.Decoder SessionSummary
 decodeSessionSummary =
-    Decode.map5 SessionSummary
+    Decode.map6 SessionSummary
         (Decode.field "id" Decode.string)
         (Decode.field "goal" Decode.string)
         (Decode.field "startedAt" (Decode.map Time.millisToPosix Decode.int))
         (Decode.field "endedAt" (Decode.map Time.millisToPosix Decode.int))
         (Decode.field "outcome" Decode.string)
+        (Decode.field "outcomeKind" Types.decodeSessionOutcome)
 
 
 decodeCharacterSheet : Decode.Decoder CharacterSheet

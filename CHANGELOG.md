@@ -79,6 +79,13 @@ version yet, so headings are dates.
   `View.describeProposal` is now a total `case` with no string fall-through, so
   a new kind produces a compile error at every site that must handle it. No
   behaviour change.
+- Maintainability pass — structured session outcome (roadmap section 22,
+  step 3). The broadcast `SessionSummary` gains an additive
+  `outcomeKind : "met" | "failed" | "partial"`, derived from the existing
+  `outcome` sentence in `loadSessionHistory` (no D1 column, no migration). The
+  client decodes it to a `SessionOutcome` type and `View.verdictWord` /
+  `verdictColor` switch on it instead of parsing the prose with
+  `String.contains`. No behaviour change.
 - Storage and write economy (roadmap section 16):
   - **`saveStoneState` skips the write when nothing changed.** The stone slice
     is serialised and compared to the last write (seeded from the cold-start

@@ -20,6 +20,7 @@ module Types exposing
     , Proposal
     , Role(..)
     , Session
+    , SessionOutcome(..)
     , SessionSummary
     , TableEntity
     , Untether
@@ -31,6 +32,7 @@ module Types exposing
     , characterAtSlot
     , committedBoonsForSlot
     , decodeRole
+    , decodeSessionOutcome
     , entitiesForKind
     , entityKindPath
     , roleLabel
@@ -223,8 +225,20 @@ type alias Session =
     }
 
 
+{-| How a completed session's goal landed. `Partial` is retired for new
+sessions (section 19 draws one stone: met or failed) but kept so older rows
+still classify.
+-}
+type SessionOutcome
+    = OutcomeMet
+    | OutcomeFailed
+    | OutcomePartial
+
+
 {-| A completed session, as read back from the `game_sessions` rows for the
-table's history view. The running session is not included here.
+table's history view. The running session is not included here. `outcome` is
+the human sentence; `outcomeKind` is the Worker's classification of it, which
+the view switches on.
 -}
 type alias SessionSummary =
     { id : String
@@ -232,6 +246,7 @@ type alias SessionSummary =
     , startedAt : Time.Posix
     , endedAt : Time.Posix
     , outcome : String
+    , outcomeKind : SessionOutcome
     }
 
 
@@ -600,4 +615,24 @@ decodeRole =
 
                     _ ->
                         Decode.fail "Unknown role"
+            )
+
+
+decodeSessionOutcome : Decode.Decoder SessionOutcome
+decodeSessionOutcome =
+    Decode.string
+        |> Decode.andThen
+            (\s ->
+                case s of
+                    "met" ->
+                        Decode.succeed OutcomeMet
+
+                    "failed" ->
+                        Decode.succeed OutcomeFailed
+
+                    "partial" ->
+                        Decode.succeed OutcomePartial
+
+                    _ ->
+                        Decode.fail ("Unknown session outcome " ++ s)
             )

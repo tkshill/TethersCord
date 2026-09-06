@@ -870,14 +870,15 @@ the Worker.
       is now a total `case`. `Msg.UseAbility` and `Effect.PostUseAbility` carry
       an `AbilityKind`, encoded back to a string at the `Api` boundary.
 
-### Step 3 — a structured session outcome
+### Step 3 — a structured session outcome — done
 
-- [ ] `View.verdictWord` / `verdictColor` currently parse a prose outcome string
+- [x] `View.verdictWord` / `verdictColor` parsed a prose outcome string
       (`String.contains "failed"`) that `handleEndSession` assembles in English.
-      Add an additive `outcomeKind : "met" | "failed" | "partial"` field to the
-      broadcast `SessionSummary` (and derive it for historical rows from the
-      existing `outcome` text on read). The view switches on the field; the prose
-      stays as the human note.
+      An additive `outcomeKind : "met" | "failed" | "partial"` field now rides on
+      the broadcast `SessionSummary`, derived from the `outcome` text in
+      `loadSessionHistory` (no `outcome_kind` column, no migration). The client
+      decodes it to a `SessionOutcome` custom type the view switches on; the
+      prose stays as `outcome`.
 
 ### Step 4 — split `View.elm`
 
