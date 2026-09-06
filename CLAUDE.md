@@ -11,7 +11,7 @@ All scripts live in the root `package.json`; run them with pnpm from the repo ro
 | `pnpm install` | Install; `pnpm-workspace.yaml` allowlists the `elm` / `esbuild` / `workerd` build scripts |
 | `pnpm run dev` | Build client, then run the client watcher + `wrangler dev` on http://localhost:8787 (SPA and API on one origin) |
 | `pnpm run build` | `build:client`, then `typecheck` (client + worker), then `test` — the pre-deploy gate |
-| `pnpm run test` / `test:client` | `elm-test` over `client/tests/` (uses the pinned Elm via `--compiler`). No worker suite yet |
+| `pnpm run test` | `test:client` (`elm-test` over `client/tests/`) then `test:worker` (`vitest` via `@cloudflare/vitest-pool-workers` over `worker/test/`) |
 | `pnpm run build:client` | `node client/scripts/build.mjs`: `elm make src/Main.elm --optimize` → `client/dist/elm.js`, esbuild `src/main.ts` → `client/dist/main.js`, copy `index.html`. Run after any Elm change |
 | `pnpm run watch:client` | Rebuild `client/dist` in place on change (`wrangler dev` reads it off disk; there is no project dev server) |
 | `pnpm run typecheck:worker` / `typecheck:client` | `tsc --noEmit`. Run the worker one after any Worker change |
@@ -25,9 +25,13 @@ Quick Elm compile check without the full bundle, from `client/`: `../node_module
 
 ### Tests
 
-`pnpm run test` runs the **client** suite: `elm-test` (`elm-explorations/test` 2.2.1) over `client/tests/`, invoked with `--compiler ../node_modules/elm/bin/elm` so it uses the pinned Elm. It is folded into `pnpm run build` after `typecheck`, so `deploy` and CI (`.github/workflows/ci.yml`) run it. Coverage today: `Api.decodeGameState` against a full wire snapshot, `Main.applyServerState` (the edit-cursor merge), `Main.update` guards and the `Effect` each `Msg` yields, and the `Format` / `Roll` helpers. `Main` exposes `init` / `update` / `applyServerState` for the tests.
+`pnpm run test` runs both suites (`test:client` then `test:worker`); it is folded into `pnpm run build` after `typecheck`, so `deploy` and CI (`.github/workflows/ci.yml`) run it.
 
-There is **no worker test suite yet** — `ROADMAP.md` section 11 plans `@cloudflare/vitest-pool-workers` for the `GameTable` state machine, the auth gates, and the `index.ts` proxy. `avh4/elm-program-test` is also still deferred; the update tests fold `Main.update` directly for now.
+**Client** (`pnpm run test:client`): `elm-test` (`elm-explorations/test` 2.2.1) over `client/tests/`, invoked with `--compiler ../node_modules/elm/bin/elm` so it uses the pinned Elm. Covers `Api.decodeGameState` against a full wire snapshot, `Main.applyServerState` (the edit-cursor merge), `Main.update` guards and the `Effect` each `Msg` yields, and the `Format` / `Roll` helpers. `Main` exposes `init` / `update` / `applyServerState` for the tests.
+
+**Worker** (`pnpm run test:worker`): `vitest` via `@cloudflare/vitest-pool-workers`, config in `worker/vitest.config.mts` (an `.mts` file — the pool package is ESM-only). Tests run inside `workerd` with a real `GameTable` Durable Object and a migrated D1 (`worker/test/apply-migrations.ts` applies `worker/migrations/` before each file). `worker/test/helpers.ts` seeds `sessions_auth` rows and drives routes through `SELF.fetch`. Covers the `index.ts` proxy (id validation, path rewrite), the auth gates (`facilitatorOnly`, `rollGate`, expiry), the `GameTable` proposal / session / ability state machine, `withLock` serialisation, and `oauth-discord` (`pruneExpiredSessions`, exchange input validation). The pool bundles an older `workerd`, so its `compatibilityDate` is pinned to `2026-08-22` (prod is `2026-09-01`); test files are not run through `tsc`.
+
+`avh4/elm-program-test` is still deferred; the update tests fold `Main.update` directly for now.
 
 ### Elm version
 
