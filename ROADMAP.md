@@ -804,9 +804,12 @@ revise.
 
 ## 22. Maintainability pass — the view and the Durable Object
 
-**Next in queue for implementation**, ahead of the exploratory sections 17–21.
-No new gameplay; this is structural cleanup so the next rules section is cheaper
-to build.
+**Largely done.** Steps 1–5 and 7 shipped in full; step 6 shipped its low-risk
+part (a `get game()` accessor, a `commit()` trailer helper, `Promise.all` on the
+cold-start reads), with the `GameTable.ts` module split — a route table and
+`worker/src/handlers/*` — carved out as its own effort. No gameplay change
+anywhere in this section; each step was its own branch merged with `--no-ff`,
+guarded by the client bundle, both typecheckers, and both test suites.
 
 Nineteen sections of features have landed on a structure that was drawn for far
 less. Complexity is now concentrated in two files that grow every time a rule is
