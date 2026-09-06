@@ -101,7 +101,9 @@ Follow-ups:
 
 - [ ] Facilitator-set difficulty: let the facilitator add Bane stones to a roll
       from the fiction instead of the fixed two. Deferred — the fixed two Bane
-      stay for now.
+      stay for now. **Superseded by section 19:** difficulty escalates on its own
+      through the session pool carrying Banes between sessions, so no
+      facilitator-set axis is planned.
 - [x] Bind a character sheet to a Discord user. `characters.discord_user_id`
       (migration `0006`, partial-unique per table); a player claims an unclaimed
       sheet with `POST /characters/:slot/claim` and drops it with `/release`
@@ -197,7 +199,9 @@ its own stone pool that fills up from the rolls made during it.
 - [x] **Session roll** — `/session/end` draws two from the session pool: two
       Boon → `met`, one → `partial`, none → `failed`. Written to
       `game_sessions.outcome` and logged. (The met/partial/failed thresholds are
-      a placeholder pending playtesting.)
+      a placeholder pending playtesting.) **Section 19 revises this:** the tiers
+      go away, success is a Boons-vs-Banes comparison of the whole pool, and the
+      pool's Banes carry between sessions until a failure flushes them.
 - [ ] Trim or paginate history — the DO currently loads the last 200 messages
       and the client keeps 200. Fine for now; revisit if a campaign outgrows it.
 - [x] Surface past `game_sessions` rows somewhere. The worker reads the last
@@ -500,51 +504,127 @@ unreliable over hours; hosted Whisper-class APIs are not free at that length).
       Claude API call at `/session/end`, and judge whether the log alone carries
       the session.
 
-## 19. The overcome aftermath — stones, aspects, and consequences
+## 19. The overcome aftermath — aspects, conditions, and the tether
 
-**Design in progress — not a spec.** The game is rules-lite by intent but wants
-a system core that keeps what makes Fate, Burning Wheel, Lady Blackbird and the
-like work. Today an accepted overcome roll feeds one of its two drawn stones
-into the session pool at random and discards the other. The direction is to make
-that second stone *land somewhere* and open a small economy around a character's
-aspects (Archetype, Desire, Quest).
+**Converging.** The shape below is stable enough to build against; the checked
+items near the end are the parts to settle in playtest. This is the rules layer
+that turns individual overcome outcomes into a character's long arc, keeping what
+makes Burning Wheel, Pendragon and Archive of the Sky work inside a rules-lite
+core.
 
-Sketch, not yet settled:
+### Overcome resolution
 
-- After an overcome resolves, one drawn stone goes to the session pool (as
-  now); the other goes to the overcome's target. If Help Out was used, the two
-  stones split — one to the target, one to the helper.
-- A **received Boon** is assigned by its player to one of the character's three
-  aspects as a standing marker that says "bring the game into contact with this
-  part of my character." It informs the facilitator and the table.
-- A **received Bane** becomes a **floating bane** in a facilitator-held pool
-  (sibling to floating boons). The facilitator spends one to add a Bane stone to
-  a later roll — this is the source for section 4's deferred "facilitator-set
-  difficulty from the fiction."
-- **Compels** gain a second possible payout: instead of boons, an accepted
-  compel may remove a floating bane (or a bane attached to the character).
+Every overcome draws two stones from the bag — base two Boon + two Bane, skewed
+by any Highlights or rerolls (section 4).
 
-Open questions:
+- **Two Boons** → both go to the session pool.
+- **Two Banes** → both go to the session pool.
+- **Mixed** → the Boon goes to the session pool; the Bane is placed **at random**
+  on one of the acting character's three aspects (Archetype / Desire / Quest).
 
-- [ ] Is an aspect-assigned boon a permanent marker, a one-shot the player
-      spends to invoke the aspect for advantage, or both?
-- [ ] Where do floating banes live, and for how long — until spent, until
-      session end, or bound to one character?
-- [ ] Does the target always take the leftover stone, or choose whether to?
-- [ ] How does an explicit consequence (a named temporary negative aspect)
-      differ from a floating bane — or is the bane just the mechanical handle on
-      a fictional consequence?
+The mixed roll is two-thirds of all draws, so the pool gains a Boon far more
+often than a Bane while the cost lands on the character — sessions trend toward
+success by design.
+
+### The session pool carries (revises section 7)
+
+- The pool's **Boons flush at the end of each session; its Banes carry over.**
+- Session-goal success is the Boons-vs-Banes comparison in the pool at session
+  end — no threshold, and the met / partial / failed tiers are retired.
+- Because Banes carry and Boons do not, **session goals escalate in difficulty
+  until a failure.** A failure flushes the pool completely back to the base four.
+- The table can spend personal Boons on Highlights to push Boons into the pool
+  and buy another session, or hoard them and let the reckoning come — the player
+  economy paces the escalation, with no magic number anywhere in it.
+
+### Aspects and the condition line
+
+- Aspects are **always true**; a Highlight only makes that truth mechanically
+  relevant for one roll (section 4's pledge).
+- Aspects only ever accumulate **Banes**. The character sheet's existing
+  `condition` field (migration `0003`, `ConditionField` in `Types.elm`) becomes
+  one evolving sentence naming what the accumulated strain is doing to the
+  character — rewritten after a Bane lands, always emotional or identity-level,
+  never a number. Update it lazily, when the situation actually shifts, not once
+  per Bane.
+- This is the whole harm model. There is no separate consequence mechanic and
+  **no death mechanic** — a character is hurt through failure, self-doubt,
+  self-destruction, loss of identity, and the guilt of hurting others. Physical
+  injury enters only as a beat that feeds one of those.
+
+### Compels
+
+- **Strictly positive and facilitator-gated.** The facilitator offers a
+  fictional complication; the player who accepts takes `ACCEPT_COMPEL_BOONS` (2)
+  Boons and no mechanical penalty. No hard per-session cap for now — a compel is
+  meant to be substantial enough, and to open enough scene, to self-limit.
+- This replaces the earlier "a compel adds a Bane" and "a compel may remove a
+  Bane" ideas.
+
+### Untethering
+
+- Triggers **only when a session goal fails.**
+- One Bane is drawn at random from the pool of **every Bane on every aspect of
+  every player.** Its owner becomes **untethered** on that aspect. More Banes →
+  likelier to be drawn; which player and which aspect are unknown until it
+  happens.
+- **One untethered character at a time**, and **nobody untethers on two
+  consecutive failures.** A failure that lands while an untether is still
+  unresolved produces no new untether.
+- On that failure the session pool flushes and **all of the untethered player's
+  aspect Banes clear.** Every other player keeps their aspect Banes and stays in
+  the running for their own reckoning.
+- **Resolution** is a facilitator-framed scene, concluded by the end of the
+  following session, built so the fiction skews toward **transcendence or
+  dissolution** (the Archive of the Sky move). Afterward the player **must
+  rewrite or replace** the untethered aspect. Aspects are written at character
+  creation to carry latent conflict with the world, so the scene always has
+  something to pull on.
+
+### The frenzy
+
+While untethered, the character is in full focus the session after the trigger
+and resolves by that session's end.
+
+- The **broken aspect cannot be used to justify a Highlight**; the other two
+  still can. The character keeps earning Boons (compels, once-per-session moves)
+  and keeps rolling — they simply cannot lean on the broken part of themselves.
+- An untethered character's own **mixed-roll Bane goes to the session pool**
+  instead of onto an aspect; they accrue no new aspect strain mid-frenzy.
+
+### To confirm in playtest
+
+- [ ] Cadence. At base rates a failure lands roughly every ~3 sessions and each
+      character reckons every ~6–9; Highlights lengthen the cycle, hoarding
+      Boons shortens it. Check this feels right at the table.
+- [ ] Whether compels need a per-session cap after all.
+- [ ] The exact frenzy lockout — broken-aspect-only, or broader.
+- [ ] Whether the facilitator may call a foregone-failure session early — once
+      the carried Bane debt exceeds a session's realistic Boon ceiling — and cut
+      straight to the untether scene.
+
+### What this supersedes
+
+- Section 4's deferred "facilitator-set difficulty from the fiction" — difficulty
+  now escalates on its own through the carried pool, so the facilitator needs no
+  floating-bane axis.
+- Section 7's placeholder met / partial / failed session thresholds.
+- The earlier section 19 sketch (leftover stone to the target, Boons tagged to
+  aspects, facilitator-held floating banes, compels removing banes).
 
 ## 20. Character growth on the sheet
 
-**Unsolved.** A rules-lite core still wants characters to change over a campaign
-in a way you can see on the sheet, not just accumulate boons. The aspect-tagged
-boons of section 19 are a soft signal of intent; they are not growth. No
-mechanism is chosen yet.
+Largely absorbed into section 19: growth **is** the untether resolution — the
+forced rewrite or replacement of an aspect after a reckoning — with the
+`condition` line as the visible running record of strain between reckonings. A
+rewrite changes what an aspect *means*; it never adds a rating (principle 5,
+"grow in depth, not strength").
 
-- [ ] Design a growth mechanism: what triggers it (met session goals? invoked
-      aspects? survived consequences?), what it changes on the sheet (aspect
-      wording, new aspects, a rating, a tag list?), and whether it can be lost.
+- [ ] Pin down what a rewrite may do: reword the aspect only, swap an ability
+      tied to it, or retire the character outright.
+- [ ] Decide whether anything persists across a reckoning besides the rewritten
+      aspect — all Banes clear, but does the character keep any marker of what
+      they went through?
 
 ## 21. Game text, tooltips, and glossary
 

@@ -67,6 +67,13 @@ version yet, so headings are dates.
 
 ### Changed
 
+- `ROADMAP.md` sections 19–20 rewritten around a settled overcome-aftermath
+  design: aspects accumulate Banes only, the sheet's `condition` line is the
+  whole harm model, the session pool keeps its Banes between sessions so goals
+  escalate until a failure, and a failed session untethers one player (weighted
+  random draw across every aspect Bane) into a forced aspect rewrite. Supersedes
+  the old section 19 sketch, section 7's met/partial/failed thresholds, and
+  section 4's deferred facilitator-set difficulty.
 - Stones now name their outcome instead of a colour: `Boon` (favourable) and
   `Bane` replace `WhiteStone` / `BlackStone` across the client, the worker, and
   the `"Boon" | "Bane"` wire format. Durable Object stone storage is migrated
