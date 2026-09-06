@@ -28,7 +28,7 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 import Roll exposing (Stone(..))
 import Time
-import Types exposing (Auth, CharacterSheet, CommittedBoon, Flags, GameState, PendingRoll, Proposal, Session, decodeRole)
+import Types exposing (Auth, CharacterSheet, CommittedBoon, Flags, GameState, PendingRoll, Proposal, Session, SessionSummary, decodeRole)
 
 
 
@@ -293,6 +293,16 @@ decodeSession =
         (Decode.field "pool" decodeStoneList)
 
 
+decodeSessionSummary : Decode.Decoder SessionSummary
+decodeSessionSummary =
+    Decode.map5 SessionSummary
+        (Decode.field "id" Decode.string)
+        (Decode.field "goal" Decode.string)
+        (Decode.field "startedAt" (Decode.map Time.millisToPosix Decode.int))
+        (Decode.field "endedAt" (Decode.map Time.millisToPosix Decode.int))
+        (Decode.field "outcome" Decode.string)
+
+
 decodeCharacterSheet : Decode.Decoder CharacterSheet
 decodeCharacterSheet =
     Decode.map8
@@ -328,6 +338,14 @@ decodeCharacterSheet =
             )
 
 
+{-| Applies the next field decoder in a pipeline, so a record decoder can grow
+past the `Decode.map8` ceiling.
+-}
+andMap : Decode.Decoder a -> Decode.Decoder (a -> b) -> Decode.Decoder b
+andMap =
+    Decode.map2 (|>)
+
+
 decodeGameState : Decode.Decoder GameState
 decodeGameState =
     Decode.map8 GameState
@@ -339,3 +357,4 @@ decodeGameState =
         (Decode.field "proposals" (Decode.list decodeProposal))
         (Decode.field "session" (Decode.nullable decodeSession))
         (Decode.field "characters" (Decode.list decodeCharacterSheet))
+        |> andMap (Decode.field "sessionHistory" (Decode.list decodeSessionSummary))

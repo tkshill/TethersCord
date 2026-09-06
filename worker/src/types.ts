@@ -87,6 +87,18 @@ export type SessionState = {
   pool: StoneKind[];
 };
 
+/**
+ * A completed session, as read back from the `game_sessions` D1 rows. Feeds the
+ * table's session-history view; the running session is not included.
+ */
+export type SessionSummary = {
+  id: string;
+  goal: string;
+  startedAt: number;
+  endedAt: number;
+  outcome: string;
+};
+
 export type GameState = {
   sessionId: string;
   messages: Message[];
@@ -95,6 +107,7 @@ export type GameState = {
   committedBoons: CommittedBoon[];
   proposals: Proposal[];
   session: SessionState | null;
+  sessionHistory: SessionSummary[];
   characters: CharacterSheet[];
 };
 

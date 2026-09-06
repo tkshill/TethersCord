@@ -53,7 +53,7 @@ view model =
         [ header model
         , connectionNote model.connection
         , Ui.banner model.status
-        , sessionPanel facilitator model.newSessionGoal model.gameState
+        , sessionPanel facilitator model.timeZone model.newSessionGoal model.gameState
         , rollPanel facilitator myId model.gameState
         , characterSheets facilitator myId model.gameState
         , messageLog facilitator model.timeZone model.gameState
@@ -117,8 +117,8 @@ header model =
 -- SESSION
 
 
-sessionPanel : Bool -> String -> Maybe GameState -> Element Msg
-sessionPanel facilitator draftGoal maybeGs =
+sessionPanel : Bool -> Time.Zone -> String -> Maybe GameState -> Element Msg
+sessionPanel facilitator zone draftGoal maybeGs =
     Ui.card
         [ Ui.sectionTitle "Session"
         , case maybeGs |> Maybe.andThen .session of
@@ -154,7 +154,61 @@ sessionPanel facilitator draftGoal maybeGs =
 
                 else
                     placeholder "No session running."
+        , sessionHistoryView zone
+            (maybeGs |> Maybe.map .sessionHistory |> Maybe.withDefault [])
         ]
+
+
+{-| The table's completed sessions, newest first: each one's start date, goal,
+and how it landed. Hidden until a session has ended. -}
+sessionHistoryView : Time.Zone -> List SessionSummary -> Element msg
+sessionHistoryView zone history =
+    if List.isEmpty history then
+        none
+
+    else
+        Element.column [ spacing Ui.xs, width fill ]
+            (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Past sessions")
+                :: List.map (pastSessionRow zone) history
+            )
+
+
+pastSessionRow : Time.Zone -> SessionSummary -> Element msg
+pastSessionRow zone s =
+    Element.row [ width fill, spacing Ui.sm ]
+        [ el
+            [ Font.family Ui.mono
+            , Font.size 11
+            , Font.color Ui.inkSoft
+            , Element.alignTop
+            , width (px 76)
+            ]
+            (text (Format.date zone s.startedAt))
+        , Element.paragraph [ Font.size 12, spacing 3 ]
+            [ text s.goal
+            , el [ Font.color (verdictColor s.outcome), Font.semiBold ]
+                (text ("  " ++ verdictWord s.outcome))
+            ]
+        ]
+
+
+{-| The leading word of a stored outcome string ("met (Boon, Boon)" → "met"). -}
+verdictWord : String -> String
+verdictWord outcome =
+    outcome |> String.words |> List.head |> Maybe.withDefault outcome
+
+
+verdictColor : String -> Element.Color
+verdictColor outcome =
+    case verdictWord outcome of
+        "met" ->
+            Ui.speakerColor 2
+
+        "failed" ->
+            Ui.danger
+
+        _ ->
+            Ui.inkSoft
 
 
 
