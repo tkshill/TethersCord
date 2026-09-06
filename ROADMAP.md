@@ -857,16 +857,18 @@ the Worker.
 - [x] **`Types.characterAtSlot`** — one shared slot lookup, replacing
       `Main.findCharacterAtSlot` and `View.characterAtSlot`.
 
-### Step 2 — typed proposal and ability kinds
+### Step 2 — typed proposal and ability kinds — done
 
-- [ ] **`ProposalKind` / `AbilityKind` custom types in `Types.elm`** with
-      decoders (following `decodeRole` / `decodeAspect`), replacing
-      `Proposal.kind : String` and the ~27 string-literal kind references across
+- [x] **`ProposalKind` / `AbilityKind` custom types** with decoders, replacing
+      `Proposal.kind : String` and the string-literal kind references across
       `View` and `Main` (`countProposals myId "add-boon"`,
       `abilityUsed slot "suggest-compel"`, the `describeProposal` string `case`).
-      `describeProposal` becomes a total `case`. The Worker already has
-      `ProposalKind` in `types.ts`; this brings the client to parity, so adding a
-      kind produces compiler errors at every site that must handle it.
+      They live in a new `Kind.elm` rather than `Types.elm` because
+      `SuggestCompel` / `AddBoon` already exist as `Msg` variants and Elm
+      constructors must be unique per module; `ProposalKind` composes
+      `AbilityKind` through an `AbilityProposal` constructor. `describeProposal`
+      is now a total `case`. `Msg.UseAbility` and `Effect.PostUseAbility` carry
+      an `AbilityKind`, encoded back to a string at the `Api` boundary.
 
 ### Step 3 — a structured session outcome
 

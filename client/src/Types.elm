@@ -49,6 +49,7 @@ without creating an import cycle (`Main` imports `View`, so `View` cannot import
 import Dict exposing (Dict)
 import Http
 import Json.Decode as Decode
+import Kind exposing (AbilityKind, ProposalKind)
 import Roll exposing (Stone)
 import Set exposing (Set)
 import Time
@@ -153,15 +154,13 @@ committedBoonsForSlot slot committed =
 
 
 {-| A player-initiated request the facilitator resolves through the accept /
-reject queue. `kind` is `"add-boon"`, `"pledge"`, one of the ability kinds
-(`"help-out"`, `"add-detail"`, `"gain-insight"`, `"suggest-compel"`),
-`"accept-compel"`, or `"use-floating"`. `delta` is `±1` for a pledge;
-`floatingId` names the boon for `use-floating`; `targetSlot` names the compelled
-character for `suggest-compel`.
+reject queue. See `Kind.ProposalKind` for the kinds. `delta` is `±1` for a
+pledge; `floatingId` names the boon for `UseFloating`; `targetSlot` names the
+compelled character for `AbilityProposal SuggestCompel`.
 -}
 type alias Proposal =
     { id : String
-    , kind : String
+    , kind : ProposalKind
     , proposerId : String
     , proposerName : String
     , slot : Maybe Int
@@ -182,12 +181,11 @@ type alias FloatingBoon =
     }
 
 
-{-| Which once-per-session abilities a character has already spent this session
-(`kinds` holds the ability-kind strings).
+{-| Which once-per-session abilities a character has already spent this session.
 -}
 type alias UsedAbility =
     { slot : Int
-    , kinds : List String
+    , kinds : List AbilityKind
     }
 
 
@@ -202,7 +200,7 @@ actionPending key model =
 {-| Whether the character in `slot` has already used the ability `kind` this
 session.
 -}
-abilityUsed : Int -> String -> List UsedAbility -> Bool
+abilityUsed : Int -> AbilityKind -> List UsedAbility -> Bool
 abilityUsed slot kind used =
     used
         |> List.filter (\u -> u.slot == slot)
@@ -548,7 +546,7 @@ type Msg
     | WithdrawProposal String
     | ProposalResolved String (Result Http.Error ())
     | ProposalDraftChanged String String
-    | UseAbility String
+    | UseAbility AbilityKind
     | SuggestCompel Int
     | AcceptCompelMove
     | UseFloatingBoon String

@@ -39,6 +39,7 @@ of the application's update loop.
 import Http
 import Json.Decode as Decode
 import Json.Encode as Encode
+import Kind
 import Roll exposing (Stone(..))
 import Time
 import Types exposing (Auth, CharacterSheet, CommittedBoon, EntityKind, FloatingBoon, Flags, GameState, Overcome, PendingRoll, Proposal, Session, SessionSummary, TableEntity, UsedAbility, decodeRole, entityKindPath)
@@ -391,7 +392,7 @@ decodeProposal : Decode.Decoder Proposal
 decodeProposal =
     Decode.map8 Proposal
         (Decode.field "id" Decode.string)
-        (Decode.field "kind" Decode.string)
+        (Decode.field "kind" Kind.decodeProposalKind)
         (Decode.field "proposerId" Decode.string)
         (Decode.field "proposerName" Decode.string)
         (Decode.field "slot" (Decode.nullable Decode.int))
@@ -412,7 +413,7 @@ decodeUsedAbility : Decode.Decoder UsedAbility
 decodeUsedAbility =
     Decode.map2 UsedAbility
         (Decode.field "slot" Decode.int)
-        (Decode.field "kinds" (Decode.list Decode.string))
+        (Decode.field "kinds" (Decode.list Kind.decodeAbilityKind))
 
 
 decodeSession : Decode.Decoder Session

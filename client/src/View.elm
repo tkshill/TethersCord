@@ -25,6 +25,7 @@ import Element.Lazy
 import Format
 import Html exposing (Html)
 import Html.Attributes
+import Kind
 import Roll exposing (Stone(..))
 import Set exposing (Set)
 import Time
@@ -375,7 +376,7 @@ rollPanel facilitator myId inflight drafts gs =
                         List.foldl (\c acc -> acc + c.count) 0 gs.committedBoons
 
                     myAddBoons =
-                        countProposals myId "add-boon" gs.proposals
+                        countProposals myId Kind.AddBoon gs.proposals
 
                     target =
                         gs.overcome
@@ -436,7 +437,7 @@ rollPanel facilitator myId inflight drafts gs =
                                     { onPress = press inflight "stones:add-boon" AddBoon
                                     , label = "Add boon"
                                     }
-                                    :: pendingHint myAddBoons (latestProposalId myId "add-boon" gs.proposals)
+                                    :: pendingHint myAddBoons (latestProposalId myId Kind.AddBoon gs.proposals)
                                     ++ onlyWhen canRoll
                                         [ Ui.primaryButton
                                             { onPress = press inflight "stones:roll" RollStones
@@ -493,7 +494,7 @@ floatingBoonsBlock facilitator myId gs =
                 let
                     queued =
                         List.any
-                            (\p -> p.kind == "use-floating" && p.floatingId == Just fb.id)
+                            (\p -> p.kind == Kind.UseFloating && p.floatingId == Just fb.id)
                             gs.proposals
                 in
                 Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
@@ -568,7 +569,7 @@ proposalRow : Set String -> Dict String String -> List CharacterSheet -> Proposa
 proposalRow inflight drafts characters p =
     let
         needsContext =
-            p.kind == "add-detail" || p.kind == "gain-insight"
+            p.kind == Kind.AbilityProposal Kind.AddDetail || p.kind == Kind.AbilityProposal Kind.GainInsight
 
         draft =
             Dict.get p.id drafts |> Maybe.withDefault ""
@@ -624,26 +625,27 @@ proposalRow inflight drafts characters p =
 
 describeProposal : List CharacterSheet -> Proposal -> String
 describeProposal characters p =
-    case ( p.kind, p.delta >= 0 ) of
-        ( "add-boon", _ ) ->
+    case p.kind of
+        Kind.AddBoon ->
             "add a boon to the pool"
 
-        ( "pledge", True ) ->
-            "highlight an aspect (pledge a boon)"
+        Kind.Pledge ->
+            if p.delta >= 0 then
+                "highlight an aspect (pledge a boon)"
 
-        ( "pledge", False ) ->
-            "withdraw a highlighted boon"
+            else
+                "withdraw a highlighted boon"
 
-        ( "help-out", _ ) ->
+        Kind.AbilityProposal Kind.HelpOut ->
             "Help Out — reroll the overcome"
 
-        ( "add-detail", _ ) ->
+        Kind.AbilityProposal Kind.AddDetail ->
             "Add a Detail — a floating boon"
 
-        ( "gain-insight", _ ) ->
+        Kind.AbilityProposal Kind.GainInsight ->
             "Gain Insight — a floating boon"
 
-        ( "suggest-compel", _ ) ->
+        Kind.AbilityProposal Kind.SuggestCompel ->
             "Suggest Compel on "
                 ++ (p.targetSlot
                         |> Maybe.andThen (\s -> characterAtSlot s characters)
@@ -652,17 +654,14 @@ describeProposal characters p =
                    )
                 ++ " (+1 / +2 boons)"
 
-        ( "accept-compel", _ ) ->
+        Kind.AcceptCompel ->
             "Accept Compel — take a complication for 2 boons"
 
-        ( "use-floating", _ ) ->
+        Kind.UseFloating ->
             "spend a floating boon on the roll"
 
-        _ ->
-            p.kind
 
-
-countProposals : Maybe String -> String -> List Proposal -> Int
+countProposals : Maybe String -> Kind.ProposalKind -> List Proposal -> Int
 countProposals myId kind proposals =
     case myId of
         Just id ->
@@ -677,7 +676,7 @@ countProposals myId kind proposals =
 This is what the "withdraw" link beside a "(pending)" hint pulls back — the
 latest matching one, since abilities and Add boon queue at most one and a pledge
 is applied as a net delta. -}
-latestProposalId : Maybe String -> String -> List Proposal -> Maybe String
+latestProposalId : Maybe String -> Kind.ProposalKind -> List Proposal -> Maybe String
 latestProposalId myId kind proposals =
     myId
         |> Maybe.andThen
@@ -773,7 +772,7 @@ movesCard myId gs =
                 , suggestCompelRow myId gs ch
                 , let
                     pendingId =
-                        latestProposalId myId "accept-compel" gs.proposals
+                        latestProposalId myId Kind.AcceptCompel gs.proposals
                   in
                   Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
                     (el [ Font.size 11, Font.color Ui.inkSoft ] (text "Any time")
@@ -812,7 +811,7 @@ abilityRow myId gs ch =
                         abilityUsed ch.slot kind gs.usedAbilities
 
                     pendingId =
-                        latestProposalId myId kind gs.proposals
+                        latestProposalId myId (Kind.AbilityProposal kind) gs.proposals
 
                     pending =
                         pendingId /= Nothing
@@ -838,9 +837,9 @@ abilityRow myId gs ch =
         in
         Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
             [ el [ Font.size 11, Font.color Ui.inkSoft ] (text "Once per session")
-            , button "help-out" "Help Out" overcomeRoll
-            , button "add-detail" "Add a Detail" True
-            , button "gain-insight" "Gain Insight" True
+            , button Kind.HelpOut "Help Out" overcomeRoll
+            , button Kind.AddDetail "Add a Detail" True
+            , button Kind.GainInsight "Gain Insight" True
             ]
 
 
@@ -855,10 +854,10 @@ suggestCompelRow myId gs ch =
     else
         let
             used =
-                abilityUsed ch.slot "suggest-compel" gs.usedAbilities
+                abilityUsed ch.slot Kind.SuggestCompel gs.usedAbilities
 
             pendingId =
-                latestProposalId myId "suggest-compel" gs.proposals
+                latestProposalId myId (Kind.AbilityProposal Kind.SuggestCompel) gs.proposals
 
             pending =
                 pendingId /= Nothing
@@ -986,14 +985,14 @@ characterSheet facilitator myId gs ch =
 
         pendingPledges =
             if mine then
-                countProposals myId "pledge" gs.proposals
+                countProposals myId Kind.Pledge gs.proposals
 
             else
                 0
 
         pendingPledgeId =
             if mine then
-                latestProposalId myId "pledge" gs.proposals
+                latestProposalId myId Kind.Pledge gs.proposals
 
             else
                 Nothing
