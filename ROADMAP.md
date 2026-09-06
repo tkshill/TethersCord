@@ -25,8 +25,9 @@ split into focused modules:
       here still surface on `app.ports`, so `main.ts` is unchanged.
 - [x] `Format.elm` — `timestamp` (and a private `monthNumber`).
 - [x] `Ui.elm` — the elm-ui visual system (see below).
-- [x] `View.elm` — the whole view. Split into `View/Messages.elm` etc. only if
-      it grows further after future UI work.
+- [x] `View.elm` — the view. Split in section 22 step 4 into a thin
+      `View.elm` shell plus per-section `View/*` modules (`Session`, `Stones`,
+      `Characters`, `Log`, `Moves`, `Entities`) over a shared `View/Helpers.elm`.
 - [x] `Main.elm` — wiring only: `init`, `update`, `subscriptions`, `main`.
 
 ## 2. UI pass — `elm-ui` — done
@@ -880,21 +881,27 @@ the Worker.
       decodes it to a `SessionOutcome` custom type the view switches on; the
       prose stays as `outcome`.
 
-### Step 4 — split `View.elm`
+### Step 4 — split `View.elm` — done
 
-- [ ] **Per-section modules** under `client/src/View/`: `Session`, `Stones`,
-      `Characters`, `Log`, `Moves`, `Entities`. Each exposes one
-      `view : <props record> -> GameState -> Element Msg`.
-- [ ] **Record props, not positional args.** A shared `ViewContext`
-      (`{ facilitator : Bool, myId : Maybe String, zone : Time.Zone }`) computed
-      once in `View.view` and threaded; each section adds its own small record
-      for the model slices it needs (`confirming`, `inflight`, `proposalDrafts`,
-      …). No more `sessionPanel : Bool -> Maybe String -> String -> String -> …`.
-- [ ] **`View.elm` keeps** `view` (the `Ui.page [ … ]` composition, which stays
-      the table of contents), `header`, `connectionNote`, `logDomId`.
-- [ ] **Move the generic helpers.** `press` and `onlyWhen` into `Ui.elm`; any
-      remaining shared view helpers into `View/Helpers.elm`.
-- [ ] Update the section 1 note here and the module-layout list in `CLAUDE.md`.
+- [x] **Per-section modules** under `client/src/View/`: `Session` (with the
+      untether banner), `Stones`, `Characters`, `Log`, `Moves`, `Entities`. Each
+      exposes `view : ViewContext -> <props record> -> GameState -> Element Msg`
+      (`Moves` takes no extra props; `Entities` takes an `EntityKind`).
+- [x] **Record props, not positional args.** A shared `ViewContext`
+      (`{ facilitator, myId, zone }`) is computed once in `View.view` and
+      threaded; each section adds its own small record for the model slices it
+      needs. The old `sessionPanel : Bool -> Maybe String -> String -> …` chains
+      are gone.
+- [x] **`View.elm` keeps** `view` (the shell + the ordered section list), plus
+      `header`, `connectionNote`, `composer`, `isFacilitator`, and `logDomId`
+      (re-exported from `View.Log`, which owns it so `Effect` still imports
+      `View`).
+- [x] **Generic helpers moved.** `press` and `onlyWhen` are now in `Ui.elm`
+      (`press` generalised over `msg`); the cross-section view helpers
+      (`placeholder`, `inputAttrs`, `characterLabel`, `countProposals` /
+      `latestProposalId`, `pendingHint` / `withdrawLink`, `stoneChip`) plus the
+      `ViewContext` type live in `View/Helpers.elm`.
+- [x] Section 1 note below and the `CLAUDE.md` module-layout list updated.
 
 ### Step 5 — worker pure-logic extraction (no behaviour change)
 

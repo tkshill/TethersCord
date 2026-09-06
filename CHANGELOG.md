@@ -86,6 +86,15 @@ version yet, so headings are dates.
   client decodes it to a `SessionOutcome` type and `View.verdictWord` /
   `verdictColor` switch on it instead of parsing the prose with
   `String.contains`. No behaviour change.
+- Maintainability pass — `View.elm` split (roadmap section 22, step 4). The
+  ~1500-line single view module is now a thin `View.elm` shell (the page
+  frame, `header`, `connectionNote`, `composer`, and the ordered section list)
+  over six per-section modules under `client/src/View/` — `Session`, `Stones`,
+  `Characters`, `Log`, `Moves`, `Entities` — and a shared `View/Helpers.elm`. A
+  `ViewContext` record (`facilitator` / `myId` / `zone`), computed once, is
+  threaded to each section in place of the old positional argument chains;
+  `press` and `onlyWhen` moved to `Ui.elm`. Largest view module is now ~330
+  lines. No behaviour change.
 - Storage and write economy (roadmap section 16):
   - **`saveStoneState` skips the write when nothing changed.** The stone slice
     is serialised and compared to the last write (seeded from the cold-start

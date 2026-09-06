@@ -21,8 +21,10 @@ module Ui exposing
     , onBlur
     , onEnter
     , onScrolledToBottom
+    , onlyWhen
     , page
     , pledgedStoneChip
+    , press
     , primaryButton
     , sans
     , sectionTitle
@@ -48,6 +50,36 @@ import Element.Input as Input
 import Html exposing (Html)
 import Html.Events
 import Json.Decode as Decode
+import Set exposing (Set)
+
+
+
+-- CONTROL GATING
+
+
+{-| `Just msg` unless `key` already has a request in flight (it is in
+`inflight`), in which case `Nothing` — which renders a button disabled, so an
+eager double-click is a no-op in the UI as well as in `update`.
+-}
+press : Set String -> String -> msg -> Maybe msg
+press inflight key msg =
+    if Set.member key inflight then
+        Nothing
+
+    else
+        Just msg
+
+
+{-| The given elements when `cond` holds, an empty list otherwise. Used to keep
+role-gated controls out of a list without a stray `none`.
+-}
+onlyWhen : Bool -> List (Element msg) -> List (Element msg)
+onlyWhen cond elements =
+    if cond then
+        elements
+
+    else
+        []
 
 
 
