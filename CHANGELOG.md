@@ -10,6 +10,44 @@ version yet, so headings are dates.
 
 ### Added
 
+- Mid-session goal edits (roadmap section 12). A new facilitator-only
+  `POST /api/table/:id/session/goal` rewrites the running session's goal; the
+  Session card shows an editable goal field for the facilitator, behind the same
+  confirm step as End session.
+- Proposal withdraw (roadmap section 12). `POST /api/table/:id/proposals/:id/withdraw`
+  lets the proposer pull back their own still-pending proposal (gated on the
+  proposer, not the facilitator). A "withdraw" link sits beside every "(pending)"
+  hint — Add boon, Highlight, the once-per-session abilities, Suggest Compel, and
+  Accept Compel — and pulls the proposer's most recent proposal of that kind.
+
+### Changed
+
+- Ending a session now discards **every** unresolved pending state, not just
+  floating boons and used abilities: an open overcome, a roll left on the table,
+  pledged boons, and any proposal the facilitator never resolved. Starting a
+  session clears pledges and the proposal queue too. Nothing from a closed
+  session carries into the next one (roadmap section 12).
+- End session and Clear log now take a confirm step — the button arms on the
+  first click and performs on the second, with a Cancel beside it (roadmap
+  section 12).
+- Claiming or releasing a character sheet now clears that slot's pledged boons
+  and any proposal aimed at it, so a sheet changing hands can no longer leave an
+  accepted roll or proposal spending the wrong character's boons (roadmap
+  section 12).
+- The status line is split in two: a quiet steady-state line (auth, "Connected.")
+  and a separate red error line for per-action failures that dismisses itself
+  after a few seconds. The Add a Detail / Gain Insight context note is now
+  per-proposal rather than one field shared across the queue (roadmap section 12).
+
+### Fixed
+
+- `POST /stones/accept` with no roll on the table now returns 400 instead of
+  silently resetting the pool and dropping the proposal queue (roadmap
+  section 12).
+- Accepting a proposal whose target character or floating boon has since gone
+  now returns an error and leaves the proposal queued, rather than removing it
+  with no effect and no log line (roadmap section 12).
+
 - A test suite (roadmap section 11). `pnpm run test` runs the client suite
   (`elm-test` over `client/tests/`: `Api.decodeGameState` against a full wire
   snapshot, `Main.applyServerState`'s edit-cursor merge, `Main.update` guards

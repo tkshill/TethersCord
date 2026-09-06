@@ -3,6 +3,8 @@ module Ui exposing
     , baneFill
     , banner
     , boonDot
+    , confirmButton
+    , errorNote
     , boonFill
     , card
     , danger
@@ -228,19 +230,25 @@ sectionTitle label =
         (text (String.toUpper label))
 
 
-{-| A quiet status line. Errors (anything mentioning "Failed") tint red.
+{-| The steady-state status line: auth progress, "Connected.", reconnection.
+Always the quiet tone — failures are shown separately by `errorNote`.
 -}
 banner : String -> Element msg
 banner status =
-    let
-        tone =
-            if String.contains "Failed" status || String.contains "failed" status then
-                danger
+    el [ Font.size 12, Font.color inkSoft ] (text status)
 
-            else
-                inkSoft
-    in
-    el [ Font.size 12, Font.color tone ] (text status)
+
+{-| A transient failure note, shown in the danger tone beneath the status line.
+Renders nothing when there is no error.
+-}
+errorNote : Maybe String -> Element msg
+errorNote maybeError =
+    case maybeError of
+        Just message ->
+            el [ Font.size 12, Font.color danger ] (text message)
+
+        Nothing ->
+            Element.none
 
 
 {-| A centred caption with a hairline either side. Used for the log's day
@@ -298,6 +306,38 @@ ghostButton config =
         , Element.mouseOver [ Border.color accent, Font.color accent ]
         ]
         { onPress = config.onPress, label = text config.label }
+
+
+{-| A destructive action behind a one-click arming step. Idle, it is a single
+ghost button; armed, it becomes a danger-tinted confirm button beside a Cancel.
+The caller flips `armed` from its own model.
+-}
+confirmButton :
+    { armed : Bool
+    , idle : String
+    , confirm : String
+    , onArm : msg
+    , onConfirm : msg
+    , onCancel : msg
+    }
+    -> Element msg
+confirmButton config =
+    if config.armed then
+        Element.row [ Element.spacing sm ]
+            [ Input.button
+                [ Background.color danger
+                , Font.color accentText
+                , Font.size 13
+                , Font.semiBold
+                , paddingXY_ md sm
+                , Border.rounded 6
+                ]
+                { onPress = Just config.onConfirm, label = text config.confirm }
+            , ghostButton { onPress = Just config.onCancel, label = "Cancel" }
+            ]
+
+    else
+        ghostButton { onPress = Just config.onArm, label = config.idle }
 
 
 {-| One entry in a tab strip. The selected tab reads as the accent button; the

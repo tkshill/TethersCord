@@ -26,6 +26,7 @@ import type {
   CharacterSheet,
   UpdateCharacterInput,
   UpdateFateInput,
+  UpdateSessionGoalInput,
   UsedAbilities,
   UseAbilityInput,
   UseFloatingBoonInput,
@@ -207,16 +208,23 @@ export class GameTable implements DurableObject {
     }
 
     const proposalMatch = url.pathname.match(
-      /^\/proposals\/([0-9a-fA-F-]{36})\/(accept|reject)$/,
+      /^\/proposals\/([0-9a-fA-F-]{36})\/(accept|reject|withdraw)$/,
     );
     if (proposalMatch && request.method === "POST") {
-      const [, proposalId, decision] = proposalMatch;
+      const [, proposalId, action] = proposalMatch;
+      // A proposer withdraws their own; the facilitator accepts or rejects
+      // anyone's.
+      if (action === "withdraw") {
+        return this.withLock(() =>
+          this.handleWithdrawProposal(proposalId, authInfo),
+        );
+      }
       return (
         facilitatorOnly(authInfo) ??
         this.withLock(() =>
           this.handleProposalDecision(
             proposalId,
-            decision as "accept" | "reject",
+            action as "accept" | "reject",
             authInfo,
             request,
           ),
@@ -282,6 +290,13 @@ export class GameTable implements DurableObject {
       return (
         facilitatorOnly(authInfo) ??
         this.withLock(() => this.handleEndSession(authInfo))
+      );
+    }
+
+    if (url.pathname === "/session/goal" && request.method === "POST") {
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleUpdateSessionGoal(request, authInfo))
       );
     }
 
@@ -887,11 +902,17 @@ export class GameTable implements DurableObject {
           state = { ...state, stonePool: [...state.stonePool, "Boon"] };
           break;
 
-        case "pledge":
-          if (proposal.slot !== null) {
-            state = applyPledge(state, proposal.slot, proposal.delta);
+        case "pledge": {
+          const pledger =
+            proposal.slot === null
+              ? undefined
+              : state.characters.find((c) => c.slot === proposal.slot);
+          if (!pledger) {
+            return this.proposalTargetGone();
           }
+          state = applyPledge(state, pledger.slot, proposal.delta);
           break;
+        }
 
         case "help-out": {
           if (!state.overcome || !state.pendingRoll) {
@@ -953,33 +974,34 @@ export class GameTable implements DurableObject {
             proposal.targetSlot === null
               ? undefined
               : state.characters.find((c) => c.slot === proposal.targetSlot);
-          if (suggester && compelled) {
-            let characters = state.characters;
-            characters = await this.bumpFate(
-              characters,
-              suggester.slot,
-              SUGGEST_COMPEL_SUGGESTER_BOONS,
-            );
-            characters = await this.bumpFate(
-              characters,
-              compelled.slot,
-              SUGGEST_COMPEL_TARGET_BOONS,
-            );
-            state = {
-              ...state,
-              characters,
-              usedAbilities: markAbilityUsed(
-                state.usedAbilities,
-                suggester.slot,
-                "suggest-compel",
-              ),
-            };
-            logLine = `Compel suggested — ${characterLabel(
-              suggester,
-            )} +${SUGGEST_COMPEL_SUGGESTER_BOONS}, ${characterLabel(
-              compelled,
-            )} +${SUGGEST_COMPEL_TARGET_BOONS} boons`;
+          if (!suggester || !compelled) {
+            return this.proposalTargetGone();
           }
+          let characters = state.characters;
+          characters = await this.bumpFate(
+            characters,
+            suggester.slot,
+            SUGGEST_COMPEL_SUGGESTER_BOONS,
+          );
+          characters = await this.bumpFate(
+            characters,
+            compelled.slot,
+            SUGGEST_COMPEL_TARGET_BOONS,
+          );
+          state = {
+            ...state,
+            characters,
+            usedAbilities: markAbilityUsed(
+              state.usedAbilities,
+              suggester.slot,
+              "suggest-compel",
+            ),
+          };
+          logLine = `Compel suggested — ${characterLabel(
+            suggester,
+          )} +${SUGGEST_COMPEL_SUGGESTER_BOONS}, ${characterLabel(
+            compelled,
+          )} +${SUGGEST_COMPEL_TARGET_BOONS} boons`;
           break;
         }
 
@@ -988,19 +1010,20 @@ export class GameTable implements DurableObject {
             proposal.slot === null
               ? undefined
               : state.characters.find((c) => c.slot === proposal.slot);
-          if (character) {
-            state = {
-              ...state,
-              characters: await this.bumpFate(
-                state.characters,
-                character.slot,
-                ACCEPT_COMPEL_BOONS,
-              ),
-            };
-            logLine = `Compel accepted — ${characterLabel(
-              character,
-            )} +${ACCEPT_COMPEL_BOONS} boons`;
+          if (!character) {
+            return this.proposalTargetGone();
           }
+          state = {
+            ...state,
+            characters: await this.bumpFate(
+              state.characters,
+              character.slot,
+              ACCEPT_COMPEL_BOONS,
+            ),
+          };
+          logLine = `Compel accepted — ${characterLabel(
+            character,
+          )} +${ACCEPT_COMPEL_BOONS} boons`;
           break;
         }
 
@@ -1008,16 +1031,17 @@ export class GameTable implements DurableObject {
           const floating = state.floatingBoons.find(
             (f) => f.id === proposal.floatingId,
           );
-          if (floating) {
-            state = {
-              ...state,
-              floatingBoons: state.floatingBoons.filter(
-                (f) => f.id !== floating.id,
-              ),
-              stonePool: [...state.stonePool, "Boon"],
-            };
-            logLine = `Floating boon spent — ${floating.text} (${proposal.proposerName})`;
+          if (!floating) {
+            return this.proposalTargetGone();
           }
+          state = {
+            ...state,
+            floatingBoons: state.floatingBoons.filter(
+              (f) => f.id !== floating.id,
+            ),
+            stonePool: [...state.stonePool, "Boon"],
+          };
+          logLine = `Floating boon spent — ${floating.text} (${proposal.proposerName})`;
           break;
         }
       }
@@ -1034,6 +1058,47 @@ export class GameTable implements DurableObject {
         content: logLine,
       });
     }
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  /**
+   * An accepted proposal whose character / floating boon has since gone (a
+   * released or reslotted sheet). Return an error and leave the proposal
+   * queued rather than dropping it with no effect and no log line.
+   */
+  private proposalTargetGone(): Response {
+    return new Response("That proposal's target no longer exists", {
+      status: 409,
+    });
+  }
+
+  /** A proposer pulls back their own still-pending proposal. */
+  private async handleWithdrawProposal(
+    proposalId: string,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    const proposal = this.gameState!.proposals.find((p) => p.id === proposalId);
+    if (!proposal) {
+      return new Response("No such proposal", { status: 404 });
+    }
+    if (proposal.proposerId !== authInfo.discordUserId) {
+      return new Response("Not your proposal", { status: 403 });
+    }
+
+    this.gameState = {
+      ...this.gameState!,
+      proposals: this.gameState!.proposals.filter((p) => p.id !== proposalId),
+    };
+    await this.saveStoneState(this.gameState);
+
+    await this.appendMessage({
+      authorId: authInfo.discordUserId,
+      authorName: authInfo.username,
+      role: authInfo.role,
+      content: `${proposal.proposerName} withdrew a proposal`,
+    });
 
     this.broadcast(this.gameState);
     return ackResponse();
@@ -1150,6 +1215,12 @@ export class GameTable implements DurableObject {
   }
 
   private async handleAcceptRoll(authInfo: AuthInfo): Promise<Response> {
+    // Nothing to accept without a roll on the table — refuse rather than
+    // silently reset the pool and drop the proposal queue.
+    if (!this.gameState!.pendingRoll) {
+      return new Response("No roll to accept", { status: 400 });
+    }
+
     // Spend the pledged boons from each character's stock, then clear the pool
     // and pledges back to the base state.
     const now = Date.now();
@@ -1307,10 +1378,16 @@ export class GameTable implements DurableObject {
     this.gameState = {
       ...this.gameState!,
       session: { id, goal, pool: [...INITIAL_SESSION_POOL] },
-      // A new session resets the once-per-session abilities and starts with no
-      // floating boons.
+      // A new session starts from a clean slate. Nothing left open at the end
+      // of the previous session (or before this one began) carries in:
+      // abilities, floating boons, an unresolved overcome or roll, pledges, or
+      // a proposal queue.
       usedAbilities: [],
       floatingBoons: [],
+      overcome: null,
+      pendingRoll: null,
+      committedBoons: [],
+      proposals: [],
     };
     await this.saveStoneState(this.gameState);
 
@@ -1349,9 +1426,16 @@ export class GameTable implements DurableObject {
       ...this.gameState!,
       session: null,
       sessionHistory,
-      // Unspent floating boons are discarded when the session closes.
+      // Ending a session discards everything left unresolved: unspent floating
+      // boons, once-per-session abilities, an open overcome or roll on the
+      // table, pledged boons, and any proposal the facilitator never accepted
+      // or rejected. Nothing from a closed session carries into the next one.
       floatingBoons: [],
       usedAbilities: [],
+      overcome: null,
+      pendingRoll: null,
+      committedBoons: [],
+      proposals: [],
     };
     await this.saveStoneState(this.gameState);
 
@@ -1360,6 +1444,48 @@ export class GameTable implements DurableObject {
       authorName: authInfo.username,
       role: authInfo.role,
       content: `Session ended — goal ${verdict}: ${session.goal} (${draw.join(", ")})`,
+    });
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  /** Facilitator rewrites the running session's goal. */
+  private async handleUpdateSessionGoal(
+    request: Request,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    const session = this.gameState!.session;
+    if (!session) {
+      return new Response("No session is running", { status: 400 });
+    }
+
+    const input = (await readJson(request)) as UpdateSessionGoalInput | null;
+    const goal = boundedString(input?.goal, MAX_GOAL_LENGTH).trim();
+    if (!goal) {
+      return new Response("A session goal is required", { status: 400 });
+    }
+    if (goal === session.goal) {
+      return ackResponse();
+    }
+
+    await this.env.DB.prepare(
+      `UPDATE game_sessions SET goal = ? WHERE id = ?`,
+    )
+      .bind(goal, session.id)
+      .run();
+
+    this.gameState = {
+      ...this.gameState!,
+      session: { ...session, goal },
+    };
+    await this.saveStoneState(this.gameState);
+
+    await this.appendMessage({
+      authorId: authInfo.discordUserId,
+      authorName: authInfo.username,
+      role: authInfo.role,
+      content: `Goal updated — ${goal}`,
     });
 
     this.broadcast(this.gameState);
@@ -1451,6 +1577,11 @@ export class GameTable implements DurableObject {
     if (target.ownerId && target.ownerId !== authInfo.discordUserId) {
       return new Response("Sheet already claimed", { status: 409 });
     }
+    // Re-claiming a sheet the caller already holds is a no-op — don't wipe that
+    // slot's own pledges / proposals.
+    if (target.ownerId === authInfo.discordUserId) {
+      return ackResponse();
+    }
 
     const now = Date.now();
     const priorSlots = this.gameState!.characters.filter(
@@ -1461,7 +1592,7 @@ export class GameTable implements DurableObject {
     }
     await this.setSheetOwner(target.id, authInfo.discordUserId, now);
 
-    this.gameState = {
+    let next: GameState = {
       ...this.gameState!,
       characters: this.gameState!.characters.map((c) => {
         if (c.slot === slot) return { ...c, ownerId: authInfo.discordUserId };
@@ -1469,6 +1600,14 @@ export class GameTable implements DurableObject {
         return c;
       }),
     };
+    // Any sheet whose owner just changed — the one just claimed, and any the
+    // caller was released from to take it — must not keep pledges or proposals
+    // aimed at whoever held it before.
+    for (const changed of [slot, ...priorSlots.map((p) => p.slot)]) {
+      next = clearSlotPendingState(next, changed);
+    }
+    this.gameState = next;
+    await this.saveStoneState(this.gameState);
 
     this.broadcast(this.gameState);
     return ackResponse();
@@ -1494,12 +1633,16 @@ export class GameTable implements DurableObject {
     }
 
     await this.setSheetOwner(target.id, null, Date.now());
-    this.gameState = {
-      ...this.gameState!,
-      characters: this.gameState!.characters.map((c) =>
-        c.slot === slot ? { ...c, ownerId: null } : c,
-      ),
-    };
+    this.gameState = clearSlotPendingState(
+      {
+        ...this.gameState!,
+        characters: this.gameState!.characters.map((c) =>
+          c.slot === slot ? { ...c, ownerId: null } : c,
+        ),
+      },
+      slot,
+    );
+    await this.saveStoneState(this.gameState);
 
     this.broadcast(this.gameState);
     return ackResponse();
@@ -1691,6 +1834,22 @@ function applyPledge(state: GameState, slot: number, delta: number): GameState {
   }
   committedBoons.sort((a, b) => a.slot - b.slot);
   return { ...state, committedBoons };
+}
+
+/**
+ * Drop a slot's pledged boons and any proposal that points at it (as the
+ * proposer's own slot or as a `suggest-compel` target). Called when a sheet
+ * changes hands, so an accepted roll or proposal cannot spend or target the
+ * wrong character's boons.
+ */
+function clearSlotPendingState(state: GameState, slot: number): GameState {
+  return {
+    ...state,
+    committedBoons: state.committedBoons.filter((c) => c.slot !== slot),
+    proposals: state.proposals.filter(
+      (p) => p.slot !== slot && p.targetSlot !== slot,
+    ),
+  };
 }
 
 /** Record `kind` as spent for `slot` this session; idempotent. */

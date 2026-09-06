@@ -5,6 +5,7 @@ next model and an `Effect` value a test can match on directly — no `Cmd`, no
 mocking.
 -}
 
+import Dict
 import Effect exposing (Effect(..))
 import Expect
 import Fixtures
@@ -111,22 +112,76 @@ suite =
                     Main.update RollStones ready
                         |> Tuple.second
                         |> Expect.equal (Effect.PostStones Fixtures.playerAuth "/stones/roll")
-            , test "AcceptProposal carries the trimmed draft note as context" <|
+            , test "AcceptProposal carries that row's trimmed draft note as context" <|
                 \_ ->
-                    Main.update (AcceptProposal "p1") { ready | proposalDraft = "  a detail  " }
+                    Main.update (AcceptProposal "p1")
+                        { ready | proposalDrafts = Dict.fromList [ ( "p1", "  a detail  " ) ] }
                         |> Tuple.second
                         |> Expect.equal
                             (Effect.PostProposalDecision Fixtures.playerAuth "p1" "accept" (Just "a detail"))
-            , test "AcceptProposal sends no context when the draft is blank" <|
+            , test "AcceptProposal sends no context when this row's draft is blank" <|
                 \_ ->
-                    Main.update (AcceptProposal "p1") { ready | proposalDraft = "   " }
+                    Main.update (AcceptProposal "p1")
+                        { ready | proposalDrafts = Dict.fromList [ ( "p1", "   " ), ( "p2", "other" ) ] }
                         |> Tuple.second
                         |> Expect.equal (Effect.PostProposalDecision Fixtures.playerAuth "p1" "accept" Nothing)
             , test "RejectProposal never carries context" <|
                 \_ ->
-                    Main.update (RejectProposal "p1") { ready | proposalDraft = "ignored" }
+                    Main.update (RejectProposal "p1")
+                        { ready | proposalDrafts = Dict.fromList [ ( "p1", "ignored" ) ] }
                         |> Tuple.second
                         |> Expect.equal (Effect.PostProposalDecision Fixtures.playerAuth "p1" "reject" Nothing)
+            , test "WithdrawProposal posts to the withdraw route with auth" <|
+                \_ ->
+                    Main.update (WithdrawProposal "p1") ready
+                        |> Tuple.second
+                        |> Expect.equal (Effect.PostWithdrawProposal Fixtures.playerAuth "p1")
+            ]
+        , describe "per-row proposal drafts"
+            [ test "ProposalDraftChanged writes only the named row" <|
+                \_ ->
+                    { ready | proposalDrafts = Dict.fromList [ ( "p2", "kept" ) ] }
+                        |> Main.update (ProposalDraftChanged "p1" "typing")
+                        |> Tuple.first
+                        |> .proposalDrafts
+                        |> Expect.equal (Dict.fromList [ ( "p1", "typing" ), ( "p2", "kept" ) ])
+            , test "ProposalResolved Ok drops that row's draft" <|
+                \_ ->
+                    { ready | proposalDrafts = Dict.fromList [ ( "p1", "note" ), ( "p2", "kept" ) ] }
+                        |> Main.update (ProposalResolved "p1" (Ok ()))
+                        |> Tuple.first
+                        |> .proposalDrafts
+                        |> Expect.equal (Dict.fromList [ ( "p2", "kept" ) ])
+            ]
+        , describe "confirm gate"
+            [ test "RequestConfirm arms the named action, no effect" <|
+                \_ ->
+                    Main.update (RequestConfirm "end-session") ready
+                        |> Expect.equal ( { ready | confirming = Just "end-session" }, Effect.None )
+            , test "EndSession fires only after the action is armed, and disarms" <|
+                \_ ->
+                    let
+                        armed =
+                            { ready | confirming = Just "end-session" }
+                    in
+                    Main.update EndSession armed
+                        |> Expect.equal ( { armed | confirming = Nothing }, Effect.PostEndSession Fixtures.playerAuth )
+            , test "CancelConfirm disarms without acting" <|
+                \_ ->
+                    Main.update CancelConfirm { ready | confirming = Just "clear-log" }
+                        |> Expect.equal ( ready, Effect.None )
+            ]
+        , describe "transient errors"
+            [ test "a failed mutation sets error, not status, and schedules its dismissal" <|
+                \_ ->
+                    Main.update (StonesUpdated (Err Http.NetworkError)) ready
+                        |> (\( next, eff ) -> ( next.error, next.status, eff ))
+                        |> Expect.equal
+                            ( Just "Failed to update stones.", ready.status, Effect.DismissErrorIn 6000 )
+            , test "DismissError clears the error line" <|
+                \_ ->
+                    Main.update DismissError { ready | error = Just "boom" }
+                        |> Expect.equal ( ready, Effect.None )
             ]
         , describe "local-only messages"
             [ test "NewMessageChanged only updates the draft" <|
