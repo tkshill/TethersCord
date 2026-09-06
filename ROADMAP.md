@@ -321,6 +321,245 @@ sections above so the shape of `update` has settled first.
       sequence.
 - [ ] Wire `pnpm run test:client` into `pnpm run build`.
 
+## 12. Correctness, session lifecycle, and UX cleanup
+
+Promoted ahead of the efficiency work. The findings from the September structure
+audit, plus a firmer set of rules for the session lifecycle.
+
+### Session lifecycle
+
+- [ ] **Starting and ending a session are facilitator-only.** Already enforced —
+      `facilitatorOnly` guards `/session/start` and `/session/end`, and the
+      buttons render only for the facilitator in `View`. Recorded here as an
+      invariant to preserve as the surrounding code changes.
+- [ ] **Ending a session clears every unresolved pending state.**
+      `handleEndSession` already drops `floatingBoons` and `usedAbilities`; it
+      must also clear `overcome`, `pendingRoll`, `committedBoons`, and any
+      `proposals` that were never accepted or rejected — an overcome roll or a
+      move proposal left open when the session ends is discarded, and unspent
+      floating boons disappear. Nothing from a closed session carries into the
+      next one. (`handleStartSession` should clear `committedBoons` and
+      `proposals` as well, belt and braces.)
+- [ ] **The facilitator can edit the session goal at any time.** A new
+      facilitator-only `POST /session/goal` (`{ goal }`) updates the running
+      `game_sessions` row and `gameState.session.goal` and broadcasts. It
+      rewrites live shared state, so the control sits behind the confirmation
+      step below.
+- [ ] **Confirm destructive facilitator actions.** End session, Clear log, and
+      edit-goal each go behind a confirm step.
+
+### Audit fixes
+
+- [ ] **Clean up a slot's pledges and proposals on claim / release.**
+      `handleClaimSlot` / `handleReleaseSlot` leave `committedBoons` and in-flight
+      proposals pointing at a slot the caller no longer owns; an accepted roll
+      then spends the wrong character's boons.
+- [ ] **Let a proposer withdraw their own proposal.** `POST
+      /proposals/:id/withdraw`, gated on `proposerId`, with a control beside the
+      "(pending)" hint. Today a mis-aimed Suggest Compel can only be undone by
+      the facilitator rejecting it.
+- [ ] **Guard `/stones/accept` on a `pendingRoll`.** Reject with 400 rather than
+      silently resetting the pool and clearing the proposal queue.
+- [ ] **Surface silently-dropped accepts.** When an accepted proposal's target
+      no longer exists, return an error and keep the proposal, rather than
+      removing it with no effect and no log line.
+- [ ] **Per-row context note.** The Add a Detail / Gain Insight note input is
+      bound to one shared `proposalDraft`; give each queued proposal its own.
+- [ ] **Status banner.** Separate transient errors from steady state, and
+      auto-dismiss the errors.
+
+## 13. Table entities beyond characters — NPCs and locations
+
+The facilitator needs to record the cast and the map alongside the three player
+sheets. Both are facilitator-owned reference data: broadcast to the whole table,
+read-only for players.
+
+- [ ] **`npcs` and `locations` D1 tables** (append-only migration `0008`),
+      scoped by `session_id` like `characters`: `id`, `session_id`, `name`,
+      `notes`, `created_at`, `updated_at`. Keep the first cut to name + notes;
+      an NPC `location_id`, a status field, and location nesting can come later.
+- [ ] **Facilitator-only routes** — `POST /npcs` (create), `POST
+      /npcs/:id/update`, `POST /npcs/:id/delete`, and the same three for
+      locations, all through `facilitatorOnly`.
+- [ ] **`GameState.npcs` / `GameState.locations`**, loaded on Durable Object
+      cold start and broadcast with the rest of the state (their own patch kinds
+      once section 15's delta broadcasts land).
+- [ ] **Client** — an "NPCs" card and a "Locations" card: an editable list for
+      the facilitator, a plain read-only list for players, reusing the
+      character-sheet field styling.
+
+## 14. Fewer requests per action — the Cloudflare Free budget
+
+The Free plan is 100,000 requests/day and 10 ms CPU per request, shared across
+the Worker and its Durable Object. Every table mutation currently costs at least
+two counted requests — the Worker entry point and the `stub.fetch` subrequest
+into the `GameTable` object — and a cold launch costs more again (the OAuth
+exchange, `getGameState`, the socket upgrade, and up to three `getGameState`
+retries). WebSocket broadcasts are outbound and do **not** count, so the lever
+is the number of inbound HTTP calls, not the fan-out. Ordered by value over
+effort.
+
+- [ ] **Drop the HTTP state seed on the happy path.** `handleConnect` already
+      sends a full `GameState` before its first `await`, and `GotGameState (Ok
+      _)` is a no-op whenever that snapshot beat it — which is nearly always.
+      Fire `getGameState` only as a fallback, after ~3 s with no snapshot, and
+      delete the 3×/2 s retry loop. Saves one to four requests per launch.
+- [ ] **One character save per sheet, not per field.** `CharacterFieldBlur`
+      POSTs `/characters/:slot/update` on every field's blur, so editing a whole
+      sheet is seven requests. Debounce to a single write ~1 s after the last
+      edit (flushing on tab-away and unload), sending the full sheet.
+- [ ] **De-duplicate in-flight mutations.** Track pending action keys in the
+      model, or disable the control until its `…Updated` message lands, so an
+      impatient double-click cannot fire the same POST twice. This also closes
+      the double-roll and double-proposal correctness holes from the audit.
+- [ ] **Cache the auth lookup in the Durable Object.** `getAuthFromToken` runs a
+      `sessions_auth` ⋈ `facilitators` query on every `/api/table/*` call.
+      Memoise token → `AuthInfo` in DO memory with a ~60 s TTL: one D1 read per
+      token per minute instead of per request.
+- [ ] **Coalesce Highlight churn.** The pledge `+` / `−` each raise their own
+      proposal. Debounce to the net delta and disable the control while one is
+      queued.
+- [ ] **Reuse a still-valid `sessionToken` across reloads.** Persist it in
+      `localStorage`; on reload, skip `/api/oauth/discord/exchange` while
+      `expires_at` is still in the future. Lower value — Activities usually
+      launch fresh rather than reload — but one request saved when they don't.
+
+## 15. Zippier realtime updates
+
+Perceived latency on a shared action is click → POST → 204 → DO broadcast →
+socket → decode → re-render. The two network hops are inherent to the
+facilitator-broadcast model; the payload size and the render cost are not.
+
+- [ ] **Delta broadcasts.** Replace the whole-`GameState` push on every mutation
+      with a tagged patch — `{ t: "message", message }`, `{ t: "stones", … }`,
+      `{ t: "proposals", proposals }`, and so on — that the client folds into its
+      local state. Keep `{ t: "snapshot", state }` for connect and an explicit
+      resync. Shrinks a chat line from a 200-message blob to a single row and
+      cuts the client-side decode.
+- [ ] **`Element.Lazy` the message log.** `speakerColors` and `logRows` refold
+      the entire list on every render, so an unrelated stone roll re-lays 200
+      rows. Wrap the log column in `Element.Lazy.lazy` keyed on `messages`.
+- [ ] **Instant local affordances.** No optimistic apply of shared effects, but
+      the button that raises a proposal or move should flip to its "(pending)"
+      state on click rather than after the round-trip.
+- [ ] **Hold and send fewer messages.** Load and broadcast the last ~50
+      messages, not 200; older history moves behind a "load more" HTTP fetch.
+      Smaller connect snapshot, smaller re-renders. Supersedes the deferred
+      pagination note in section 7.
+
+## 16. Storage and write economy
+
+Storage is nowhere near a limit today (~25 kB against a 5 GB account-wide SQLite
+cap on Free), so this is low priority — revisit only if the Durable Object
+metrics move.
+
+- [ ] **Write `KEY_STONES` only when stone state actually changed.** A chat post
+      calls `saveStoneState` even though it touches nothing there. Gate the
+      write on a real stone / proposal / session / overcome change.
+- [ ] **Prune `messages` on the existing hourly cron.** Add a `DELETE FROM
+      messages WHERE created_at < ?` (keep ~30 days, or the last N per table) so
+      the table cannot grow unbounded toward the account cap.
+- [ ] **Optionally split `KEY_STONES`** into `stones` / `proposals` / `session`
+      / `overcome` keys so adding a proposal does not rewrite the whole blob.
+      Only worth it if write volume shows up in metrics.
+
+## 17. Campaigns — multiple games per facilitator (not scheduled)
+
+Today `tableId` (`guildId-channelId`) is the unit of persistence: one Durable
+Object per channel owns one set of characters, one message log, one session
+history. A **campaign** would become the real container — a named game a
+facilitator creates and manages, owning its characters, NPCs, locations, session
+history, and log — and the facilitator would pick which campaign is active for
+the channel at Activity start.
+
+This is a large reshaping and is **not scheduled**. It touches the Durable
+Object's binding model (the object is keyed by `tableId` and eagerly loads
+everything for it), needs a `campaigns` table and an active-campaign pointer per
+table, a campaign-selection screen, and a migration path for existing
+single-campaign tables.
+
+- [ ] Design the data model and the DO-binding change before committing to it.
+
+## 18. AI session summary (exploratory)
+
+A short written recap of each session, generated when the facilitator ends it
+and stored on the `game_sessions` row for the history view.
+
+The open question is the input. Sessions run two to three hours of mostly voice,
+and there is no obviously free way to transcribe that live. But the message log
+already captures moves, rolls, overcomes, the session goal, and any chat — an
+LLM summary of a session's log rows may be a rich enough record without
+transcribing voice at all. Settle that before reaching for transcription
+(browser `SpeechRecognition` is free but needs a live foreground tab and is
+unreliable over hours; hosted Whisper-class APIs are not free at that length).
+
+- [ ] Spike: summarise a completed session from its log rows with a single
+      Claude API call at `/session/end`, and judge whether the log alone carries
+      the session.
+
+## 19. The overcome aftermath — stones, aspects, and consequences
+
+**Design in progress — not a spec.** The game is rules-lite by intent but wants
+a system core that keeps what makes Fate, Burning Wheel, Lady Blackbird and the
+like work. Today an accepted overcome roll feeds one of its two drawn stones
+into the session pool at random and discards the other. The direction is to make
+that second stone *land somewhere* and open a small economy around a character's
+aspects (Archetype, Desire, Quest).
+
+Sketch, not yet settled:
+
+- After an overcome resolves, one drawn stone goes to the session pool (as
+  now); the other goes to the overcome's target. If Help Out was used, the two
+  stones split — one to the target, one to the helper.
+- A **received Boon** is assigned by its player to one of the character's three
+  aspects as a standing marker that says "bring the game into contact with this
+  part of my character." It informs the facilitator and the table.
+- A **received Bane** becomes a **floating bane** in a facilitator-held pool
+  (sibling to floating boons). The facilitator spends one to add a Bane stone to
+  a later roll — this is the source for section 4's deferred "facilitator-set
+  difficulty from the fiction."
+- **Compels** gain a second possible payout: instead of boons, an accepted
+  compel may remove a floating bane (or a bane attached to the character).
+
+Open questions:
+
+- [ ] Is an aspect-assigned boon a permanent marker, a one-shot the player
+      spends to invoke the aspect for advantage, or both?
+- [ ] Where do floating banes live, and for how long — until spent, until
+      session end, or bound to one character?
+- [ ] Does the target always take the leftover stone, or choose whether to?
+- [ ] How does an explicit consequence (a named temporary negative aspect)
+      differ from a floating bane — or is the bane just the mechanical handle on
+      a fictional consequence?
+
+## 20. Character growth on the sheet
+
+**Unsolved.** A rules-lite core still wants characters to change over a campaign
+in a way you can see on the sheet, not just accumulate boons. The aspect-tagged
+boons of section 19 are a soft signal of intent; they are not growth. No
+mechanism is chosen yet.
+
+- [ ] Design a growth mechanism: what triggers it (met session goals? invoked
+      aspects? survived consequences?), what it changes on the sheet (aspect
+      wording, new aspects, a rating, a tag list?), and whether it can be lost.
+
+## 21. Game text, tooltips, and glossary
+
+The player-facing copy — move names, proposal descriptions, card titles, hint
+lines — is scattered through `View.elm` as string literals, so tuning the game's
+wording means editing the view. A game this much in flux needs its text easy to
+revise.
+
+- [ ] **Pull user-facing copy into one editable source.** A `Copy.elm` module of
+      named string constants, or a `copy.json` compiled into the bundle, that
+      `View` reads from — one place to rewrite a move's description.
+- [ ] **Player tooltips.** A hover / tap affordance on move and stone terms
+      showing the short rules text for that term. Deferred until the copy source
+      exists.
+- [ ] **A glossary.** A panel (or a section of the copy source) defining the
+      game's terms — overcome, boon, bane, aspect, compel, highlight, floating
+      boon — in one place for players. Deferred alongside tooltips.
+
 ---
 
 ## Flushing test messages before the campaign
