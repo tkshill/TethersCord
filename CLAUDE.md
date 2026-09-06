@@ -82,15 +82,17 @@ State is partitioned by `tableId`, one `GameTable` Durable Object per table.
 
 ### Client module layout (Elm + TS interop)
 
-Elm (`client/src/`), dependency direction `Types` ← everything, `Main` → `Effect`/`Api`/`Ports`/`View`/`Format`:
+Elm (`client/src/`), dependency direction `Types` ← everything, `Main` → `Effect`/`Api`/`Ports`/`View`/`Format`, `View` → `View/*` → `View/Helpers` → `Ui`:
 
 - **`Main.elm`** — wiring only: `init` / `update` / `subscriptions` / `main`. `update : Msg -> Model -> ( Model, Effect )` is pure — it returns an `Effect` value, never a `Cmd` — and `main` runs `Effect.perform` on the result at the boundary.
 - **`Effect.elm`** — an `Effect` type with one constructor per side effect the app performs (`GetGameState`, `PostMessage`, `PostStones`, `ScrollLogToBottom`, `Authorize`, `Batch`, `None`, …), and `Effect.perform : Flags -> Effect -> Cmd Msg` translating each to an `Api` / `Ports` / `Task` call. `Post*` effects carry the `Auth` they need; `update` still decides whether the user is authorised. This is what lets `update` be asserted on in tests without mocking `Cmd`.
 - **`Types.elm`** — domain types **plus `Model` and `Msg`**. They live here, not in `Main`, so `View` can import them without a cycle (`Main` imports `View`).
-- **`Api.elm`** — every `Http.request` command and the JSON decoders. Commands take their result-message constructor as an argument, so this module has no dependency on `Types.Msg`.
+- **`Api.elm`** — every backend call and the JSON decoders. Endpoints are one line each over three private request helpers (`get` / `postEmpty` / `postJson`); commands take their result-message constructor as an argument, so this module has no dependency on `Types.Msg`.
 - **`Ports.elm`** (`port module`) — the `toDiscord` / `fromDiscord` / `wsGameState` ports, `authorize`, and a typed `DiscordInbound` + `decodeInbound`. Ports declared here still surface on `app.ports`; the JS side does not care which module declares them.
-- **`View.elm`** — the whole view, built with elm-ui.
-- **`Ui.elm`** — the elm-ui design system: palette, `xs`…`xl` spacing scale, type sizes, and building blocks (`page`, `card`, `primaryButton`, `stoneChip`, `banner`, `onEnter`, …). New UI goes through these, not raw `Element` styling. Aesthetic is deliberately spare.
+- **`Kind.elm`** — the `ProposalKind` / `AbilityKind` custom types (with decoders and string encoders) at parity with the Worker's `types.ts` unions. Its own module because `SuggestCompel` / `AddBoon` already name `Msg` variants.
+- **`View.elm`** — the page shell only: `view` (which computes a `ViewContext` once and composes the ordered section list), `header`, `connectionNote`, `composer`, `logDomId`.
+- **`View/*.elm`** — one module per section card: `Session` (+ the untether banner), `Stones`, `Moves`, `Characters`, `Entities`, `Log`. Each exposes `view : ViewContext -> <props record> -> GameState -> Element Msg` (a couple take no extra props). `View/Helpers.elm` holds the `ViewContext` type and the cross-section helpers (`placeholder`, `inputAttrs`, `characterLabel`, `countProposals` / `latestProposalId`, `pendingHint` / `withdrawLink`, `stoneChip`).
+- **`Ui.elm`** — the elm-ui design system: palette, `xs`…`xl` spacing scale, type sizes, and building blocks (`page`, `card`, `primaryButton`, `stoneChip`, `banner`, `onEnter`, …), plus the `press` (in-flight gate) and `onlyWhen` list helpers. New UI goes through these, not raw `Element` styling. Aesthetic is deliberately spare.
 - **`Format.elm`** / **`Roll.elm`** — pure helpers; stone type.
 
 TypeScript (`client/src/`):
