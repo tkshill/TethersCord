@@ -24,7 +24,7 @@ Quick Elm compile check without the full bundle, from `client/`: `../node_module
 
 ### Tests
 
-There is **no test suite yet** — `client/elm.json` `test-dependencies` is empty and there is no JS test runner. `pnpm run build` (typecheck + optimized Elm compile) is the current safety net. `ROADMAP.md` section 9 plans `elm-explorations/test` + `avh4/elm-program-test`.
+There is **no test suite yet** — `client/elm.json` `test-dependencies` is empty and there is no JS test runner. `pnpm run build` (typecheck + optimized Elm compile) is the current safety net. `ROADMAP.md` section 11 plans `elm-explorations/test` + `avh4/elm-program-test`.
 
 ### Elm version
 
@@ -47,13 +47,14 @@ The whole app deploys as a single Cloudflare Worker described by the root `wrang
 State is partitioned by `tableId`, one `GameTable` Durable Object per table.
 
 - **`tableId` is `guildId-channelId`** (or just `channelId`), resolved in `client/src/main.ts`. It is deliberately **not** the Discord `instance_id`, which changes on every Activity launch and would give each session a fresh DO and blank sheets.
-- **D1** (`ttrpg-activity-db`) is the durable store: `messages`, `characters`, `sessions_auth`, `facilitators`. Schema is in `worker/migrations/`.
+- **D1** (`ttrpg-activity-db`) is the durable store: `messages`, `characters`, `sessions_auth`, `facilitators`, `game_sessions`. Schema is in `worker/migrations/`.
 - **`GameTable`** loads `messages` + `characters` from D1 on cold start into an in-memory `GameState`. The **stone pool and pending roll are the only state the DO genuinely owns** — they live in DO storage (`KEY_STONES`), not D1, because they would otherwise be lost on hibernation (~10s after a table goes quiet).
 - Because messages are read from D1 only on DO cold start, wiping the log means deleting the rows **and** cycling the DO (see `ROADMAP.md` "Flushing test messages").
 
 ### Realtime: broadcast is the source of truth
 
-- Mutations — `POST /message`, `/stones/{add-white,roll,reroll,accept}`, `/characters/:slot/{update,fate}` — return **`204` only**. They do not return a snapshot, on purpose: an HTTP body would race the WebSocket broadcast that already went out, and the two transports have no ordering.
+- Mutations — `POST /message`, `/messages/clear`, `/stones/{add-boon,commit,roll,reroll,accept}`, `/proposals/:id/{accept,reject}`, `/session/{start,end}`, `/characters/:slot/{update,fate,claim,release}` — return **`204` only**. They do not return a snapshot, on purpose: an HTTP body would race the WebSocket broadcast that already went out, and the two transports have no ordering. `/stones/commit` and the `claim`/`release` routes resolve the character sheet from the caller's Discord id (`characters.discord_user_id`), not a slot argument.
+- **Proposal model**: player-side changes to shared stone state are queued, not applied. From a player, `POST /stones/add-boon` and `/stones/commit` (pledge, `delta` ±1) append a `Proposal` to `gameState.proposals` (broadcast, and persisted in the DO's `KEY_STONES` storage); the facilitator resolves each with `/proposals/:id/{accept,reject}`. The facilitator's own `add-boon` / roll / fate actions still apply directly. `GameTable` owns this; there is no D1 table for proposals.
 - The resulting `GameState` is broadcast to every connected client over the table's WebSocket (`GET /api/table/:id/connect`, bearer token passed in `Sec-WebSocket-Protocol: bearer, <token>`).
 - `GameTable` uses **hibernatable** WebSockets (`state.acceptWebSocket`). On connect it sends the current snapshot before any `await`, so a concurrent mutation's broadcast can only arrive after it.
 - Every mutation runs through `withLock` — a promise chain that serializes DB write + in-memory update + broadcast. Durable Objects interleave concurrent requests at `await` points, so without this two mutations lost-update each other.
@@ -66,7 +67,7 @@ State is partitioned by `tableId`, one `GameTable` Durable Object per table.
 3. `worker/src/oauth-discord.ts` exchanges the code with Discord (no `redirect_uri` — Embedded App SDK codes are not issued against one), fetches `users/@me`, mints a random-UUID `sessionToken` into `sessions_auth` with an expiry, and returns `BackendAuthResult` (`sessionToken`, `accessToken`, `role`, …).
 4. Bridge calls `discordSdk.commands.authenticate({ access_token })` to finish the Activity handshake, opens the game socket, and sends `BackendAuthResult` back over `fromDiscord`.
 5. **Role**: `facilitator` if the Discord user id matches the `BOOTSTRAP_FACILITATOR_ID` var **or** is in the `facilitators` table, else `player` (`inferRole` in `oauth-discord.ts`, mirrored in `GameTable.getAuthFromToken`). Set `BOOTSTRAP_FACILITATOR_ID` in `wrangler.jsonc` (or `.dev.vars`) for a single known facilitator; seed the table for more.
-6. Every `/api/table/*` route requires `Authorization: Bearer <sessionToken>` and checks `expires_at`. Facilitator-only routes (`stones/roll`, `stones/reroll`, `stones/accept`, `characters/:slot/fate`, `messages/clear`) additionally go through the `facilitatorOnly` gate (403 otherwise).
+6. Every `/api/table/*` route requires `Authorization: Bearer <sessionToken>` and checks `expires_at`. Facilitator-only routes (`stones/{roll,reroll,accept}`, `characters/:slot/fate`, `messages/clear`, `proposals/:id/{accept,reject}`, `session/{start,end}`) additionally go through the `facilitatorOnly` gate (403 otherwise).
 
 ### Client module layout (Elm + TS interop)
 
