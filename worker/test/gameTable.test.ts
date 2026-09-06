@@ -325,6 +325,85 @@ describe("GameTable state machine", () => {
     expect(fateBySlot[0]).toBe(0); // suggester never paid out
   });
 
+  describe("NPCs and locations", () => {
+    it("creates, edits, and deletes a facilitator reference row", async () => {
+      const table = "gt-entities";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+
+      const created = await call(table, "/npcs", { token: fac, body: {} });
+      expect(created.status).toBe(204);
+
+      let state = await readState(table, fac);
+      expect(state.npcs).toHaveLength(1);
+      const id = state.npcs[0].id;
+      expect(state.npcs[0].name).toBe("");
+
+      const updated = await call(table, `/npcs/${id}/update`, {
+        token: fac,
+        body: { name: "The Archivist", notes: "holds the keys" },
+      });
+      expect(updated.status).toBe(204);
+
+      state = await readState(table, fac);
+      expect(state.npcs[0]).toMatchObject({
+        name: "The Archivist",
+        notes: "holds the keys",
+      });
+
+      const deleted = await call(table, `/npcs/${id}/delete`, { token: fac });
+      expect(deleted.status).toBe(204);
+
+      state = await readState(table, fac);
+      expect(state.npcs).toHaveLength(0);
+    });
+
+    it("keeps NPCs and locations in separate collections", async () => {
+      const table = "gt-entities-split";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+
+      await call(table, "/npcs", { token: fac, body: { name: "A guard" } });
+      await call(table, "/locations", { token: fac, body: { name: "The gate" } });
+
+      const state = await readState(table, fac);
+      expect(state.npcs.map((e) => e.name)).toEqual(["A guard"]);
+      expect(state.locations.map((e) => e.name)).toEqual(["The gate"]);
+    });
+
+    it("403s a player creating or editing a reference row", async () => {
+      const table = "gt-entities-player";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+      const { token: player } = await seedAuth();
+
+      const blocked = await call(table, "/locations", {
+        token: player,
+        body: { name: "nope" },
+      });
+      expect(blocked.status).toBe(403);
+
+      await call(table, "/npcs", { token: fac, body: {} });
+      const id = (await readState(table, fac)).npcs[0].id;
+      const blockedEdit = await call(table, `/npcs/${id}/update`, {
+        token: player,
+        body: { name: "hijack" },
+      });
+      expect(blockedEdit.status).toBe(403);
+    });
+
+    it("404s an update or delete for an unknown row", async () => {
+      const table = "gt-entities-missing";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+      const missing = crypto.randomUUID();
+
+      const upd = await call(table, `/locations/${missing}/update`, {
+        token: fac,
+        body: { name: "ghost" },
+      });
+      expect(upd.status).toBe(404);
+      const del = await call(table, `/npcs/${missing}/delete`, { token: fac });
+      expect(del.status).toBe(404);
+    });
+  });
+
   describe("proposal withdraw", () => {
     it("lets the proposer withdraw, but no one else", async () => {
       const table = "gt-withdraw";

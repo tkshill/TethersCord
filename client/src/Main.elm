@@ -85,6 +85,7 @@ init flags =
       , error = Nothing
       , confirming = Nothing
       , editingSlot = Nothing
+      , editingEntity = Nothing
       , selectedSlot = 0
       , logAtBottom = True
       , newSessionGoal = ""
@@ -420,6 +421,53 @@ update msg model =
         CharacterUpdated (Err _) ->
             fail "Failed to update character sheet." model
 
+        AddEntity kind ->
+            withAuth model (\auth -> Effect.PostCreateEntity auth kind)
+
+        EntityFieldInput kind entityId fieldTag value ->
+            ( { model
+                | gameState =
+                    Maybe.map
+                        (mapEntityAtId kind entityId (setEntityField fieldTag value))
+                        model.gameState
+                , editingEntity = Just entityId
+              }
+            , Effect.None
+            )
+
+        EntityFieldBlur kind entityId ->
+            let
+                released =
+                    if model.editingEntity == Just entityId then
+                        { model | editingEntity = Nothing }
+
+                    else
+                        model
+            in
+            case ( model.auth, model.gameState |> Maybe.andThen (findEntityAtId kind entityId) ) of
+                ( Just auth, Just entity ) ->
+                    ( released, Effect.PostUpdateEntity auth kind entity )
+
+                _ ->
+                    ( released, Effect.None )
+
+        DeleteEntity kind entityId ->
+            let
+                released =
+                    if model.editingEntity == Just entityId then
+                        { model | editingEntity = Nothing }
+
+                    else
+                        model
+            in
+            withAuth released (\auth -> Effect.PostDeleteEntity auth kind entityId)
+
+        EntityMutated (Ok ()) ->
+            ( model, Effect.None )
+
+        EntityMutated (Err _) ->
+            fail "Failed to update the table entry." model
+
         WsGameStateRaw value ->
             case Decode.decodeValue Api.decodeGameState value of
                 Ok gs ->
@@ -457,6 +505,13 @@ whole state wholesale would wipe the field under the cursor.
 -}
 applyServerState : Model -> GameState -> GameState
 applyServerState model incoming =
+    incoming
+        |> keepEditedCharacter model
+        |> keepEditedEntity model
+
+
+keepEditedCharacter : Model -> GameState -> GameState
+keepEditedCharacter model incoming =
     case ( model.editingSlot, model.gameState ) of
         ( Just slot, Just local ) ->
             case findCharacterAtSlot slot local of
@@ -468,6 +523,58 @@ applyServerState model incoming =
 
         _ ->
             incoming
+
+
+{-| Keep the NPC / location row the facilitator is mid-edit on, the same way
+`keepEditedCharacter` protects a sheet under the cursor.
+-}
+keepEditedEntity : Model -> GameState -> GameState
+keepEditedEntity model incoming =
+    case ( model.editingEntity, model.gameState ) of
+        ( Just entityId, Just local ) ->
+            case
+                ( findEntityAtId Npc entityId local
+                , findEntityAtId Location entityId local
+                )
+            of
+                ( Just localEntity, _ ) ->
+                    mapEntityAtId Npc entityId (\_ -> localEntity) incoming
+
+                ( _, Just localEntity ) ->
+                    mapEntityAtId Location entityId (\_ -> localEntity) incoming
+
+                _ ->
+                    incoming
+
+        _ ->
+            incoming
+
+
+findEntityAtId : EntityKind -> String -> GameState -> Maybe TableEntity
+findEntityAtId kind entityId gs =
+    entitiesForKind kind gs |> List.filter (\e -> e.id == entityId) |> List.head
+
+
+mapEntityAtId : EntityKind -> String -> (TableEntity -> TableEntity) -> GameState -> GameState
+mapEntityAtId kind entityId f gs =
+    let
+        apply entities =
+            List.map
+                (\e ->
+                    if e.id == entityId then
+                        f e
+
+                    else
+                        e
+                )
+                entities
+    in
+    case kind of
+        Npc ->
+            { gs | npcs = apply gs.npcs }
+
+        Location ->
+            { gs | locations = apply gs.locations }
 
 
 findCharacterAtSlot : Int -> GameState -> Maybe CharacterSheet

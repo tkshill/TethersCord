@@ -204,4 +204,56 @@ suite =
                            )
                         |> Expect.equal ( Effect.None, Just 1, Just [ "Bea" ] )
             ]
+        , describe "NPCs and locations"
+            [ test "AddEntity posts a create for that kind with auth" <|
+                \_ ->
+                    Main.update (AddEntity Types.Npc) ready
+                        |> Tuple.second
+                        |> Expect.equal (Effect.PostCreateEntity Fixtures.playerAuth Types.Npc)
+            , test "EntityFieldInput edits the local row and marks it as being edited" <|
+                \_ ->
+                    let
+                        gs =
+                            Fixtures.gameState
+
+                        seeded =
+                            { ready
+                                | gameState =
+                                    Just { gs | npcs = [ { id = "n1", name = "", notes = "" } ] }
+                            }
+                    in
+                    Main.update (EntityFieldInput Types.Npc "n1" Types.EntityNameField "Warden") seeded
+                        |> (\( next, eff ) ->
+                                ( eff
+                                , next.editingEntity
+                                , next.gameState |> Maybe.map (.npcs >> List.map .name)
+                                )
+                           )
+                        |> Expect.equal ( Effect.None, Just "n1", Just [ "Warden" ] )
+            , test "EntityFieldBlur releases the edit lock and posts the row" <|
+                \_ ->
+                    let
+                        gs =
+                            Fixtures.gameState
+
+                        row =
+                            { id = "l1", name = "The Gate", notes = "locked" }
+
+                        seeded =
+                            { ready
+                                | editingEntity = Just "l1"
+                                , gameState = Just { gs | locations = [ row ] }
+                            }
+                    in
+                    Main.update (EntityFieldBlur Types.Location "l1") seeded
+                        |> (\( next, eff ) -> ( next.editingEntity, eff ))
+                        |> Expect.equal
+                            ( Nothing, Effect.PostUpdateEntity Fixtures.playerAuth Types.Location row )
+            , test "DeleteEntity clears an edit lock on that row and posts a delete" <|
+                \_ ->
+                    Main.update (DeleteEntity Types.Npc "n1") { ready | editingEntity = Just "n1" }
+                        |> (\( next, eff ) -> ( next.editingEntity, eff ))
+                        |> Expect.equal
+                            ( Nothing, Effect.PostDeleteEntity Fixtures.playerAuth Types.Npc "n1" )
+            ]
         ]

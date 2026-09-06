@@ -7,6 +7,8 @@ module Api exposing
     , postClaimSlot
     , postClearMessages
     , postCommitBoon
+    , postCreateEntity
+    , postDeleteEntity
     , postEndSession
     , postFate
     , postMessage
@@ -17,6 +19,7 @@ module Api exposing
     , postStartSession
     , postStones
     , postSuggestCompel
+    , postUpdateEntity
     , postUseAbility
     , postUseFloatingBoon
     , postWithdrawProposal
@@ -36,7 +39,7 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 import Roll exposing (Stone(..))
 import Time
-import Types exposing (Auth, CharacterSheet, CommittedBoon, FloatingBoon, Flags, GameState, Overcome, PendingRoll, Proposal, Session, SessionSummary, UsedAbility, decodeRole)
+import Types exposing (Auth, CharacterSheet, CommittedBoon, EntityKind, FloatingBoon, Flags, GameState, Overcome, PendingRoll, Proposal, Session, SessionSummary, TableEntity, UsedAbility, decodeRole, entityKindPath)
 
 
 
@@ -373,6 +376,57 @@ postCancelOvercome flags auth toMsg =
         }
 
 
+{-| Facilitator-only: add a blank NPC / location row for the table.
+-}
+postCreateEntity : Flags -> Auth -> EntityKind -> (Result Http.Error () -> msg) -> Cmd msg
+postCreateEntity flags auth kind toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth ++ [ jsonContentType ]
+        , url = tableUrl flags ("/" ++ entityKindPath kind)
+        , body = Http.jsonBody (Encode.object [])
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+{-| Facilitator-only: write an NPC / location row's name and notes.
+-}
+postUpdateEntity : Flags -> Auth -> EntityKind -> TableEntity -> (Result Http.Error () -> msg) -> Cmd msg
+postUpdateEntity flags auth kind entity toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth ++ [ jsonContentType ]
+        , url = tableUrl flags ("/" ++ entityKindPath kind ++ "/" ++ entity.id ++ "/update")
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "name", Encode.string entity.name )
+                    , ( "notes", Encode.string entity.notes )
+                    ]
+                )
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+{-| Facilitator-only: remove an NPC / location row.
+-}
+postDeleteEntity : Flags -> Auth -> EntityKind -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postDeleteEntity flags auth kind entityId toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth
+        , url = tableUrl flags ("/" ++ entityKindPath kind ++ "/" ++ entityId ++ "/delete")
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
 jsonContentType : Http.Header
 jsonContentType =
     Http.header "Content-Type" "application/json"
@@ -463,6 +517,14 @@ decodeOvercome =
     Decode.map Overcome (Decode.field "targetSlot" Decode.int)
 
 
+decodeTableEntity : Decode.Decoder TableEntity
+decodeTableEntity =
+    Decode.map3 TableEntity
+        (Decode.field "id" Decode.string)
+        (Decode.field "name" Decode.string)
+        (Decode.field "notes" Decode.string)
+
+
 decodeSessionSummary : Decode.Decoder SessionSummary
 decodeSessionSummary =
     Decode.map5 SessionSummary
@@ -531,3 +593,5 @@ decodeGameState =
         |> andMap (Decode.field "overcome" (Decode.nullable decodeOvercome))
         |> andMap (Decode.field "floatingBoons" (Decode.list decodeFloatingBoon))
         |> andMap (Decode.field "usedAbilities" (Decode.list decodeUsedAbility))
+        |> andMap (Decode.field "npcs" (Decode.list decodeTableEntity))
+        |> andMap (Decode.field "locations" (Decode.list decodeTableEntity))

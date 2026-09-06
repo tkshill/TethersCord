@@ -4,6 +4,8 @@ module Types exposing
     , CharacterSheet
     , CommittedBoon
     , Connection(..)
+    , EntityField(..)
+    , EntityKind(..)
     , FloatingBoon
     , Flags
     , GameState
@@ -16,12 +18,16 @@ module Types exposing
     , Role(..)
     , Session
     , SessionSummary
+    , TableEntity
     , UsedAbility
     , abilityUsed
     , committedBoonsForSlot
     , decodeRole
+    , entitiesForKind
+    , entityKindPath
     , roleLabel
     , setCharacterField
+    , setEntityField
     )
 
 {-| Shared data types for the Activity client.
@@ -243,6 +249,59 @@ setCharacterField field value character =
             { character | notes = value }
 
 
+{-| A facilitator-owned reference row: an NPC or a location. Broadcast to the
+whole table; only the facilitator may edit it. First cut is name + notes.
+-}
+type alias TableEntity =
+    { id : String
+    , name : String
+    , notes : String
+    }
+
+
+{-| Which reference collection a row belongs to. The constructor doubles as the
+route segment (`npcs` / `locations`) via `entityKindPath`.
+-}
+type EntityKind
+    = Npc
+    | Location
+
+
+entityKindPath : EntityKind -> String
+entityKindPath kind =
+    case kind of
+        Npc ->
+            "npcs"
+
+        Location ->
+            "locations"
+
+
+entitiesForKind : EntityKind -> GameState -> List TableEntity
+entitiesForKind kind gs =
+    case kind of
+        Npc ->
+            gs.npcs
+
+        Location ->
+            gs.locations
+
+
+type EntityField
+    = EntityNameField
+    | EntityNotesField
+
+
+setEntityField : EntityField -> String -> TableEntity -> TableEntity
+setEntityField field value entity =
+    case field of
+        EntityNameField ->
+            { entity | name = value }
+
+        EntityNotesField ->
+            { entity | notes = value }
+
+
 type alias GameState =
     { sessionId : String
     , messages : List Message
@@ -256,6 +315,8 @@ type alias GameState =
     , overcome : Maybe Overcome
     , floatingBoons : List FloatingBoon
     , usedAbilities : List UsedAbility
+    , npcs : List TableEntity
+    , locations : List TableEntity
     }
 
 
@@ -285,6 +346,10 @@ type alias Model =
     -- Slot the user is currently typing into, if any. Server pushes must not
     -- overwrite a sheet while it is being edited.
     , editingSlot : Maybe Int
+
+    -- Id of the NPC / location row the facilitator is currently typing into, if
+    -- any. Same purpose as `editingSlot` for the reference cards.
+    , editingEntity : Maybe String
 
     -- Which character sheet's tab is open. Sheets are shown one at a time.
     , selectedSlot : Int
@@ -383,6 +448,11 @@ type Msg
     | FateIncrement Int
     | FateDecrement Int
     | CharacterUpdated (Result Http.Error ())
+    | AddEntity EntityKind
+    | EntityFieldInput EntityKind String EntityField String
+    | EntityFieldBlur EntityKind String
+    | DeleteEntity EntityKind String
+    | EntityMutated (Result Http.Error ())
     | WsGameStateRaw Decode.Value
     | AuthFailed String
     | GotTimeZone Time.Zone

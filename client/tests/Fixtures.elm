@@ -78,6 +78,8 @@ gameState =
     , overcome = Nothing
     , floatingBoons = []
     , usedAbilities = []
+    , npcs = []
+    , locations = []
     }
 
 
@@ -94,6 +96,7 @@ model =
     , error = Nothing
     , confirming = Nothing
     , editingSlot = Nothing
+    , editingEntity = Nothing
     , selectedSlot = 0
     , logAtBottom = True
     , newSessionGoal = ""
@@ -148,5 +151,13 @@ snapshotJson =
           , "createdAt": 1700000002000 }
         ]
     , "usedAbilities": [ { "slot": 1, "kinds": ["help-out", "add-detail"] } ]
+    , "npcs":
+        [ { "id": "n1", "name": "The Archivist", "notes": "keeps the vault keys"
+          , "createdAt": 1700000003000, "updatedAt": 1700000004000 }
+        ]
+    , "locations":
+        [ { "id": "l1", "name": "The Vault", "notes": ""
+          , "createdAt": 1700000005000, "updatedAt": 1700000005000 }
+        ]
     }
     """
