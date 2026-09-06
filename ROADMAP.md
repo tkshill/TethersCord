@@ -819,45 +819,50 @@ record-props layout is what the tooltip and glossary work builds on.
       change, the client bundle and both test suites are the gate. Structural
       field labels that are not game vocabulary ("Name", "Notes") stay inline.
 
-### 21.2 — Glossary content — `Copy.Term`
+### 21.2 — Glossary content — `Copy.Terms` — done
 
-- [ ] **`Term = { term : String, short : String, long : String }`** and
-      `terms : List Term` in `Copy.elm` (or `client/src/Copy/Terms.elm` if that
-      module grows large). `short` is a one-line gloss for the tooltip; `long` is
-      two to three sentences for the glossary card. One definition, two surfaces.
-- [ ] Cover, grouped in order of play: **Roles** — Table, Facilitator, Player;
+- [x] **`Term = { term : String, short : String, long : String }`** with
+      `terms` / `groupedTerms` / `termShort` in `client/src/Copy/Terms.elm` (its
+      own module — pure data, and large). `short` is a one-line gloss for the
+      tooltip; `long` is two to three sentences for the glossary card. One
+      definition, two surfaces.
+- [x] Covered, grouped in order of play: **Roles** — Table, Facilitator, Player;
       **The session** — Session, Goal, Session pool, Carry; **Stones & rolling**
       — Stone, Boon, Bane, The bag, Roll, Overcome, Highlight, Pledge, Proposal;
       **Aspects & growth** — Aspect, Archetype, Desire, Quest, Condition,
-      Untether / reckoning, Frenzy; **Moves & compels** — Compel, Accept Compel,
-      Suggest Compel, Floating boon, Help Out, Add a Detail, Gain Insight.
-- [ ] Definitions track `CLAUDE.md`, section 19, and `DESIGN_PRINCIPLES.md`; no
-      numbers in the prose (principle 6) beyond the fixed payouts the UI already
-      names.
+      Untether, Frenzy; **Moves & compels** — Compel, Accept Compel, Suggest
+      Compel, Floating boon, Help Out, Add a Detail, Gain Insight.
+- [x] `CopyTermsTest` pins that every term is filled in, names are unique, and
+      the flat list matches the grouped one. The wording is meant to be revised
+      freely.
 
-### 21.3 — In-place tooltips
+### 21.3 — In-place tooltips — done
 
-- [ ] **`Ui.withTip : String -> Element msg -> Element msg`** — adds
-      `Element.htmlAttribute (Html.Attributes.title tip)`. No `Model` state.
-- [ ] **`Ui.sectionTitleTip : Term -> Element msg`** — `sectionTitle` with the
-      term's `short` as its `title`. Card titles that are game terms ("Session",
-      "Stones", "Moves") use it; plain titles stay on `sectionTitle`.
-- [ ] Apply `withTip` to the highest-value in-card term labels: the aspect field
-      labels (Archetype / Desire / Quest), "Highlight", "Overcome — <name>",
-      "Session pool", "Floating boons", the once-per-session move buttons. Tip
-      text is the matching `Term.short` from 21.2.
-- [ ] Known limit: `title=` is hover-only — no touch. The glossary card below is
-      the tap path; ship both.
+- [x] **`Ui.withTip : String -> Element msg -> Element msg`** — adds
+      `Element.htmlAttribute (Html.Attributes.title …)`. No `Model` state; an
+      empty gloss adds nothing.
+- [x] **`View.Helpers.glossaryTitle` / `tip` / `tipAttrs`** — pair a label with
+      its `Copy.Terms.termShort`. `glossaryTitle` for the Session / Stones /
+      Characters card titles; `tip` wraps inline labels and buttons; `tipAttrs`
+      drops the `title` attribute straight onto a full-width input so its layout
+      is untouched. (No `sectionTitleTip` taking a `Term` — that would pull the
+      glossary into `Ui`, which stays a leaf.)
+- [x] Applied to the aspect fields, Condition, "Highlight", "Overcome — <name>",
+      "Session pool", "Floating boons", and the once-per-session / compel move
+      buttons.
+- [x] Known limit: `title=` is hover-only — no touch. The glossary card below is
+      the tap path; both shipped.
 
-### 21.4 — "How to play" glossary card
+### 21.4 — "How to play" glossary card — done
 
-- [ ] **`client/src/View/Guide.elm`** — a section card, **collapsed by
-      default**, rendering `Copy.terms` grouped by the 21.2 headings, each row
-      `term — long`. Same `Ui.card` / `Ui.sectionTitle` shell as the other
-      sections; the header row is a ▸ / ▾ toggle.
-- [ ] `Model.guideExpanded : Bool` (default `False` in `Main.init`) and a
+- [x] **`client/src/View/Guide.elm`** — a section card, collapsed by default,
+      rendering `Copy.Terms.groupedTerms` as `term — long` under each heading.
+      Same `Ui.card` shell as the other sections; the header row is a ▸ / ▾
+      toggle.
+- [x] `Model.guideExpanded : Bool` (default `False` in `Main.init`) and a
       `ToggleGuide` message; `update` stays pure — it yields `Effect.None`.
-- [ ] Slotted **last** in `View.view`'s section list, after the Log.
+      `UpdateTest` pins the toggle.
+- [x] Slotted last in `View.view`'s section list, after the Log.
 
 ### 21.5 — Aspect examples
 

@@ -244,6 +244,16 @@ suite =
                 \_ ->
                     Main.update (SelectSlot 2) ready
                         |> Expect.equal ( { ready | selectedSlot = 2 }, Effect.None )
+            , test "ToggleGuide flips the guide open and shut, no effect" <|
+                \_ ->
+                    let
+                        opened =
+                            Main.update ToggleGuide ready |> Tuple.first
+                    in
+                    ( opened.guideExpanded
+                    , Main.update ToggleGuide opened
+                    )
+                        |> Expect.equal ( True, ( ready, Effect.None ) )
             , test "CharacterFieldInput edits local state, marks the slot dirty, and arms the debounced save" <|
                 \_ ->
                     Main.update (CharacterFieldInput 1 Types.NameField "Bea") ready

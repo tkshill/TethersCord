@@ -113,6 +113,7 @@ model =
     , proposalDrafts = Dict.empty
     , loadingHistory = False
     , noMoreHistory = False
+    , guideExpanded = False
     , connection = Connected
     , gameStateAttempts = 0
     , timeZone = Time.utc

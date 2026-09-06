@@ -120,6 +120,7 @@ init flags =
       , proposalDrafts = Dict.empty
       , loadingHistory = False
       , noMoreHistory = False
+      , guideExpanded = False
       , connection = Connected
       , gameStateAttempts = 0
       , timeZone = Time.utc
@@ -517,6 +518,9 @@ update msg model =
 
         DismissError ->
             ( { model | error = Nothing }, Effect.None )
+
+        ToggleGuide ->
+            ( { model | guideExpanded = not model.guideExpanded }, Effect.None )
 
         WsStatusChanged raw ->
             ( { model | connection = connectionFromString raw }, Effect.None )
