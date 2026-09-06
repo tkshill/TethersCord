@@ -3,6 +3,7 @@
 import type { ExecutionContext } from "@cloudflare/workers-types";
 import type { Env } from "./types";
 import { GameTable } from "./GameTable";
+import { pruneOldMessages } from "./maintenance";
 import { handleDiscordExchange, pruneExpiredSessions } from "./oauth-discord";
 
 export { GameTable };
@@ -56,5 +57,6 @@ export default {
     ctx: ExecutionContext,
   ): Promise<void> {
     ctx.waitUntil(pruneExpiredSessions(env));
+    ctx.waitUntil(pruneOldMessages(env));
   },
 };

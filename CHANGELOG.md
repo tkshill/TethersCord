@@ -31,6 +31,14 @@ version yet, so headings are dates.
 
 ### Changed
 
+- Storage and write economy (roadmap section 16):
+  - **`saveStoneState` skips the write when nothing changed.** The stone slice
+    is serialised and compared to the last write (seeded from the cold-start
+    load); a byte-identical slice is not re-persisted, so a chat post and other
+    stone-inert mutations no longer rewrite the `KEY_STONES` blob.
+  - **The hourly cron now prunes old messages.** `pruneOldMessages`
+    (`worker/src/maintenance.ts`) deletes `messages` rows older than 30 days so
+    the table cannot grow unbounded toward the account SQLite cap.
 - Snappier realtime updates (roadmap section 15):
   - **The connect snapshot and every broadcast now carry only the last 50
     messages** (`MESSAGE_WINDOW`), not 200 — a smaller payload and a smaller
