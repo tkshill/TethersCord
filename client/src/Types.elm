@@ -9,6 +9,7 @@ module Types exposing
     , Message
     , Model
     , Msg(..)
+    , Overcome
     , PendingRoll
     , Proposal
     , Role(..)
@@ -85,6 +86,14 @@ type alias PendingRoll =
     { chosen : List Stone
     , rest : List Stone
     }
+
+
+{-| An open overcome: the facilitator has framed a risky attempt and named one
+character (`targetSlot`) to resolve it. While it is set, that character's player
+may Roll and Reroll, and a Reroll costs the target boons.
+-}
+type alias Overcome =
+    { targetSlot : Int }
 
 
 {-| Boons a character has pledged into the next roll. Spent from their `fate`
@@ -202,6 +211,7 @@ type alias GameState =
     , session : Maybe Session
     , characters : List CharacterSheet
     , sessionHistory : List SessionSummary
+    , overcome : Maybe Overcome
     }
 
 
@@ -288,6 +298,9 @@ type Msg
     | RerollStones
     | AcceptRoll
     | StonesUpdated (Result Http.Error ())
+    | StartOvercome Int
+    | CancelOvercome
+    | OvercomeUpdated (Result Http.Error ())
     | CharacterFieldInput Int CharacterField String
     | CharacterFieldBlur Int
     | FateIncrement Int

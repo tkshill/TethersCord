@@ -237,18 +237,21 @@ glance.
 The rules layer over the roll mechanic. An **overcome** is the attempt to do
 something risky; everything else here is how the other players feed into it.
 
-### The overcome
+### The overcome — done
 
-- [ ] Only the facilitator can start an overcome (section 5), and it names one
-      target player.
-- [ ] Any player may still add a boon to the pool (`add-boon`) while an overcome
-      is open, but only the **target** player can Roll or Reroll to resolve it.
-      This narrows section 4's "anyone can roll" behaviour to the target for the
-      duration of an overcome.
-- [ ] A Reroll costs the target player **2 boons**, deducted when they reroll
-      (section 4's Reroll is free today).
-- [ ] Overcome state — target slot, open/resolved, the result — lives with the
-      pending roll in Durable Object storage and is broadcast in `GameState`.
+- [x] Facilitator-only `POST /overcome/start` (`{ slot }`) names one character as
+      the target; `/overcome/cancel` calls it off. Both `facilitatorOnly`.
+- [x] `/stones/{roll,reroll}` move from `facilitatorOnly` to a `rollGate`: the
+      facilitator always, plus the target's player while an overcome is open.
+      `add-boon` was never gated, so any player still feeds the pool.
+- [x] A Reroll while an overcome is open deducts `REROLL_COST` (2) boons from the
+      target's `fate`, and is refused if they hold fewer. A plain (non-overcome)
+      Reroll stays facilitator-only and free.
+- [x] `gameState.overcome` (`{ targetSlot } | null`) lives in `KEY_STONES`
+      storage next to `pendingRoll` and is broadcast in `GameState`. "Resolved"
+      is modelled as cleared — accepting the roll (or `/overcome/cancel`) sets it
+      back to `null` — with the verdict (succeeded / partial / failed) written to
+      the log rather than kept as state.
 
 ### Special abilities — once per session each
 
