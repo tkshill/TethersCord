@@ -1,3 +1,7 @@
 # Copy to `.dev.vars` (this file's directory, next to wrangler.jsonc) for `wrangler dev`.
 # In production set the secret with: wrangler secret put DISCORD_CLIENT_SECRET
 DISCORD_CLIENT_SECRET=replace-with-your-discord-client-secret
+
+# Optional: your Discord user id, to run local dev as the facilitator without
+# seeding the `facilitators` table. Also settable in wrangler.jsonc `vars`.
+BOOTSTRAP_FACILITATOR_ID=

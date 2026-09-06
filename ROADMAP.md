@@ -49,45 +49,276 @@ with [`mdgriffith/elm-ui`](https://package.elm-lang.org/packages/mdgriffith/elm-
 
 ### Follow-ups deferred from this pass
 
-- [ ] Load a real UI typeface (Inter) — `Ui.sans` names it but nothing is
-      linked, so it falls back to the system stack. Add a `@font-face` or a
-      Google Fonts `<link>` in `client/index.html`.
-- [ ] The log's scroll-to-bottom is unconditional on every snapshot. Skip it
-      when the viewer has scrolled up to read history.
+- [x] Load a real UI typeface (Inter). The latin subset ships as a single
+      variable `.woff2` under `client/public/fonts/`, copied to the asset root
+      by `client/scripts/build.mjs` and declared with `@font-face` in
+      `client/index.html`. Self-hosted rather than pulled from Google Fonts so
+      it loads under Discord's Activity CSP; `Ui.sans` keeps the system
+      fallback, so a failed load degrades quietly.
+- [x] The log only auto-scrolls to the bottom while the viewer is already
+      there. `Model.logAtBottom` tracks it, fed by `Ui.onScrolledToBottom` on
+      the log container (`LogScrolled`); posting a message snaps back down.
 
-## 3. Message log hygiene
+## 3. Stone model — favourable vs. negative outcomes — done
 
-- [ ] Facilitator-only `POST /api/table/:id/messages/clear` route in the Worker
-      that deletes the session's rows from D1 **and** resets the Durable
-      Object's in-memory `gameState.messages`, then broadcasts. This is the
-      supported way to wipe a log; see "Flushing test messages" below for the
-      one-off manual path.
-- [ ] Visually separate system/log lines (rolls) from player chat. Consider a
-      `kind` column on `messages` (`chat` | `system`) so the client does not
-      have to pattern-match on content.
-- [ ] Day dividers in the log now that timestamps carry the date and a table
-      spans multiple real-world days.
+A stone now names its outcome: `Boon` is favourable, `Bane` is not. The rename
+runs end to end — `Roll.Stone` and its `Api.elm` decoder, `StoneKind` and its
+`"Boon" | "Bane"` wire strings, `INITIAL_STONE_POOL`, `describeStones`. The
+`StoneState` in Durable Object storage under `KEY_STONES` is migrated as it
+loads: `GameTable.loadStoneState` folds legacy `WhiteStone` / `BlackStone`
+values (and a missing `committedBoons`) into the new shape, idempotently.
+Historical log rows ("Rolled: White, Black") are left as plain text.
 
-## 4. Session / campaign structure
+`Ui.stoneChip` is now a filled circle with the word captioned beneath it rather
+than a colour-swatch pill.
 
-- [ ] "Start session" / "end session" markers a facilitator can drop, so the
-      log reads as distinct game days.
+## 4. Fate as a personal positive-stone pool — done
+
+The game is loosely Fate-based, but runs on **boon stones a character holds and
+spends** rather than one fate point. `CharacterSheet.fate` is kept as the
+persisted integer (the D1 column is unchanged) but is now surfaced as "Boons"
+and treated as that character's stock of favourable stones.
+
+How a roll resolves, as built:
+
+- The bag starts from `INITIAL_STONE_POOL` — two Boon, two Bane — every roll.
+- `POST /stones/add-boon` (was `add-white`) adds a Boon to the shared table
+  pool; it persists until a roll is accepted.
+- A character pledges boons into the next roll with `POST /stones/commit`
+  (`{ slot, delta }`), clamped to what they hold. Pledges are tracked in
+  `GameState.committedBoons` (`{ slot, count }[]`, persisted in `StoneState`)
+  and shown per sheet as "Pledged".
+- `RollStones` / `RerollStones` draw two stones at random from
+  `stonePool + (pledged Boons)`. More pledged boons means better odds; a reroll
+  keeps the pledges.
+- `AcceptRoll` spends each character's pledged boons from `fate` in D1, then
+  resets the pool to the base four and clears all pledges.
+
+Follow-ups:
+
+- [ ] Facilitator-set difficulty: let the facilitator add Bane stones to a roll
+      from the fiction instead of the fixed two. Deferred — the fixed two Bane
+      stay for now.
+- [x] Bind a character sheet to a Discord user. `characters.discord_user_id`
+      (migration `0006`, partial-unique per table); a player claims an unclaimed
+      sheet with `POST /characters/:slot/claim` and drops it with `/release`
+      (owner or facilitator). `/stones/commit` now takes only `{ delta }` and
+      resolves the slot from the caller's claimed sheet — no slot picker.
+      `/characters/:slot/update` is owner-or-facilitator (or anyone while the
+      sheet is unclaimed); the client renders non-editable sheets read-only.
+- [x] Where boons are earned: the sheet's boon `+` / `−` is now facilitator-only
+      (section 5), so the facilitator grants boons. Player-initiated gains will
+      come through the proposal flow (moves like Accept Compel).
+
+## 5. Facilitator identity and the proposal model
+
+Role is decided at auth time: `facilitator` if the Discord user id matches
+`BOOTSTRAP_FACILITATOR_ID` **or** appears in the `facilitators` table, otherwise
+`player` (`inferRole` in `oauth-discord.ts`, mirrored in
+`GameTable.getAuthFromToken`).
+
+The interface is **facilitator-driven**: the facilitator acts on shared game
+state directly; a player who wants to change shared state makes a *proposal*
+that the facilitator accepts or rejects, and only an accepted proposal updates
+the broadcast `GameState`. Players still edit their own character sheets
+directly — sheets are not shared state in that sense.
+
+### Done
+
+- [x] `BOOTSTRAP_FACILITATOR_ID` (a `wrangler.jsonc` var, overridable in
+      `.dev.vars`) names the facilitator without a DB write. **Set it to your
+      Discord user id — with it empty and no `facilitators` rows, everyone is a
+      player and nobody can roll, grant boons, or clear the log.**
+- [x] Facilitator-only routes, enforced in the Worker with a `facilitatorOnly`
+      gate returning 403: `stones/roll`, `stones/reroll`, `stones/accept`,
+      `characters/:slot/fate`, `messages/clear`, and `proposals/:id/{accept,reject}`.
+- [x] Role-gated `View`: `isFacilitator model` hides the Roll / Reroll / Accept
+      buttons, the boon `+` / `−`, and Clear log from players. The pool, the
+      pending roll, and a player's own pledge control stay visible.
+
+### The proposal flow — done
+
+- [x] `GameState.proposals` — a `Proposal` list in the Durable Object's stone
+      storage (`{ id, kind, proposerId, proposerName, slot, delta, createdAt }`),
+      broadcast with the rest of the state.
+- [x] Every player-side change to shared stone state is a proposal, one per
+      click: `stones/add-boon` (player) and `stones/commit` (pledge, `delta` ±1)
+      write a proposal instead of mutating. The facilitator's own `add-boon`
+      still applies directly.
+- [x] `proposals/:id/accept` applies the effect clamped to current state
+      (`add-boon` → one Boon in the pool; `pledge` → adjust that slot's
+      `committedBoons`), `/reject` just drops it; both leave the queue and
+      broadcast. Accepting a roll clears any unresolved proposals.
+- [x] Client: a facilitator-only **Proposals** panel in the stones card lists
+      each as "*proposer* — *what*" with Accept / Reject; the proposer sees a
+      muted "(n pending)" next to the control they used (no optimistic apply).
+
+### Deferred
+
+- [ ] **Self-serve claiming** — first authenticated user at a `tableId` with no
+      facilitator claims it, stored per-table (new migration). Needs a hand-off
+      path; obvious failure mode is a player launching first. Not needed while
+      `BOOTSTRAP_FACILITATOR_ID` covers a single known facilitator.
+
+## 6. Message log hygiene
+
+- [x] Facilitator-only `POST /api/table/:id/messages/clear` route
+      (`handleClearMessages`): deletes the session's rows from D1, drops the
+      Durable Object's in-memory `gameState.messages`, broadcasts. Surfaced as a
+      "Clear log" button in the log card for the facilitator. This is the
+      supported way to wipe a log; "Flushing test messages" below is the manual
+      fallback.
+- [x] Tell speakers apart by colour, not by a system/chat split. The play group
+      is voice-first, so the log is almost all move and event lines rather than
+      chat; a `kind` column was not worth it. `Ui.speakerColor` gives the
+      facilitator and each player (in first-speak order) a stable name colour
+      via `View.speakerColors`.
+- [x] Day dividers: `Ui.divider` between messages whenever the calendar date
+      changes (`View.logRows`); rows now show only `HH:MM` (`Format.clock`)
+      since the divider carries the date.
+
+## 7. Session / campaign structure
+
+A **session** is one game day with a goal the players work toward, and it carries
+its own stone pool that fills up from the rolls made during it.
+
+- [x] **Session goal** in a `game_sessions` D1 row (`id`, `session_id`, `goal`,
+      `started_at`, `ended_at`, `outcome`; migration `0007`). Shown to the whole
+      table in a "Session" card for the session's duration.
+- [x] **Start / end session** — facilitator-only `POST /session/start`
+      (`{ goal }`) and `/session/end`. Start opens the goal and a fresh session
+      pool; end runs the session roll. Each writes a system line to the log.
+- [x] **Session stone pool** — separate from the per-roll bag, starts at two
+      Boon + two Bane, held in the Durable Object's stone storage. Each accepted
+      roll adds one of that roll's two result stones, chosen at random.
+- [x] **Session roll** — `/session/end` draws two from the session pool: two
+      Boon → `met`, one → `partial`, none → `failed`. Written to
+      `game_sessions.outcome` and logged. (The met/partial/failed thresholds are
+      a placeholder pending playtesting.)
 - [ ] Trim or paginate history — the DO currently loads the last 200 messages
       and the client keeps 200. Fine for now; revisit if a campaign outgrows it.
+- [ ] Surface past `game_sessions` rows somewhere (a session history view).
 
-## 5. Connection polish
+## 8. Connection polish
 
-- [ ] Surface WebSocket disconnect/reconnect state in the UI.
-- [ ] Retry `getGameState` on transient failure instead of parking on
-      "Failed to load game state."
+- [x] WebSocket state in the UI. `GameSocket.ts` reports `connected` /
+      `reconnecting` / `offline` / `rejected` over a new `wsStatus` port;
+      `Model.connection` drives a one-line note above the status banner (nothing
+      shown while connected).
+- [x] Retry the initial `getGameState` up to three times, two seconds apart
+      (`Process.sleep` + `RetryGetGameState`), before parking on "Failed to load
+      game state." The live socket remains the real source of state.
+
+## 9. Character sheet layout and stone visualisation
+
+The three sheets in a `wrappedRow` and the roll panel's text-and-number
+summaries are getting dense. This pass is about seeing the current roll at a
+glance.
+
+- [ ] **Tabbed character sheets.** Show one sheet at a time behind a tab strip
+      (or selector) so each field has room, instead of three cramped columns
+      that collapse to a stack when narrow.
+- [ ] **Boons at the top of the sheet.** Move the "Boons" and "Pledged" rows
+      above the text fields, so a player sees their spendable stones in the
+      context of the current roll.
+- [ ] **Render a player's boons as circles**, not a bare count with `+` / `−`,
+      reusing the `Ui.stoneChip` shape.
+- [ ] **Mark the pledged ones.** Show which of a player's boon circles are
+      pledged into the current roll with a visual change to those circles — a
+      fill texture, an extra ring, or a centre mark — rather than the separate
+      "Pledged" number.
+- [ ] **Pledged boons as shapes in the pool.** In the roll panel, draw pledged
+      boons as extra stone shapes in the bag rather than the
+      "(N boon pledged)" caption.
+
+## 10. The overcome action and player moves
+
+The rules layer over the roll mechanic. An **overcome** is the attempt to do
+something risky; everything else here is how the other players feed into it.
+
+### The overcome
+
+- [ ] Only the facilitator can start an overcome (section 5), and it names one
+      target player.
+- [ ] Any player may still add a boon to the pool (`add-boon`) while an overcome
+      is open, but only the **target** player can Roll or Reroll to resolve it.
+      This narrows section 4's "anyone can roll" behaviour to the target for the
+      duration of an overcome.
+- [ ] A Reroll costs the target player **2 boons**, deducted when they reroll
+      (section 4's Reroll is free today).
+- [ ] Overcome state — target slot, open/resolved, the result — lives with the
+      pending roll in Durable Object storage and is broadcast in `GameState`.
+
+### Special abilities — once per session each
+
+Per character, reset when a session starts (section 7). Each needs facilitator
+approval, so this depends on an approve/deny request flow in the facilitator
+interface (section 5).
+
+- [ ] **Help Out** — the player says how they help someone who failed a roll.
+      Approved → the overcome is rerolled. (Shared consequences come later.)
+- [ ] **Add a Detail** — the player adds a detail or piece of context to the
+      scene. Approved → a **floating boon** enters the pool, usable by anyone on
+      a later roll (a boon owned by no character; a new pool concept alongside
+      per-character pledges).
+- [ ] **Gain Insight** — as Add a Detail (a floating boon), but the player asks
+      the facilitator a question and the facilitator supplies the context.
+- [ ] **Suggest Compel** — the player offers a complication to another player.
+      If that player accepts *and* the facilitator approves → the suggester
+      gains 1 boon and the accepting player gains 2.
+
+### Moves — no per-session limit
+
+- [ ] **Accept Compel** — the player takes on a complication (self-proposed or
+      facilitator-offered). Approved → 2 boons.
+- [ ] **Highlight an Aspect** — pledge a boon to the current overcome roll. This
+      is section 4's pledge / `committedBoons` mechanic under its player-facing
+      name.
+- [ ] **Press Fate** — reroll your own failed roll for 2 boons. Same cost and
+      effect as the target-player Reroll above; this is the move that names it.
+
+### What this needs in the model
+
+- [ ] Per-character, per-session ability-usage tracking (four flags), cleared on
+      session start.
+- [ ] Floating boons in the pool, distinct from `committedBoons`.
+- [ ] The section 5 proposal flow (player proposes → facilitator accepts /
+      rejects), reused by every ability and the compel moves.
+- [ ] A compel handshake: suggest → target accepts → facilitator approves, then
+      the boon payouts.
+
+## 11. Effect pattern + tests
+
+`update` currently returns `( Model, Cmd Msg )` and calls `Api` / `Ports` /
+`Browser.Dom` directly. The [Effect pattern](https://elm-radio.com/episode/single-out-effects/)
+replaces the `Cmd` with a custom `Effect Msg` type that only *describes* side
+effects, turning `update` into a pure function that returns data.
+
+Worth doing, but the main payoff — a `update` that can be asserted on without
+mocking `Cmd` — only lands with a test suite, so treat these as one unit of
+work rather than a standalone reorganisation. Sequenced after the gameplay
+sections above so the shape of `update` has settled first.
+
+- [ ] `Effect.elm` — an `Effect msg` type with one constructor per side effect
+      the app performs (`GetGameState`, `PostMessage`, `PostStones`,
+      `PostCharacterUpdate`, `PostFate`, `Authorize`, `GetTimeZone`,
+      `ScrollLogToBottom`, `None`, `Batch`). `Api` and `Ports` keep the "how";
+      `Effect` names the "what".
+- [ ] `Effect.perform : Effect Msg -> Cmd Msg`, called once at the `Main`
+      boundary. `update : Msg -> Model -> ( Model, Effect Msg )`.
+- [ ] Add `elm-explorations/test` and `avh4/elm-program-test`; cover the
+      snapshot-merge logic in `Main.applyServerState` (keeping the sheet under
+      the cursor), the empty-message send guard, and the auth → load-state
+      sequence.
+- [ ] Wire `pnpm run test:client` into `pnpm run build`.
 
 ---
 
 ## Flushing test messages before the campaign
 
-Until the `messages/clear` route exists, wipe the log manually. The Durable
-Object only reads `messages` from D1 on a cold start, so the in-memory copy must
-be evicted too.
+The facilitator's "Clear log" button (the `messages/clear` route) is the normal
+way to wipe a log. To do it by hand instead — the Durable Object only reads
+`messages` from D1 on a cold start, so the in-memory copy must be evicted too:
 
 1. Make sure no one is connected to the table (close all Activity windows).
 2. Delete the rows from the deployed database:

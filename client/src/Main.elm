@@ -10,10 +10,34 @@ import Browser
 import Browser.Dom
 import Json.Decode as Decode
 import Ports
+import Process
 import Task
 import Time
 import Types exposing (..)
 import View
+
+
+{-| How many times the initial game-state seed is retried before giving up.
+-}
+maxGameStateAttempts : Int
+maxGameStateAttempts =
+    3
+
+
+connectionFromString : String -> Connection
+connectionFromString raw =
+    case raw of
+        "connected" ->
+            Connected
+
+        "reconnecting" ->
+            Reconnecting
+
+        "rejected" ->
+            Rejected
+
+        _ ->
+            Offline
 
 
 main : Program Flags Model Msg
@@ -34,6 +58,10 @@ init flags =
       , newMessage = ""
       , status = "Authorizing with Discord…"
       , editingSlot = Nothing
+      , logAtBottom = True
+      , newSessionGoal = ""
+      , connection = Connected
+      , gameStateAttempts = 0
       , timeZone = Time.utc
       }
     , Cmd.batch
@@ -48,6 +76,7 @@ subscriptions _ =
     Sub.batch
         [ Ports.fromDiscord FromDiscordRaw
         , Ports.wsGameState WsGameStateRaw
+        , Ports.wsStatus WsStatusChanged
         ]
 
 
@@ -83,21 +112,38 @@ update msg model =
         GotGameState (Ok gs) ->
             case model.gameState of
                 Just _ ->
-                    ( { model | status = "Connected." }, Cmd.none )
+                    ( { model | status = "Connected.", gameStateAttempts = 0 }, Cmd.none )
 
                 Nothing ->
                     ( { model
                         | gameState = Just (applyServerState model gs)
                         , status = "Connected."
+                        , gameStateAttempts = 0
                       }
                     , scrollLogToBottom
                     )
 
+        -- The live socket is the real source of state, so a failed seed load is
+        -- retried a few times with a short backoff before giving up.
         GotGameState (Err _) ->
-            ( { model | status = "Failed to load game state." }, Cmd.none )
+            if model.gameState == Nothing && model.gameStateAttempts < maxGameStateAttempts then
+                ( { model
+                    | status = "Reconnecting to the table…"
+                    , gameStateAttempts = model.gameStateAttempts + 1
+                  }
+                , Process.sleep 2000 |> Task.perform (\_ -> RetryGetGameState)
+                )
+
+            else
+                ( { model | status = "Failed to load game state." }, Cmd.none )
 
         NewMessageChanged s ->
             ( { model | newMessage = s }, Cmd.none )
+
+        -- The log reports its scroll position as the viewer moves it; new
+        -- messages only auto-scroll while this stays True.
+        LogScrolled atBottom ->
+            ( { model | logAtBottom = atBottom }, Cmd.none )
 
         SendMessage ->
             case ( model.auth, model.gameState ) of
@@ -106,7 +152,9 @@ update msg model =
                         ( model, Cmd.none )
 
                     else
-                        ( { model | newMessage = "" }
+                        -- Posting a message is an intent to see it: snap back to
+                        -- the bottom even if reading history a moment ago.
+                        ( { model | newMessage = "", logAtBottom = True }
                         , Api.postMessage model.flags auth model.newMessage MessagePosted
                         )
 
@@ -120,8 +168,90 @@ update msg model =
         MessagePosted (Err _) ->
             ( { model | status = "Failed to post message." }, Cmd.none )
 
-        AddWhiteStone ->
-            ( model, stonesCmd model "/stones/add-white" )
+        ClearLog ->
+            case model.auth of
+                Just auth ->
+                    ( model, Api.postClearMessages model.flags auth LogCleared )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        LogCleared (Ok ()) ->
+            ( model, Cmd.none )
+
+        LogCleared (Err _) ->
+            ( { model | status = "Failed to clear the log." }, Cmd.none )
+
+        AddBoon ->
+            ( model, stonesCmd model "/stones/add-boon" )
+
+        CommitBoonIncrement ->
+            ( model, commitCmd model 1 )
+
+        CommitBoonDecrement ->
+            ( model, commitCmd model -1 )
+
+        ClaimSlot slot ->
+            ( model, claimCmd model slot )
+
+        ReleaseSlot slot ->
+            ( model, releaseCmd model slot )
+
+        SlotClaimed (Ok ()) ->
+            ( model, Cmd.none )
+
+        SlotClaimed (Err _) ->
+            ( { model | status = "Couldn't claim that character sheet." }, Cmd.none )
+
+        AcceptProposal id ->
+            ( model, proposalCmd model id "accept" )
+
+        RejectProposal id ->
+            ( model, proposalCmd model id "reject" )
+
+        ProposalResolved (Ok ()) ->
+            ( model, Cmd.none )
+
+        ProposalResolved (Err _) ->
+            ( { model | status = "Failed to resolve the proposal." }, Cmd.none )
+
+        SessionGoalChanged s ->
+            ( { model | newSessionGoal = s }, Cmd.none )
+
+        StartSession ->
+            case ( model.auth, String.trim model.newSessionGoal == "" ) of
+                ( Just auth, False ) ->
+                    ( { model | newSessionGoal = "" }
+                    , Api.postStartSession model.flags auth model.newSessionGoal SessionUpdated
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        EndSession ->
+            case model.auth of
+                Just auth ->
+                    ( model, Api.postEndSession model.flags auth SessionUpdated )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        SessionUpdated (Ok ()) ->
+            ( model, Cmd.none )
+
+        SessionUpdated (Err _) ->
+            ( { model | status = "Failed to update the session." }, Cmd.none )
+
+        WsStatusChanged raw ->
+            ( { model | connection = connectionFromString raw }, Cmd.none )
+
+        RetryGetGameState ->
+            case ( model.auth, model.gameState ) of
+                ( Just auth, Nothing ) ->
+                    ( model, Api.getGameState model.flags auth GotGameState )
+
+                _ ->
+                    ( model, Cmd.none )
 
         RollStones ->
             ( model, stonesCmd model "/stones/roll" )
@@ -180,8 +310,15 @@ update msg model =
         WsGameStateRaw value ->
             case Decode.decodeValue Api.decodeGameState value of
                 Ok gs ->
-                    ( { model | gameState = Just (applyServerState model gs) }
-                    , scrollLogToBottom
+                    ( { model
+                        | gameState = Just (applyServerState model gs)
+                        , connection = Connected
+                      }
+                    , if model.logAtBottom then
+                        scrollLogToBottom
+
+                      else
+                        Cmd.none
                     )
 
                 Err _ ->
@@ -216,6 +353,46 @@ fateCmd model slot delta =
     case model.auth of
         Just auth ->
             Api.postFate model.flags auth slot delta CharacterUpdated
+
+        Nothing ->
+            Cmd.none
+
+
+commitCmd : Model -> Int -> Cmd Msg
+commitCmd model delta =
+    case model.auth of
+        Just auth ->
+            Api.postCommitBoon model.flags auth delta StonesUpdated
+
+        Nothing ->
+            Cmd.none
+
+
+claimCmd : Model -> Int -> Cmd Msg
+claimCmd model slot =
+    case model.auth of
+        Just auth ->
+            Api.postClaimSlot model.flags auth slot SlotClaimed
+
+        Nothing ->
+            Cmd.none
+
+
+releaseCmd : Model -> Int -> Cmd Msg
+releaseCmd model slot =
+    case model.auth of
+        Just auth ->
+            Api.postReleaseSlot model.flags auth slot SlotClaimed
+
+        Nothing ->
+            Cmd.none
+
+
+proposalCmd : Model -> String -> String -> Cmd Msg
+proposalCmd model id decision =
+    case model.auth of
+        Just auth ->
+            Api.postProposalDecision model.flags auth id decision ProposalResolved
 
         Nothing ->
             Cmd.none

@@ -82,7 +82,7 @@ export async function handleDiscordExchange(
       ? user.username
       : `${user.username}#${user.discriminator}`);
 
-  const role = await inferRoleFromDb(env, user.id);
+  const role = await inferRole(env, user.id);
 
   const sessionToken = crypto.randomUUID();
   const ttlMs =
@@ -124,7 +124,14 @@ export async function pruneExpiredSessions(env: Env): Promise<void> {
     .run();
 }
 
-async function inferRoleFromDb(env: Env, discordUserId: string): Promise<Role> {
+async function inferRole(env: Env, discordUserId: string): Promise<Role> {
+  if (
+    env.BOOTSTRAP_FACILITATOR_ID &&
+    env.BOOTSTRAP_FACILITATOR_ID === discordUserId
+  ) {
+    return "facilitator";
+  }
+
   const dmRow = await env.DB.prepare(
     `
     SELECT 1 FROM facilitators

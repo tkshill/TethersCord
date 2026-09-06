@@ -2,8 +2,15 @@ module Api exposing
     ( decodeGameState
     , getGameState
     , postCharacterUpdate
+    , postClaimSlot
+    , postClearMessages
+    , postCommitBoon
     , postFate
+    , postEndSession
     , postMessage
+    , postProposalDecision
+    , postReleaseSlot
+    , postStartSession
     , postStones
     )
 
@@ -21,7 +28,7 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 import Roll exposing (Stone(..))
 import Time
-import Types exposing (Auth, CharacterSheet, Flags, GameState, PendingRoll, decodeRole)
+import Types exposing (Auth, CharacterSheet, CommittedBoon, Flags, GameState, PendingRoll, Proposal, Session, decodeRole)
 
 
 
@@ -77,6 +84,22 @@ postStones flags auth path toMsg =
         }
 
 
+{-| Facilitator-only: wipe this table's log. The resulting empty state arrives
+on the socket like any other mutation.
+-}
+postClearMessages : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
+postClearMessages flags auth toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth
+        , url = tableUrl flags "/messages/clear"
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
 postCharacterUpdate : Flags -> Auth -> Int -> CharacterSheet -> (Result Http.Error () -> msg) -> Cmd msg
 postCharacterUpdate flags auth slot character toMsg =
     Http.request
@@ -114,6 +137,94 @@ postFate flags auth slot delta toMsg =
         }
 
 
+{-| Pledge (positive `delta`) or withdraw (negative) boons from the next roll.
+The slot is the caller's own claimed sheet, resolved server-side; the Worker
+clamps the pledge to what that character holds.
+-}
+postCommitBoon : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
+postCommitBoon flags auth delta toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth ++ [ jsonContentType ]
+        , url = tableUrl flags "/stones/commit"
+        , body = Http.jsonBody (Encode.object [ ( "delta", Encode.int delta ) ])
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+{-| Claim a character sheet for the calling user, or release one. Releasing is
+allowed for the sheet's owner or the facilitator.
+-}
+postClaimSlot : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
+postClaimSlot flags auth slot toMsg =
+    slotAction flags auth slot "claim" toMsg
+
+
+postReleaseSlot : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
+postReleaseSlot flags auth slot toMsg =
+    slotAction flags auth slot "release" toMsg
+
+
+slotAction : Flags -> Auth -> Int -> String -> (Result Http.Error () -> msg) -> Cmd msg
+slotAction flags auth slot action toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth
+        , url = tableUrl flags ("/characters/" ++ String.fromInt slot ++ "/" ++ action)
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+{-| Facilitator-only: `decision` is `"accept"` or `"reject"` for the proposal.
+-}
+postProposalDecision : Flags -> Auth -> String -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postProposalDecision flags auth proposalId decision toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth
+        , url = tableUrl flags ("/proposals/" ++ proposalId ++ "/" ++ decision)
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+{-| Facilitator-only: open a session with a goal.
+-}
+postStartSession : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postStartSession flags auth goal toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth ++ [ jsonContentType ]
+        , url = tableUrl flags "/session/start"
+        , body = Http.jsonBody (Encode.object [ ( "goal", Encode.string goal ) ])
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+{-| Facilitator-only: end the running session and roll its pool for the outcome.
+-}
+postEndSession : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
+postEndSession flags auth toMsg =
+    Http.request
+        { method = "POST"
+        , headers = authHeaders auth
+        , url = tableUrl flags "/session/end"
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever toMsg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
 jsonContentType : Http.Header
 jsonContentType =
     Http.header "Content-Type" "application/json"
@@ -140,11 +251,11 @@ decodeStoneList =
         |> Decode.map
             (List.map
                 (\s ->
-                    if s == "WhiteStone" then
-                        WhiteStone
+                    if s == "Boon" then
+                        Boon
 
                     else
-                        BlackStone
+                        Bane
                 )
             )
 
@@ -156,11 +267,37 @@ decodePendingRoll =
         (Decode.field "rest" decodeStoneList)
 
 
+decodeCommittedBoon : Decode.Decoder CommittedBoon
+decodeCommittedBoon =
+    Decode.map2 CommittedBoon
+        (Decode.field "slot" Decode.int)
+        (Decode.field "count" Decode.int)
+
+
+decodeProposal : Decode.Decoder Proposal
+decodeProposal =
+    Decode.map6 Proposal
+        (Decode.field "id" Decode.string)
+        (Decode.field "kind" Decode.string)
+        (Decode.field "proposerId" Decode.string)
+        (Decode.field "proposerName" Decode.string)
+        (Decode.field "slot" (Decode.nullable Decode.int))
+        (Decode.field "delta" Decode.int)
+
+
+decodeSession : Decode.Decoder Session
+decodeSession =
+    Decode.map3 Session
+        (Decode.field "id" Decode.string)
+        (Decode.field "goal" Decode.string)
+        (Decode.field "pool" decodeStoneList)
+
+
 decodeCharacterSheet : Decode.Decoder CharacterSheet
 decodeCharacterSheet =
     Decode.map8
         (\id slot name notableFeatures archetype desire quest condition ->
-            \notes fate ->
+            \notes fate ownerId ->
                 { id = id
                 , slot = slot
                 , name = name
@@ -171,6 +308,7 @@ decodeCharacterSheet =
                 , condition = condition
                 , notes = notes
                 , fate = fate
+                , ownerId = ownerId
                 }
         )
         (Decode.field "id" Decode.string)
@@ -183,17 +321,21 @@ decodeCharacterSheet =
         (Decode.field "condition" Decode.string)
         |> Decode.andThen
             (\toSheet ->
-                Decode.map2 toSheet
+                Decode.map3 toSheet
                     (Decode.field "notes" Decode.string)
                     (Decode.field "fate" Decode.int)
+                    (Decode.field "ownerId" (Decode.nullable Decode.string))
             )
 
 
 decodeGameState : Decode.Decoder GameState
 decodeGameState =
-    Decode.map5 GameState
+    Decode.map8 GameState
         (Decode.field "sessionId" Decode.string)
         (Decode.field "messages" (Decode.list decodeMessage))
         (Decode.field "stonePool" decodeStoneList)
         (Decode.field "pendingRoll" (Decode.nullable decodePendingRoll))
+        (Decode.field "committedBoons" (Decode.list decodeCommittedBoon))
+        (Decode.field "proposals" (Decode.list decodeProposal))
+        (Decode.field "session" (Decode.nullable decodeSession))
         (Decode.field "characters" (Decode.list decodeCharacterSheet))

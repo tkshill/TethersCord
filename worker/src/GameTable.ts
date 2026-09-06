@@ -5,30 +5,41 @@ import type {
   DurableObjectState,
 } from "@cloudflare/workers-types";
 import type {
+  CommitBoonInput,
+  CommittedBoon,
   Env,
   GameState,
   Message,
   PendingRoll,
   PostMessageInput,
+  Proposal,
   Role,
+  SessionState,
+  StartSessionInput,
   StoneKind,
   CharacterSheet,
   UpdateCharacterInput,
   UpdateFateInput,
 } from "./types";
 
-const INITIAL_STONE_POOL: readonly StoneKind[] = [
-  "WhiteStone",
-  "BlackStone",
-  "WhiteStone",
-  "BlackStone",
-];
+// Every roll starts from this base — two Boon, two Bane — before any boons a
+// character pledges into it. Accepting a roll resets the pool to this.
+const INITIAL_STONE_POOL: readonly StoneKind[] = ["Boon", "Bane", "Boon", "Bane"];
 
 const CHARACTER_SLOT_COUNT = 3;
 
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_FIELD_LENGTH = 500;
 const MAX_NOTES_LENGTH = 4000;
+const MAX_GOAL_LENGTH = 500;
+
+/** A session's pool starts here, then grows one stone per accepted roll. */
+const INITIAL_SESSION_POOL: readonly StoneKind[] = [
+  "Boon",
+  "Bane",
+  "Boon",
+  "Bane",
+];
 
 /** Durable Object storage keys. */
 const KEY_SESSION_ID = "sessionId";
@@ -37,7 +48,29 @@ const KEY_STONES = "stones";
 type StoneState = {
   stonePool: StoneKind[];
   pendingRoll: PendingRoll | null;
+  committedBoons: CommittedBoon[];
+  proposals: Proposal[];
+  session: SessionState | null;
 };
+
+/** Shape of `KEY_STONES` as written by builds that still used colour names. */
+type LegacyStoneKind = StoneKind | "WhiteStone" | "BlackStone";
+type LegacyStoneState = {
+  stonePool: LegacyStoneKind[];
+  pendingRoll: {
+    chosen: LegacyStoneKind[];
+    rest: LegacyStoneKind[];
+  } | null;
+  committedBoons?: CommittedBoon[];
+  proposals?: Proposal[];
+  session?: SessionState | null;
+};
+
+function migrateStoneKind(kind: LegacyStoneKind): StoneKind {
+  if (kind === "WhiteStone") return "Boon";
+  if (kind === "BlackStone") return "Bane";
+  return kind;
+}
 
 export class GameTable implements DurableObject {
   private state: DurableObjectState;
@@ -121,33 +154,110 @@ export class GameTable implements DurableObject {
       return this.withLock(() => this.handlePostMessage(request, authInfo));
     }
 
-    if (url.pathname === "/stones/add-white" && request.method === "POST") {
-      return this.withLock(() => this.handleAddWhiteStone());
+    if (url.pathname === "/messages/clear" && request.method === "POST") {
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleClearMessages())
+      );
+    }
+
+    if (url.pathname === "/stones/add-boon" && request.method === "POST") {
+      return this.withLock(() =>
+        authInfo.role === "facilitator"
+          ? this.applyAddBoon()
+          : this.proposeAddBoon(authInfo),
+      );
+    }
+
+    if (url.pathname === "/stones/commit" && request.method === "POST") {
+      return this.withLock(() => this.handleCommitBoon(request, authInfo));
+    }
+
+    const proposalMatch = url.pathname.match(
+      /^\/proposals\/([0-9a-fA-F-]{36})\/(accept|reject)$/,
+    );
+    if (proposalMatch && request.method === "POST") {
+      const [, proposalId, decision] = proposalMatch;
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() =>
+          this.handleProposalDecision(
+            proposalId,
+            decision as "accept" | "reject",
+          ),
+        )
+      );
     }
 
     if (url.pathname === "/stones/roll" && request.method === "POST") {
-      return this.withLock(() => this.handleRoll(authInfo, "Rolled"));
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleRoll(authInfo, "Rolled"))
+      );
     }
 
     if (url.pathname === "/stones/reroll" && request.method === "POST") {
-      return this.withLock(() => this.handleRoll(authInfo, "Rerolled"));
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleRoll(authInfo, "Rerolled"))
+      );
     }
 
     if (url.pathname === "/stones/accept" && request.method === "POST") {
-      return this.withLock(() => this.handleAcceptRoll());
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleAcceptRoll())
+      );
+    }
+
+    if (url.pathname === "/session/start" && request.method === "POST") {
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleStartSession(request, authInfo))
+      );
+    }
+
+    if (url.pathname === "/session/end" && request.method === "POST") {
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleEndSession(authInfo))
+      );
     }
 
     const charUpdateMatch = url.pathname.match(/^\/characters\/(\d+)\/update$/);
     if (charUpdateMatch && request.method === "POST") {
       return this.withLock(() =>
-        this.handleUpdateCharacter(request, Number(charUpdateMatch[1])),
+        this.handleUpdateCharacter(
+          request,
+          Number(charUpdateMatch[1]),
+          authInfo,
+        ),
+      );
+    }
+
+    const charClaimMatch = url.pathname.match(/^\/characters\/(\d+)\/claim$/);
+    if (charClaimMatch && request.method === "POST") {
+      return this.withLock(() =>
+        this.handleClaimSlot(Number(charClaimMatch[1]), authInfo),
+      );
+    }
+
+    const charReleaseMatch = url.pathname.match(
+      /^\/characters\/(\d+)\/release$/,
+    );
+    if (charReleaseMatch && request.method === "POST") {
+      return this.withLock(() =>
+        this.handleReleaseSlot(Number(charReleaseMatch[1]), authInfo),
       );
     }
 
     const charFateMatch = url.pathname.match(/^\/characters\/(\d+)\/fate$/);
     if (charFateMatch && request.method === "POST") {
-      return this.withLock(() =>
-        this.handleUpdateFate(request, Number(charFateMatch[1])),
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() =>
+          this.handleUpdateFate(request, Number(charFateMatch[1])),
+        )
       );
     }
 
@@ -260,6 +370,9 @@ export class GameTable implements DurableObject {
       messages,
       stonePool: stones.stonePool,
       pendingRoll: stones.pendingRoll,
+      committedBoons: stones.committedBoons,
+      proposals: stones.proposals,
+      session: stones.session,
       characters,
     };
 
@@ -275,14 +388,29 @@ export class GameTable implements DurableObject {
    * after a table goes quiet.
    */
   private async loadStoneState(): Promise<StoneState> {
-    const stored = await this.state.storage.get<StoneState>(KEY_STONES);
+    const stored = await this.state.storage.get<LegacyStoneState>(KEY_STONES);
     if (stored) {
-      return stored;
+      // Fold the colour-named stones of earlier builds into Boon / Bane.
+      return {
+        stonePool: stored.stonePool.map(migrateStoneKind),
+        pendingRoll: stored.pendingRoll
+          ? {
+              chosen: stored.pendingRoll.chosen.map(migrateStoneKind),
+              rest: stored.pendingRoll.rest.map(migrateStoneKind),
+            }
+          : null,
+        committedBoons: stored.committedBoons ?? [],
+        proposals: stored.proposals ?? [],
+        session: stored.session ?? null,
+      };
     }
 
     const initial: StoneState = {
       stonePool: [...INITIAL_STONE_POOL],
       pendingRoll: null,
+      committedBoons: [],
+      proposals: [],
+      session: null,
     };
     await this.state.storage.put(KEY_STONES, initial);
     return initial;
@@ -292,6 +420,9 @@ export class GameTable implements DurableObject {
     await this.state.storage.put(KEY_STONES, {
       stonePool: state.stonePool,
       pendingRoll: state.pendingRoll,
+      committedBoons: state.committedBoons,
+      proposals: state.proposals,
+      session: state.session,
     } satisfies StoneState);
   }
 
@@ -300,7 +431,8 @@ export class GameTable implements DurableObject {
   ): Promise<CharacterSheet[]> {
     const rows = await this.env.DB.prepare(
       `
-      SELECT id, slot, name, notable_features, archetype, desire, quest, condition, notes, fate
+      SELECT id, slot, name, notable_features, archetype, desire, quest, condition,
+             notes, fate, discord_user_id
       FROM characters
       WHERE session_id = ?
       ORDER BY slot
@@ -335,6 +467,7 @@ export class GameTable implements DurableObject {
         condition: "",
         notes: "",
         fate: 0,
+        discord_user_id: null,
       });
     }
 
@@ -364,13 +497,140 @@ export class GameTable implements DurableObject {
     return ackResponse();
   }
 
-  private async handleAddWhiteStone(): Promise<Response> {
+  /**
+   * Wipe this table's log: delete the D1 rows and drop the in-memory copy. The
+   * supported alternative to cycling the Durable Object by hand.
+   */
+  private async handleClearMessages(): Promise<Response> {
+    await this.env.DB.prepare(`DELETE FROM messages WHERE session_id = ?`)
+      .bind(this.gameState!.sessionId)
+      .run();
+
+    this.gameState = { ...this.gameState!, messages: [] };
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  /** Add one Boon to the shared pool. Direct only for the facilitator. */
+  private async applyAddBoon(): Promise<Response> {
     // Read `this.gameState` fresh rather than from a snapshot taken before an
     // await, so concurrent requests cannot clobber each other's writes.
     this.gameState = {
       ...this.gameState!,
-      stonePool: [...this.gameState!.stonePool, "WhiteStone"],
+      stonePool: [...this.gameState!.stonePool, "Boon"],
     };
+    await this.saveStoneState(this.gameState);
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  /** A player asking to add a boon to the pool — queued for the facilitator. */
+  private async proposeAddBoon(authInfo: AuthInfo): Promise<Response> {
+    return this.addProposal({
+      kind: "add-boon",
+      proposerId: authInfo.discordUserId,
+      proposerName: authInfo.username,
+      slot: null,
+      delta: 1,
+    });
+  }
+
+  /**
+   * Pledge (or withdraw) one of the caller's own boons on the next roll. The
+   * slot is the sheet they have claimed. Queued as a proposal; the effect only
+   * lands when the facilitator accepts it.
+   */
+  private async handleCommitBoon(
+    request: Request,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    const input = (await readJson(request)) as CommitBoonInput | null;
+    const delta = input?.delta;
+    if (delta !== 1 && delta !== -1) {
+      return new Response("delta must be 1 or -1", { status: 400 });
+    }
+
+    const character = this.gameState!.characters.find(
+      (c) => c.ownerId === authInfo.discordUserId,
+    );
+    if (!character) {
+      return new Response("Claim a character sheet first", { status: 400 });
+    }
+
+    return this.addProposal({
+      kind: "pledge",
+      proposerId: authInfo.discordUserId,
+      proposerName: authInfo.username,
+      slot: character.slot,
+      delta,
+    });
+  }
+
+  private async addProposal(
+    fields: Omit<Proposal, "id" | "createdAt">,
+  ): Promise<Response> {
+    const proposal: Proposal = {
+      ...fields,
+      id: crypto.randomUUID(),
+      createdAt: Date.now(),
+    };
+    this.gameState = {
+      ...this.gameState!,
+      proposals: [...this.gameState!.proposals, proposal],
+    };
+    await this.saveStoneState(this.gameState);
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  /**
+   * Facilitator resolves one proposal. Accept applies its effect (clamped to
+   * current state); reject just drops it. Either way it leaves the queue.
+   */
+  private async handleProposalDecision(
+    proposalId: string,
+    decision: "accept" | "reject",
+  ): Promise<Response> {
+    const proposal = this.gameState!.proposals.find((p) => p.id === proposalId);
+    if (!proposal) {
+      return new Response("No such proposal", { status: 404 });
+    }
+
+    let state: GameState = {
+      ...this.gameState!,
+      proposals: this.gameState!.proposals.filter((p) => p.id !== proposalId),
+    };
+
+    if (decision === "accept" && proposal.kind === "add-boon") {
+      state = { ...state, stonePool: [...state.stonePool, "Boon"] };
+    } else if (
+      decision === "accept" &&
+      proposal.kind === "pledge" &&
+      proposal.slot !== null
+    ) {
+      const character = state.characters.find((c) => c.slot === proposal.slot);
+      if (character) {
+        const current =
+          state.committedBoons.find((c) => c.slot === proposal.slot)?.count ?? 0;
+        const next = Math.max(
+          0,
+          Math.min(character.fate, current + proposal.delta),
+        );
+        const committedBoons = state.committedBoons.filter(
+          (c) => c.slot !== proposal.slot,
+        );
+        if (next > 0) {
+          committedBoons.push({ slot: proposal.slot, count: next });
+        }
+        committedBoons.sort((a, b) => a.slot - b.slot);
+        state = { ...state, committedBoons };
+      }
+    }
+
+    this.gameState = state;
     await this.saveStoneState(this.gameState);
 
     this.broadcast(this.gameState);
@@ -381,16 +641,22 @@ export class GameTable implements DurableObject {
     authInfo: AuthInfo,
     verb: "Rolled" | "Rerolled",
   ): Promise<Response> {
-    const pendingRoll = pickTwoRandom(this.gameState!.stonePool);
+    const committed = totalCommittedBoons(this.gameState!.committedBoons);
+    const bag: StoneKind[] = [
+      ...this.gameState!.stonePool,
+      ...Array<StoneKind>(committed).fill("Boon"),
+    ];
+    const pendingRoll = pickTwoRandom(bag);
 
     this.gameState = { ...this.gameState!, pendingRoll };
     await this.saveStoneState(this.gameState);
 
+    const note = committed > 0 ? ` — ${committed} boon committed` : "";
     await this.appendMessage({
       authorId: authInfo.discordUserId,
       authorName: authInfo.username,
       role: authInfo.role,
-      content: `${verb}: ${describeStones(pendingRoll.chosen)}`,
+      content: `${verb}: ${describeStones(pendingRoll.chosen)}${note}`,
     });
 
     this.broadcast(this.gameState!);
@@ -398,12 +664,115 @@ export class GameTable implements DurableObject {
   }
 
   private async handleAcceptRoll(): Promise<Response> {
+    // Spend the pledged boons from each character's stock, then clear the pool
+    // and pledges back to the base state.
+    const now = Date.now();
+    let characters = this.gameState!.characters;
+
+    for (const { slot, count } of this.gameState!.committedBoons) {
+      const character = characters.find((c) => c.slot === slot);
+      if (!character || count <= 0) continue;
+
+      const fate = Math.max(0, character.fate - count);
+      await this.env.DB.prepare(
+        `UPDATE characters SET fate = ?, updated_at = ? WHERE id = ?`,
+      )
+        .bind(fate, now, character.id)
+        .run();
+      characters = characters.map((c) => (c.slot === slot ? { ...c, fate } : c));
+    }
+
+    // One of the two result stones, at random, feeds the running session pool.
+    const priorSession = this.gameState!.session;
+    const drawn = this.gameState!.pendingRoll?.chosen ?? [];
+    const session: SessionState | null =
+      priorSession && drawn.length > 0
+        ? {
+            ...priorSession,
+            pool: [...priorSession.pool, drawn[randomInt(drawn.length)]],
+          }
+        : priorSession;
+
     this.gameState = {
       ...this.gameState!,
+      characters,
       stonePool: [...INITIAL_STONE_POOL],
       pendingRoll: null,
+      committedBoons: [],
+      // A resolved roll clears the slate; unaccepted proposals do not carry over.
+      proposals: [],
+      session,
     };
     await this.saveStoneState(this.gameState);
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  private async handleStartSession(
+    request: Request,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    if (this.gameState!.session) {
+      return new Response("A session is already running", { status: 409 });
+    }
+
+    const input = (await readJson(request)) as StartSessionInput | null;
+    const goal = boundedString(input?.goal, MAX_GOAL_LENGTH).trim();
+    if (!goal) {
+      return new Response("A session goal is required", { status: 400 });
+    }
+
+    const id = crypto.randomUUID();
+    await this.env.DB.prepare(
+      `INSERT INTO game_sessions (id, session_id, goal, started_at) VALUES (?, ?, ?, ?)`,
+    )
+      .bind(id, this.gameState!.sessionId, goal, Date.now())
+      .run();
+
+    this.gameState = {
+      ...this.gameState!,
+      session: { id, goal, pool: [...INITIAL_SESSION_POOL] },
+    };
+    await this.saveStoneState(this.gameState);
+
+    await this.appendMessage({
+      authorId: authInfo.discordUserId,
+      authorName: authInfo.username,
+      role: authInfo.role,
+      content: `Session started — ${goal}`,
+    });
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  private async handleEndSession(authInfo: AuthInfo): Promise<Response> {
+    const session = this.gameState!.session;
+    if (!session) {
+      return new Response("No session is running", { status: 400 });
+    }
+
+    const draw = pickTwoRandom(session.pool).chosen;
+    const boons = draw.filter((s) => s === "Boon").length;
+    const verdict = boons === 2 ? "met" : boons === 1 ? "partial" : "failed";
+    const outcome = `${verdict} (${draw.join(", ")})`;
+
+    await this.env.DB.prepare(
+      `UPDATE game_sessions SET ended_at = ?, outcome = ? WHERE id = ?`,
+    )
+      .bind(Date.now(), outcome, session.id)
+      .run();
+
+    this.gameState = { ...this.gameState!, session: null };
+    await this.saveStoneState(this.gameState);
+
+    await this.appendMessage({
+      authorId: authInfo.discordUserId,
+      authorName: authInfo.username,
+      role: authInfo.role,
+      content: `Session ended — goal ${verdict}: ${session.goal} (${draw.join(", ")})`,
+    });
 
     this.broadcast(this.gameState);
     return ackResponse();
@@ -412,6 +781,7 @@ export class GameTable implements DurableObject {
   private async handleUpdateCharacter(
     request: Request,
     slot: number,
+    authInfo: AuthInfo,
   ): Promise<Response> {
     const input = (await readJson(request)) as UpdateCharacterInput | null;
     if (!input) {
@@ -421,6 +791,16 @@ export class GameTable implements DurableObject {
     const character = this.gameState!.characters.find((c) => c.slot === slot);
     if (!character) {
       return new Response("Not found", { status: 404 });
+    }
+
+    // The facilitator may edit any sheet; a player only their own, or one that
+    // no one has claimed yet (setup before claiming).
+    const mayEdit =
+      authInfo.role === "facilitator" ||
+      character.ownerId === null ||
+      character.ownerId === authInfo.discordUserId;
+    if (!mayEdit) {
+      return new Response("Not your character sheet", { status: 403 });
     }
 
     const updated: CharacterSheet = {
@@ -466,6 +846,87 @@ export class GameTable implements DurableObject {
 
     this.broadcast(this.gameState);
     return ackResponse();
+  }
+
+  /**
+   * Bind the calling user to a sheet. Fails if someone else holds it; releases
+   * any other sheet the caller already holds so a player owns at most one.
+   */
+  private async handleClaimSlot(
+    slot: number,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    const target = this.gameState!.characters.find((c) => c.slot === slot);
+    if (!target) {
+      return new Response("Not found", { status: 404 });
+    }
+    if (target.ownerId && target.ownerId !== authInfo.discordUserId) {
+      return new Response("Sheet already claimed", { status: 409 });
+    }
+
+    const now = Date.now();
+    const priorSlots = this.gameState!.characters.filter(
+      (c) => c.ownerId === authInfo.discordUserId && c.slot !== slot,
+    );
+    for (const prior of priorSlots) {
+      await this.setSheetOwner(prior.id, null, now);
+    }
+    await this.setSheetOwner(target.id, authInfo.discordUserId, now);
+
+    this.gameState = {
+      ...this.gameState!,
+      characters: this.gameState!.characters.map((c) => {
+        if (c.slot === slot) return { ...c, ownerId: authInfo.discordUserId };
+        if (priorSlots.some((p) => p.id === c.id)) return { ...c, ownerId: null };
+        return c;
+      }),
+    };
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  /** Release a sheet. Allowed for the sheet's owner or the facilitator. */
+  private async handleReleaseSlot(
+    slot: number,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    const target = this.gameState!.characters.find((c) => c.slot === slot);
+    if (!target) {
+      return new Response("Not found", { status: 404 });
+    }
+    if (!target.ownerId) {
+      return ackResponse();
+    }
+    if (
+      target.ownerId !== authInfo.discordUserId &&
+      authInfo.role !== "facilitator"
+    ) {
+      return new Response("Not your character sheet", { status: 403 });
+    }
+
+    await this.setSheetOwner(target.id, null, Date.now());
+    this.gameState = {
+      ...this.gameState!,
+      characters: this.gameState!.characters.map((c) =>
+        c.slot === slot ? { ...c, ownerId: null } : c,
+      ),
+    };
+
+    this.broadcast(this.gameState);
+    return ackResponse();
+  }
+
+  private async setSheetOwner(
+    id: string,
+    ownerId: string | null,
+    now: number,
+  ): Promise<void> {
+    await this.env.DB.prepare(
+      `UPDATE characters SET discord_user_id = ?, updated_at = ? WHERE id = ?`,
+    )
+      .bind(ownerId, now, id)
+      .run();
   }
 
   private async handleUpdateFate(
@@ -610,7 +1071,11 @@ function randomInt(maxExclusive: number): number {
 }
 
 function describeStones(stones: StoneKind[]): string {
-  return stones.map((s) => (s === "WhiteStone" ? "White" : "Black")).join(", ");
+  return stones.join(", ");
+}
+
+function totalCommittedBoons(committed: CommittedBoon[]): number {
+  return committed.reduce((sum, c) => sum + c.count, 0);
 }
 
 type CharacterRow = {
@@ -624,6 +1089,7 @@ type CharacterRow = {
   condition: string;
   notes: string;
   fate: number;
+  discord_user_id: string | null;
 };
 
 function rowToCharacterSheet(row: CharacterRow): CharacterSheet {
@@ -638,6 +1104,7 @@ function rowToCharacterSheet(row: CharacterRow): CharacterSheet {
     condition: row.condition,
     notes: row.notes,
     fate: row.fate,
+    ownerId: row.discord_user_id,
   };
 }
 
@@ -646,6 +1113,17 @@ type AuthInfo = {
   username: string;
   role: Role;
 };
+
+/**
+ * Gate for routes only the facilitator may call. Returns a 403 to short-circuit
+ * the route, or `undefined` to let it run: `facilitatorOnly(authInfo) ?? run()`.
+ */
+function facilitatorOnly(authInfo: AuthInfo): Response | undefined {
+  if (authInfo.role !== "facilitator") {
+    return new Response("Facilitator only", { status: 403 });
+  }
+  return undefined;
+}
 
 function parseTokenFromProtocol(header: string | null): string | null {
   if (!header) return null;
@@ -691,7 +1169,10 @@ async function getAuthFromToken(
 
   if (!row) return null;
 
-  const role: Role = row.dm_id ? "facilitator" : "player";
+  const isBootstrap =
+    !!env.BOOTSTRAP_FACILITATOR_ID &&
+    env.BOOTSTRAP_FACILITATOR_ID === row.discord_user_id;
+  const role: Role = row.dm_id || isBootstrap ? "facilitator" : "player";
 
   return {
     discordUserId: row.discord_user_id,

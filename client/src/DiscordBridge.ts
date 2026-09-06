@@ -16,6 +16,9 @@ type ElmPorts = {
   wsGameState: {
     send: (msg: unknown) => void;
   };
+  wsStatus: {
+    send: (status: string) => void;
+  };
 };
 
 export async function initDiscordBridge(

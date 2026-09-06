@@ -1,4 +1,4 @@
-module Format exposing (timestamp)
+module Format exposing (clock, date, timestamp)
 
 {-| Small pure formatting helpers.
 -}
@@ -12,21 +12,35 @@ different days.
 -}
 timestamp : Time.Zone -> Time.Posix -> String
 timestamp zone posix =
+    date zone posix ++ " " ++ clock zone posix
+
+
+{-| Just the wall-clock time, `HH:MM`. The log pairs this with day dividers, so
+rows do not repeat the date.
+-}
+clock : Time.Zone -> Time.Posix -> String
+clock zone posix =
     let
         pad n =
             String.padLeft 2 '0' (String.fromInt n)
-
-        date =
-            String.fromInt (Time.toYear zone posix)
-                ++ "-"
-                ++ pad (monthNumber (Time.toMonth zone posix))
-                ++ "-"
-                ++ pad (Time.toDay zone posix)
-
-        clock =
-            pad (Time.toHour zone posix) ++ ":" ++ pad (Time.toMinute zone posix)
     in
-    date ++ " " ++ clock
+    pad (Time.toHour zone posix) ++ ":" ++ pad (Time.toMinute zone posix)
+
+
+{-| Just the calendar date, `YYYY-MM-DD`, in the given zone. Used for the log's
+day dividers.
+-}
+date : Time.Zone -> Time.Posix -> String
+date zone posix =
+    let
+        pad n =
+            String.padLeft 2 '0' (String.fromInt n)
+    in
+    String.fromInt (Time.toYear zone posix)
+        ++ "-"
+        ++ pad (monthNumber (Time.toMonth zone posix))
+        ++ "-"
+        ++ pad (Time.toDay zone posix)
 
 
 monthNumber : Time.Month -> Int

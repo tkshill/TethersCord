@@ -2,6 +2,7 @@
 
 type GameSocketPorts = {
   wsGameState: { send: (message: unknown) => void };
+  wsStatus: { send: (status: string) => void };
 };
 
 const MAX_RECONNECT_DELAY_MS = 10000;
@@ -33,6 +34,7 @@ export function connectGameSocket(
 
     socket.addEventListener("open", () => {
       attempt = 0;
+      ports.wsStatus.send("connected");
     });
 
     socket.addEventListener("message", (event) => {
@@ -48,8 +50,10 @@ export function connectGameSocket(
       // rejected credentials every ten seconds, forever.
       if (event.code === CLOSE_UNAUTHORIZED) {
         console.error("Game socket rejected: session token was not accepted");
+        ports.wsStatus.send("rejected");
         return;
       }
+      ports.wsStatus.send("reconnecting");
       scheduleReconnect();
     });
 
@@ -61,6 +65,7 @@ export function connectGameSocket(
 
     if (attempt >= MAX_RECONNECT_ATTEMPTS) {
       console.error("Game socket gave up after", attempt, "attempts");
+      ports.wsStatus.send("offline");
       return;
     }
 

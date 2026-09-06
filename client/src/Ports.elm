@@ -4,6 +4,7 @@ port module Ports exposing
     , decodeInbound
     , fromDiscord
     , wsGameState
+    , wsStatus
     )
 
 {-| The bridge between Elm and the TypeScript host (`client/src/main.ts` and
@@ -36,6 +37,12 @@ port fromDiscord : (Decode.Value -> msg) -> Sub msg
 {-| Full `GameState` snapshots pushed over the backend WebSocket.
 -}
 port wsGameState : (Decode.Value -> msg) -> Sub msg
+
+
+{-| Backend WebSocket lifecycle, as a bare tag: `"connected"`, `"reconnecting"`,
+`"offline"`, or `"rejected"`.
+-}
+port wsStatus : (String -> msg) -> Sub msg
 
 
 authorize : List String -> Cmd msg

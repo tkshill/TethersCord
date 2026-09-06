@@ -3,6 +3,7 @@ module Ui exposing
     , banner
     , card
     , danger
+    , divider
     , facilitatorTint
     , ghostButton
     , ink
@@ -13,11 +14,13 @@ module Ui exposing
     , mono
     , onBlur
     , onEnter
+    , onScrolledToBottom
     , page
     , primaryButton
     , sans
     , sectionTitle
     , sm
+    , speakerColor
     , stoneChip
     , xl
     , xs
@@ -86,6 +89,25 @@ facilitatorTint =
 danger : Color
 danger =
     rgb255 168 74 74
+
+
+{-| A stable colour per speaker at the table. `0` is the facilitator; players
+take `1`, `2`, `3` in the order they first appear in the log. Wraps defensively.
+-}
+speakerColor : Int -> Color
+speakerColor index =
+    case modBy 4 index of
+        1 ->
+            rgb255 74 96 130
+
+        2 ->
+            rgb255 74 122 90
+
+        3 ->
+            rgb255 138 82 122
+
+        _ ->
+            facilitatorTint
 
 
 
@@ -204,6 +226,30 @@ banner status =
     el [ Font.size 12, Font.color tone ] (text status)
 
 
+{-| A centred caption with a hairline either side. Used for the log's day
+dividers.
+-}
+divider : String -> Element msg
+divider label =
+    Element.row
+        [ width fill, spacing sm, Element.paddingXY 0 xs ]
+        [ rule
+        , el [ Font.size 10, Font.color inkSoft, Font.letterSpacing 0.5 ] (text label)
+        , rule
+        ]
+
+
+rule : Element msg
+rule =
+    el
+        [ width fill
+        , Element.height (Element.px 1)
+        , Background.color line
+        , Element.centerY
+        ]
+        Element.none
+
+
 
 -- CONTROLS
 
@@ -237,28 +283,24 @@ ghostButton config =
         { onPress = config.onPress, label = text config.label }
 
 
-{-| A stone rendered as a bordered pill; `swatch` is the fill.
+{-| A stone: a filled circle with its name captioned beneath. `swatch` is the
+fill.
 -}
 stoneChip : Color -> String -> Element msg
 stoneChip swatch label =
-    Element.row
-        [ spacing xs
-        , paddingXY_ sm xs
-        , Border.color line
-        , Border.width 1
-        , Border.rounded 999
-        , Font.size 12
-        ]
+    Element.column
+        [ spacing xs, Font.size 10, Font.color inkSoft ]
         [ el
-            [ width (Element.px 10)
-            , Element.height (Element.px 10)
+            [ width (Element.px 22)
+            , Element.height (Element.px 22)
             , Background.color swatch
             , Border.color line
             , Border.width 1
             , Border.rounded 999
+            , Element.centerX
             ]
             Element.none
-        , text label
+        , el [ Element.centerX ] (text label)
         ]
 
 
@@ -295,3 +337,22 @@ onEnter msg =
 onBlur : msg -> Attribute msg
 onBlur msg =
     Element.htmlAttribute (Html.Events.onBlur msg)
+
+
+{-| On every scroll of the element, report whether it is now within `slack`
+pixels of its bottom. Lets a scrollable region tell the app when the viewer has
+left the bottom to read back, and when they have returned.
+-}
+onScrolledToBottom : Float -> (Bool -> msg) -> Attribute msg
+onScrolledToBottom slack toMsg =
+    Element.htmlAttribute
+        (Html.Events.on "scroll"
+            (Decode.map3
+                (\scrollTop scrollHeight clientHeight ->
+                    toMsg (scrollHeight - scrollTop - clientHeight <= slack)
+                )
+                (Decode.at [ "target", "scrollTop" ] Decode.float)
+                (Decode.at [ "target", "scrollHeight" ] Decode.float)
+                (Decode.at [ "target", "clientHeight" ] Decode.float)
+            )
+        )

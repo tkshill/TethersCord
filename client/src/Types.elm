@@ -2,13 +2,18 @@ module Types exposing
     ( Auth
     , CharacterField(..)
     , CharacterSheet
+    , CommittedBoon
+    , Connection(..)
     , Flags
     , GameState
     , Message
     , Model
     , Msg(..)
     , PendingRoll
+    , Proposal
     , Role(..)
+    , Session
+    , committedBoonsForSlot
     , decodeRole
     , roleLabel
     , setCharacterField
@@ -81,6 +86,47 @@ type alias PendingRoll =
     }
 
 
+{-| Boons a character has pledged into the next roll. Spent from their `fate`
+stock when the roll is accepted; only slots with a non-zero pledge appear.
+-}
+type alias CommittedBoon =
+    { slot : Int
+    , count : Int
+    }
+
+
+committedBoonsForSlot : Int -> List CommittedBoon -> Int
+committedBoonsForSlot slot committed =
+    committed
+        |> List.filter (\c -> c.slot == slot)
+        |> List.head
+        |> Maybe.map .count
+        |> Maybe.withDefault 0
+
+
+{-| A player-initiated change to shared stone state awaiting the facilitator.
+`kind` is `"add-boon"` or `"pledge"`; `delta` is `1` or `-1`.
+-}
+type alias Proposal =
+    { id : String
+    , kind : String
+    , proposerId : String
+    , proposerName : String
+    , slot : Maybe Int
+    , delta : Int
+    }
+
+
+{-| The running game session. `pool` is the session stone pool, which grows one
+stone per accepted roll.
+-}
+type alias Session =
+    { id : String
+    , goal : String
+    , pool : List Stone
+    }
+
+
 type alias CharacterSheet =
     { id : String
     , slot : Int
@@ -92,6 +138,9 @@ type alias CharacterSheet =
     , condition : String
     , notes : String
     , fate : Int
+
+    -- Discord user id of the player who claimed this sheet, if any.
+    , ownerId : Maybe String
     }
 
 
@@ -135,6 +184,9 @@ type alias GameState =
     , messages : List Message
     , stonePool : List Stone
     , pendingRoll : Maybe PendingRoll
+    , committedBoons : List CommittedBoon
+    , proposals : List Proposal
+    , session : Maybe Session
     , characters : List CharacterSheet
     }
 
@@ -154,10 +206,35 @@ type alias Model =
     -- overwrite a sheet while it is being edited.
     , editingSlot : Maybe Int
 
+    -- Whether the message log is scrolled to (or near) its bottom. New messages
+    -- only pull the log down when this holds, so a viewer reading back history
+    -- is left where they are.
+    , logAtBottom : Bool
+
+    -- Draft goal in the facilitator's "start session" field.
+    , newSessionGoal : String
+
+    -- Backend WebSocket connection state, as last reported by the JS socket.
+    , connection : Connection
+
+    -- How many times the initial game-state load has been retried after a
+    -- transient failure. The live socket is the real source of state; this is
+    -- only the first-paint seed.
+    , gameStateAttempts : Int
+
     -- Viewer's local time zone, used to render message timestamps. Starts at
     -- UTC and is replaced once Time.here resolves.
     , timeZone : Time.Zone
     }
+
+
+{-| Backend WebSocket health, driven by the `wsStatus` port.
+-}
+type Connection
+    = Connected
+    | Reconnecting
+    | Offline
+    | Rejected
 
 
 
@@ -169,9 +246,26 @@ type Msg
     | GotGameState (Result Http.Error GameState)
     | NewMessageChanged String
     | SendMessage
+    | LogScrolled Bool
     | MessagePosted (Result Http.Error ())
+    | ClearLog
+    | LogCleared (Result Http.Error ())
     | FromDiscordRaw Decode.Value
-    | AddWhiteStone
+    | AddBoon
+    | CommitBoonIncrement
+    | CommitBoonDecrement
+    | ClaimSlot Int
+    | ReleaseSlot Int
+    | SlotClaimed (Result Http.Error ())
+    | AcceptProposal String
+    | RejectProposal String
+    | ProposalResolved (Result Http.Error ())
+    | SessionGoalChanged String
+    | StartSession
+    | EndSession
+    | SessionUpdated (Result Http.Error ())
+    | WsStatusChanged String
+    | RetryGetGameState
     | RollStones
     | RerollStones
     | AcceptRoll
