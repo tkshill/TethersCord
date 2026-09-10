@@ -295,14 +295,14 @@ acceptCompel =
     { term = "Accept Compel"
     , short = "Take the offered complication for two boons. Any time."
     , long =
-        "The move for accepting a compel the facilitator has offered. Raised as a proposal; on approval the proposer is paid two boons."
+        "The move for accepting a compel the facilitator has offered."
     }
 
 
 suggestCompel : Term
 suggestCompel =
     { term = "Suggest Compel"
-    , short = "Once per session, point the facilitator at another character for a compel."
+    , short = "Once per session, suggest a compel for another character."
     , long =
         "Name another player's character as a good target for a compel. If the facilitator runs with it, you take one boon and the compelled character takes two. Their consent is handled at the table."
     }
@@ -320,9 +320,9 @@ floatingBoon =
 helpOut : Term
 helpOut =
     { term = "Help Out"
-    , short = "Once per session, reroll the open overcome for free."
+    , short = "Once per session, help someone with an overcome."
     , long =
-        "Available only while an overcome roll is on the table. On approval the roll is redrawn with no Press Fate cost."
+        "Available only while an overcome roll is on the table. On approval the roll is redrawn with no Press Fate cost. The helping character does not spend any resources. Both players share the consequences of the roll."
     }
 
 
@@ -331,7 +331,7 @@ addDetail =
     { term = "Add a Detail"
     , short = "Once per session, establish something true about the scene — it becomes a floating boon."
     , long =
-        "Propose a fact about the situation. The facilitator types the context and approves, and a floating boon enters the session for anyone to spend."
+        "Propose a fact or additional detail to the scene about the situation. The facilitator types the context and approves, and a floating boon enters the session for anyone to spend."
     }
 
 
@@ -340,5 +340,5 @@ gainInsight =
     { term = "Gain Insight"
     , short = "Once per session, learn something from the facilitator — it becomes a floating boon."
     , long =
-        "The same effect as Add a Detail: an approved question or realisation, noted by the facilitator, becomes a floating boon. The answer itself is table talk."
+        "Ask the facilitator a question or for clarification about the scene. They'll answer to the best of their ability. Once approved, a floating boon is created for anyone to spend if they can make it related to their action."
     }

@@ -1,10 +1,21 @@
 # Roadmap
 
-The backend (single Worker + Durable Object + D1) is stable. Everything below is
-incremental work on top of it, roughly in priority order.
+The backend (single Worker + Durable Object + D1) is stable. Everything here is
+incremental work on top of it.
 
-`DESIGN_PRINCIPLES.md` holds the ten core design principles every item here is
-weighed against.
+`DESIGN_PRINCIPLES.md` holds the ten core design principles every item is weighed
+against.
+
+**Phase 1** (sections 1–16, 19, 21, 22) is shipped — each section is the record
+of what landed and the decisions taken along the way. **Phase 2**, at the end,
+collects everything still open, moved out of those sections so the outstanding
+work sits in one list. Sections whose entire content was still open (17
+Campaigns, 18 AI session summary, 20 Character growth) moved wholesale into
+Phase 2, so those numbers are skipped below — the section numbers are stable
+anchors referenced from `CLAUDE.md` and commit messages, so nothing is
+renumbered.
+
+# Phase 1 — shipped
 
 ## 1. Module structure — done
 
@@ -100,11 +111,11 @@ How a roll resolves, as built:
 
 Follow-ups:
 
-- [ ] Facilitator-set difficulty: let the facilitator add Bane stones to a roll
-      from the fiction instead of the fixed two. Deferred — the fixed two Bane
-      stay for now. **Superseded by section 19:** difficulty escalates on its own
-      through the session pool carrying Banes between sessions, so no
-      facilitator-set axis is planned.
+- Facilitator-set difficulty (letting the facilitator add Bane stones to a roll
+  from the fiction instead of the fixed two) was **superseded by section 19** —
+  difficulty escalates on its own through the session pool carrying Banes
+  between sessions, so no facilitator-set axis is planned; the fixed two Bane
+  stay.
 - [x] Bind a character sheet to a Discord user. `characters.discord_user_id`
       (migration `0006`, partial-unique per table); a player claims an unclaimed
       sheet with `POST /characters/:slot/claim` and drops it with `/release`
@@ -158,13 +169,6 @@ directly — sheets are not shared state in that sense.
 - [x] Client: a facilitator-only **Proposals** panel in the stones card lists
       each as "*proposer* — *what*" with Accept / Reject; the proposer sees a
       muted "(n pending)" next to the control they used (no optimistic apply).
-
-### Deferred
-
-- [ ] **Self-serve claiming** — first authenticated user at a `tableId` with no
-      facilitator claims it, stored per-table (new migration). Needs a hand-off
-      path; obvious failure mode is a player launching first. Not needed while
-      `BOOTSTRAP_FACILITATOR_ID` covers a single known facilitator.
 
 ## 6. Message log hygiene
 
@@ -306,19 +310,17 @@ session. Raised from the **Moves** card once a player holds a sheet.
       agreeing is handled at the table, so no suggest → accept → approve
       handshake was needed.
 
-## 11. Effect pattern + a test suite across client and worker — largely done
+## 11. Effect pattern + a test suite across client and worker — done
 
-The Effect refactor shipped and both suites run in CI. Still open: the
-`avh4/elm-program-test` flow tests, a `fetch` stub for the happy-path Discord
-exchange, and the extra `GameTable` coverage noted below.
+The Effect refactor shipped and both suites run in CI.
 
-There is no automated test anywhere in the project. `pnpm run build` — an
-optimised Elm compile plus `tsc --noEmit` on both sides — is the whole safety
-net, and it only catches type errors. Every gameplay rule (the proposal queue,
-the overcome, the session lifecycle, once-per-session abilities, fate costs) is
-checked by hand in a running Activity. This section builds a suite worth running
-before each new feature: pure Elm tests on the client, and `workerd`-hosted
-tests on the Worker and Durable Object.
+This section started from no automated test anywhere in the project. `pnpm run
+build` — an optimised Elm compile plus `tsc --noEmit` on both sides — was the
+whole safety net, and it only catches type errors. Every gameplay rule (the
+proposal queue, the overcome, the session lifecycle, once-per-session abilities,
+fate costs) was checked by hand in a running Activity. This section built a suite
+worth running before each new feature: pure Elm tests on the client, and
+`workerd`-hosted tests on the Worker and Durable Object.
 
 Sequenced after the gameplay sections above so the shape of `update` and of
 `GameTable` has settled first. The client refactor and the first Elm tests are
@@ -359,12 +361,6 @@ leaving `update` a pure function that returns data a test can inspect.
   - the empty-message send guard in `update` (`SendMessage` with a blank
     `newMessage` yields `Effect.None`).
   - `Format.timestamp` and the `Roll` stone helpers.
-- [ ] `elm-program-test` flows:
-  - auth → `GetGameState` → `GotGameState` seeds the board; a later socket
-    snapshot wins over a slower `GET /messages` (`GotGameState` guards on
-    `model.gameState`).
-  - raising a move queues it and shows the "(pending)" hint without touching
-    shared state.
 - [x] `client/tests/`, run with the `elm-test` CLI invoked through the pinned
       `node_modules/elm/bin/elm` binary (`pnpm run test:client`), the way
       `build.mjs` does.
@@ -382,12 +378,6 @@ account, and costs nothing against the Free tier.
       `worker/test/apply-migrations.ts` applies `worker/migrations/` before each
       file so it starts from a migrated, empty database. `compatibilityDate` is
       pinned to `2026-08-22` because the pool bundles an older `workerd`.
-- [ ] Discord is the only external call; stub `fetch` to `discord.com` in a
-      setup file so the suite is fully offline. `handleDiscordExchange` gets a
-      canned token + `users/@me` response. **Not done** — the `oauth` tests
-      currently cover only `pruneExpiredSessions` and `handleDiscordExchange`'s
-      input-validation paths, which never reach `discord.com`; a stub for the
-      happy-path exchange is still to add.
 
 ### What the worker tests cover
 
@@ -402,12 +392,6 @@ account, and costs nothing against the Free tier.
     ability with no running session is refused (400).
   - once-per-session abilities — a second `gain-insight` from the same slot
     after an accepted one is refused (409).
-  - Still to add: cold-start load (seed `messages` / `characters` in D1, assert
-    the first snapshot), the overcome reroll `REROLL_COST` deduction and
-    `/stones/accept` clearing the overcome, the Accept Compel payout, and the
-    full section-12 session-end clear (`overcome` / `pendingRoll` /
-    `committedBoons` / unresolved `proposals` are **not** cleared yet — a test
-    note pins the gap).
 - [x] **Auth gates** — every route rejects a missing / unknown / expired bearer
       token; `facilitatorOnly` routes 403 for a player and allow a
       `facilitators`-table facilitator; `rollGate` allows the facilitator always
@@ -558,11 +542,6 @@ effort.
       `/stones/commit` carrying the net delta is sent once the taps stop, and the
       control disables while `stones:pledge` is in flight. `/stones/commit` now
       takes any non-zero integer `delta`; `applyPledge` clamps to `[0, fate]`.
-- [ ] **Reuse a still-valid `sessionToken` across reloads.** Persist it in
-      `localStorage`; on reload, skip `/api/oauth/discord/exchange` while
-      `expires_at` is still in the future. Lower value — Activities usually
-      launch fresh rather than reload — but one request saved when they don't.
-      **Deferred** to a dedicated branch (new port + `DiscordBridge` change).
 
 ## 15. Zippier realtime updates
 
@@ -570,14 +549,6 @@ Perceived latency on a shared action is click → POST → 204 → DO broadcast 
 socket → decode → re-render. The two network hops are inherent to the
 facilitator-broadcast model; the payload size and the render cost are not.
 
-- [ ] **Delta broadcasts.** Replace the whole-`GameState` push on every mutation
-      with a tagged patch — `{ t: "message", message }`, `{ t: "stones", … }`,
-      `{ t: "proposals", proposals }`, and so on — that the client folds into its
-      local state. Keep `{ t: "snapshot", state }` for connect and an explicit
-      resync. Cuts the client-side decode. **Deferred** to a dedicated branch —
-      the largest and riskiest item here (rewrites the wire protocol, every
-      broadcast call site, and the client fold), and it does not reduce request
-      count. The 50-message window below already shrinks the payload.
 - [x] **`Element.Lazy` the message log.** `View.lazyLogBody` (the `speakerColors`
       fold plus the day-divided `logRows`) is wrapped in `Element.Lazy.lazy2` on
       `zone` / `messages`, so a re-render that does not touch `messages`
@@ -611,50 +582,11 @@ metrics move.
       (`worker/src/maintenance.ts`) runs `DELETE FROM messages WHERE created_at
       < ?` for a 30-day retention window, alongside `pruneExpiredSessions` in
       `scheduled`.
-- [ ] **Optionally split `KEY_STONES`** into `stones` / `proposals` / `session`
-      / `overcome` keys so adding a proposal does not rewrite the whole blob.
-      Only worth it if write volume shows up in metrics. **Not planned** — the
-      write-skip above already removes the no-op rewrites; revisit only if DO
-      write metrics move.
-
-## 17. Campaigns — multiple games per facilitator (not scheduled)
-
-Today `tableId` (`guildId-channelId`) is the unit of persistence: one Durable
-Object per channel owns one set of characters, one message log, one session
-history. A **campaign** would become the real container — a named game a
-facilitator creates and manages, owning its characters, NPCs, locations, session
-history, and log — and the facilitator would pick which campaign is active for
-the channel at Activity start.
-
-This is a large reshaping and is **not scheduled**. It touches the Durable
-Object's binding model (the object is keyed by `tableId` and eagerly loads
-everything for it), needs a `campaigns` table and an active-campaign pointer per
-table, a campaign-selection screen, and a migration path for existing
-single-campaign tables.
-
-- [ ] Design the data model and the DO-binding change before committing to it.
-
-## 18. AI session summary (exploratory)
-
-A short written recap of each session, generated when the facilitator ends it
-and stored on the `game_sessions` row for the history view.
-
-The open question is the input. Sessions run two to three hours of mostly voice,
-and there is no obviously free way to transcribe that live. But the message log
-already captures moves, rolls, overcomes, the session goal, and any chat — an
-LLM summary of a session's log rows may be a rich enough record without
-transcribing voice at all. Settle that before reaching for transcription
-(browser `SpeechRecognition` is free but needs a live foreground tab and is
-unreliable over hours; hosted Whisper-class APIs are not free at that length).
-
-- [ ] Spike: summarise a completed session from its log rows with a single
-      Claude API call at `/session/end`, and judge whether the log alone carries
-      the session.
 
 ## 19. The overcome aftermath — aspects, conditions, and the tether
 
-**Built** (feat/section-19-overcome-aftermath), minus the playtest-open items
-below. This is the rules layer that turns individual overcome outcomes into a
+**Built** (feat/section-19-overcome-aftermath), minus the open playtest
+questions. This is the rules layer that turns individual overcome outcomes into a
 character's long arc, keeping what makes Burning Wheel, Pendragon and Archive of
 the Sky work inside a rules-lite core.
 
@@ -751,17 +683,6 @@ and resolves by that session's end.
 - An untethered character's own **mixed-roll Bane goes to the session pool**
   instead of onto an aspect; they accrue no new aspect strain mid-frenzy.
 
-### To confirm in playtest
-
-- [ ] Cadence. At base rates a failure lands roughly every ~3 sessions and each
-      character reckons every ~6–9; Highlights lengthen the cycle, hoarding
-      Boons shortens it. Check this feels right at the table.
-- [ ] Whether compels need a per-session cap after all.
-- [ ] The exact frenzy lockout — broken-aspect-only, or broader.
-- [ ] Whether the facilitator may call a foregone-failure session early — once
-      the carried Bane debt exceeds a session's realistic Boon ceiling — and cut
-      straight to the untether scene.
-
 ### What this supersedes
 
 - Section 4's deferred "facilitator-set difficulty from the fiction" — difficulty
@@ -770,20 +691,6 @@ and resolves by that session's end.
 - Section 7's placeholder met / partial / failed session thresholds.
 - The earlier section 19 sketch (leftover stone to the target, Boons tagged to
   aspects, facilitator-held floating banes, compels removing banes).
-
-## 20. Character growth on the sheet
-
-Largely absorbed into section 19: growth **is** the untether resolution — the
-forced rewrite or replacement of an aspect after a reckoning — with the
-`condition` line as the visible running record of strain between reckonings. A
-rewrite changes what an aspect *means*; it never adds a rating (principle 5,
-"grow in depth, not strength").
-
-- [ ] Pin down what a rewrite may do: reword the aspect only, swap an ability
-      tied to it, or retire the character outright.
-- [ ] Decide whether anything persists across a reckoning besides the rewritten
-      aspect — all Banes clear, but does the character keep any marker of what
-      they went through?
 
 ## 21. Game text, tooltips, glossary, and aspect examples — done — *see also section 22*
 
@@ -854,8 +761,9 @@ is what the tooltip and glossary work built on.
 - [x] Applied to the aspect fields, Condition, "Highlight", "Overcome — <name>",
       "Session pool", "Floating boons", and the once-per-session / compel move
       buttons.
-- [x] Known limit: `title=` is hover-only — no touch. The glossary card below is
-      the tap path; both shipped.
+- [x] Known limit: `title=` is hover-only — no touch, and it does not render in
+      the Discord Activity webview at all. The glossary card below is the tap
+      path; both shipped. A real tooltip element is parked as **P2.11**.
 
 ### 21.4 — "How to play" glossary card — done
 
@@ -898,10 +806,11 @@ before merge.
 
 **Largely done.** Steps 1–5 and 7 shipped in full; step 6 shipped its low-risk
 part (a `get game()` accessor, a `commit()` trailer helper, `Promise.all` on the
-cold-start reads), with the `GameTable.ts` module split — a route table and
-`worker/src/handlers/*` — carved out as its own effort. No gameplay change
-anywhere in this section; each step was its own branch merged with `--no-ff`,
-guarded by the client bundle, both typecheckers, and both test suites.
+cold-start reads). The `GameTable.ts` module split — a route table and
+`worker/src/handlers/*` — is carved out as its own effort (see Phase 2). No
+gameplay change anywhere in this section; each step was its own branch merged
+with `--no-ff`, guarded by the client bundle, both typecheckers, and both test
+suites.
 
 Nineteen sections of features have landed on a structure that was drawn for far
 less. Complexity is now concentrated in two files that grow every time a rule is
@@ -998,7 +907,7 @@ the Worker.
       `ViewContext` type live in `View/Helpers.elm`.
 - [x] Section 1 note below and the `CLAUDE.md` module-layout list updated.
 
-### Step 5 — worker pure-logic extraction (no behaviour change) — mostly done
+### Step 5 — worker pure-logic extraction (no behaviour change) — done
 
 - [x] **`worker/src/gameLogic.ts`** — the pure helpers moved out of
       `GameTable.ts`: `applyPledge`, `routeOvercomeDraw`, `markAbilityUsed`,
@@ -1018,14 +927,10 @@ the Worker.
       `LegacyStoneState` / `migrateStoneKind` and the `?? default` fan-out are
       now a pure `migrateStoneState(stored, initialPool)`; `loadStoneState` is
       the storage read plus the cold-table `put`.
-- [ ] **`handleProposalDecision` per-kind resolvers** — deferred to step 6,
-      where it becomes the `handlers/proposals` module. Its arms lean on
-      `drawFromBag` / `bumpFate` / `readJson`, so extracting pure resolvers is
-      better done alongside the `HandlerContext` those handlers get.
 
 ### Step 6 — split `GameTable.ts`
 
-**Part 1 done** — the low-risk items that need no module reshaping:
+Part 1 — the low-risk items that need no module reshaping — done:
 
 - [x] **`private get game(): GameState`** — the ~85 `this.gameState!` reads are
       now `this.game`; the one non-null assertion lives in the getter.
@@ -1038,25 +943,8 @@ the Worker.
       `loadSessionHistory`, the two `loadEntities`).
 - [x] **`const UUID = "[0-9a-fA-F-]{36}"`** shared by the two id route regexes.
 
-**Part 2 not started** — the module reshaping, deferred as its own effort so it
-gets the dedicated test-coverage pass the roadmap's "no behaviour change" gate
-needs (the existing suite does not touch every handler path):
-
-- [ ] **Route table.** Replace the `fetch` if-ladder with a declarative
-      `ROUTES` array — `{ method, path: string | RegExp, gate?: "facilitator" |
-      "roll", handler }` — matched in a loop, plus a `parseSlot` helper.
-- [ ] **Handler modules** under `worker/src/handlers/`: `stones`, `session`,
-      `characters`, `entities`, `proposals`. Each takes a `HandlerContext`
-      (`{ game, env, commit, appendMessage, broadcast }`, plus a way to write
-      back the `carriedBanes` / `lastSessionFailed` instance fields). The DO
-      class keeps routing, lifecycle, `withLock`, auth, and the context. This
-      also absorbs step 5's `handleProposalDecision` per-kind resolver
-      extraction, whose arms lean on `drawFromBag` / `bumpFate` / `readJson`.
-- [ ] Update the `GameTable` description in `CLAUDE.md` and the test-coverage
-      notes for the new module layout.
-- Target: no file in `worker/src/` over ~500 lines. (GameTable.ts is ~2200
-      after part 1 — the `!` and trailer noise is gone but the reshaping is
-      what shrinks it.)
+Part 2 — the module reshaping (route table + `worker/src/handlers/*`) — is in
+Phase 2 (P2.2).
 
 ### Step 7 — smaller TS cleanup — done
 
@@ -1073,8 +961,180 @@ needs (the existing suite does not touch every handler path):
 - **Section 21** (game text / tooltips / glossary / aspect examples) — the
   copy-extraction step wants the new `View/` module layout to exist first, so do
   21 after step 4. Step 4 is done, so section 21 is unblocked.
-- **Section 15** delta broadcasts — untouched here; the route table and
+- **Phase 2 P2.3** delta broadcasts — untouched here; the route table and
   `commit()` helper give it fewer call sites to rewrite when it lands.
+
+# Phase 2 — outstanding work
+
+Everything still open, moved out of the Phase 1 sections above so it sits in one
+list. Same conventions: each item is its own branch off `main` with a
+professional commit message, and `DESIGN_PRINCIPLES.md` is the yardstick. Items
+are roughly in value-over-effort order; the last two are explicitly not planned
+or not scheduled.
+
+## P2.1 — Remaining test coverage (from §11)
+
+The Effect refactor and both `pnpm run test` suites shipped in CI; these gaps
+remain.
+
+- [ ] **`avh4/elm-program-test` flows**, for paths that span several messages
+      (the current tests fold `Main.update` directly):
+  - auth → `GetGameState` → `GotGameState` seeds the board; a later socket
+    snapshot wins over a slower `GET /messages` (`GotGameState` guards on
+    `model.gameState`).
+  - raising a move queues it and shows the "(pending)" hint without touching
+    shared state.
+- [ ] **Discord `fetch` stub.** Stub `fetch` to `discord.com` in a setup file so
+      the worker suite is fully offline; `handleDiscordExchange` gets a canned
+      token + `users/@me` response for the happy-path exchange. The `oauth`
+      tests currently cover only `pruneExpiredSessions` and the
+      input-validation paths, which never reach `discord.com`.
+- [ ] **Extra `GameTable` coverage:** cold-start load (seed `messages` /
+      `characters` in D1, assert the first snapshot), the overcome reroll
+      `REROLL_COST` deduction, `/stones/accept` clearing the overcome, the Accept
+      Compel payout, and the section-12 session-end clear of `overcome` /
+      `pendingRoll` / `committedBoons` / unresolved `proposals`.
+
+## P2.2 — Split `GameTable.ts` — section 22 step 6 Part 2 (from §22)
+
+The module reshaping, deferred as its own effort so it gets the dedicated
+test-coverage pass the "no behaviour change" gate needs — the existing suite
+does not touch every handler path.
+
+- [ ] **Route table.** Replace the `fetch` if-ladder with a declarative `ROUTES`
+      array — `{ method, path: string | RegExp, gate?: "facilitator" | "roll",
+      handler }` — matched in a loop, plus a `parseSlot` helper.
+- [ ] **Handler modules** under `worker/src/handlers/`: `stones`, `session`,
+      `characters`, `entities`, `proposals`. Each takes a `HandlerContext`
+      (`{ game, env, commit, appendMessage, broadcast }`, plus a way to write
+      back the `carriedBanes` / `lastSessionFailed` instance fields). The DO
+      class keeps routing, lifecycle, `withLock`, auth, and the context. This
+      also absorbs section 22 step 5's `handleProposalDecision` per-kind
+      resolver extraction, whose arms lean on `drawFromBag` / `bumpFate` /
+      `readJson`.
+- [ ] Update the `GameTable` description in `CLAUDE.md` and the test-coverage
+      notes for the new module layout.
+- Target: no file in `worker/src/` over ~500 lines. `GameTable.ts` is ~2200
+  after Part 1 — the reshaping is what shrinks it.
+
+## P2.3 — Delta broadcasts (from §15)
+
+- [ ] Replace the whole-`GameState` push on every mutation with a tagged patch
+      — `{ t: "message", message }`, `{ t: "stones", … }`,
+      `{ t: "proposals", proposals }`, and so on — that the client folds into its
+      local state. Keep `{ t: "snapshot", state }` for connect and an explicit
+      resync. Cuts the client-side decode.
+
+The largest and riskiest item on the list: it rewrites the wire protocol, every
+broadcast call site, and the client fold, and it does not reduce request count.
+The 50-message window (§15) already shrank the payload. Section 22's route table
+and `commit()` helper give it fewer call sites to rewrite when it lands.
+
+## P2.4 — Reuse a still-valid `sessionToken` across reloads (from §14)
+
+- [ ] Persist the `sessionToken` in `localStorage`; on reload, skip
+      `/api/oauth/discord/exchange` while `expires_at` is still in the future.
+
+Lower value — Activities usually launch fresh rather than reload — but one
+request saved when they don't. Needs a new port + a `DiscordBridge` change, so
+its own branch.
+
+## P2.5 — Self-serve facilitator claiming (from §5)
+
+- [ ] The first authenticated user at a `tableId` with no facilitator claims it,
+      stored per-table (new migration).
+
+Needs a hand-off path; the obvious failure mode is a player launching first. Not
+needed while `BOOTSTRAP_FACILITATOR_ID` covers a single known facilitator.
+
+## P2.6 — Overcome-aftermath playtest questions (from §19)
+
+The section-19 rules shipped; these stay open until the table has played with
+them.
+
+- [ ] **Cadence.** At base rates a failure lands roughly every ~3 sessions and
+      each character reckons every ~6–9; Highlights lengthen the cycle, hoarding
+      Boons shortens it. Check this feels right at the table.
+- [ ] Whether compels need a per-session cap after all.
+- [ ] The exact frenzy lockout — broken-aspect-only, or broader.
+- [ ] Whether the facilitator may call a foregone-failure session early — once
+      the carried Bane debt exceeds a session's realistic Boon ceiling — and cut
+      straight to the untether scene.
+
+## P2.7 — Character growth on the sheet (from §20)
+
+Largely absorbed into §19: growth **is** the untether resolution — the forced
+rewrite or replacement of an aspect after a reckoning — with the `condition`
+line as the visible running record of strain between reckonings. A rewrite
+changes what an aspect *means*; it never adds a rating (principle 5, "grow in
+depth, not strength").
+
+- [ ] Pin down what a rewrite may do: reword the aspect only, swap an ability
+      tied to it, or retire the character outright.
+- [ ] Decide whether anything persists across a reckoning besides the rewritten
+      aspect — all Banes clear, but does the character keep any marker of what
+      they went through?
+
+## P2.8 — Campaigns: multiple games per facilitator (from §17, not scheduled)
+
+Today `tableId` (`guildId-channelId`) is the unit of persistence: one Durable
+Object per channel owns one set of characters, one message log, one session
+history. A **campaign** would become the real container — a named game a
+facilitator creates and manages, owning its characters, NPCs, locations, session
+history, and log — and the facilitator would pick which campaign is active for
+the channel at Activity start.
+
+This is a large reshaping. It touches the Durable Object's binding model (the
+object is keyed by `tableId` and eagerly loads everything for it), needs a
+`campaigns` table and an active-campaign pointer per table, a campaign-selection
+screen, and a migration path for existing single-campaign tables.
+
+- [ ] Design the data model and the DO-binding change before committing to it.
+
+## P2.9 — AI session summary (from §18, exploratory)
+
+A short written recap of each session, generated when the facilitator ends it
+and stored on the `game_sessions` row for the history view.
+
+The open question is the input. Sessions run two to three hours of mostly voice,
+and there is no obviously free way to transcribe that live. But the message log
+already captures moves, rolls, overcomes, the session goal, and any chat — an
+LLM summary of a session's log rows may be a rich enough record without
+transcribing voice at all. Settle that before reaching for transcription
+(browser `SpeechRecognition` is free but needs a live foreground tab and is
+unreliable over hours; hosted Whisper-class APIs are not free at that length).
+
+- [ ] Spike: summarise a completed session from its log rows with a single
+      Claude API call at `/session/end`, and judge whether the log alone carries
+      the session.
+
+## P2.10 — Split `KEY_STONES` storage (from §16, not planned)
+
+- [ ] Split `KEY_STONES` into `stones` / `proposals` / `session` / `overcome`
+      keys so adding a proposal does not rewrite the whole blob.
+
+**Not planned** — the write-skip in §16 already removes the no-op rewrites;
+revisit only if Durable Object write metrics move.
+
+## P2.11 — A real tooltip element (from §21.3)
+
+The §21.3 tooltips are the native `title=` attribute only (`Ui.withTip`, applied
+through `View.Helpers.glossaryTitle` / `tip` / `tipAttrs`). That is hover-only
+and mouse-only: it needs about a second of a stationary pointer, shows nothing on
+tap or keyboard focus, and in practice does not render at all inside the Discord
+Activity webview — so in the shipping context the glosses are effectively
+invisible and the §21.4 "How to play" card is carrying all of the load. The
+built bundle is correct; this is a limitation of the mechanism, not a bug.
+
+- [ ] Replace `Ui.withTip` with a real tooltip in `Ui` — a small bubble shown on
+      hover, tap, and focus, positioned near the trigger, dismissed on blur /
+      Escape / outside tap. No `Model` state if it can be done with a CSS
+      `:hover` / `:focus-within` sibling; a lightweight `Model` open-id
+      otherwise, following the `aspectExamplesOpen` pattern.
+- [ ] Keep the call sites (`glossaryTitle` / `tip` / `tipAttrs`) and their
+      `Copy.Terms.termShort` source unchanged so only the leaf rendering moves.
+- [ ] Verify it actually appears inside the Discord Activity, not just a desktop
+      browser tab.
 
 ---
 
