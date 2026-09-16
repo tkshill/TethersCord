@@ -2,7 +2,7 @@ module View.Characters exposing (view)
 
 {-| The Characters card: a tab strip over the three sheets and the selected
 sheet itself — owner row, boons (grant / highlight), the text fields, and the
-three aspects with their accumulated Banes or an untethered flag.
+three aspects with their accumulated Banes.
 -}
 
 import Copy
@@ -116,40 +116,26 @@ characterSheet facilitator myId aspectExamplesOpen gs ch =
         , boonsBlock facilitator mine ch (committedBoonsForSlot ch.slot gs.committedBoons) pendingPledges pendingPledgeId
         , field editable ch NameField "" "Name" ch.name
         , field editable ch NotableFeaturesField "" Copy.notableFeaturesLabel ch.notableFeatures
-        , aspectField editable aspectExamplesOpen ch gs.untether Archetype ArchetypeField ch.archetype
-        , aspectField editable aspectExamplesOpen ch gs.untether Desire DesireField ch.desire
-        , aspectField editable aspectExamplesOpen ch gs.untether Quest QuestField ch.quest
+        , aspectField editable aspectExamplesOpen ch Archetype ArchetypeField ch.archetype
+        , aspectField editable aspectExamplesOpen ch Desire DesireField ch.desire
+        , aspectField editable aspectExamplesOpen ch Quest QuestField ch.quest
         , field editable ch ConditionField "Condition" Copy.conditionLabel ch.condition
         , notesField editable ch
         ]
 
 
-{-| An aspect field: the input, its accumulated Banes as dots beneath (or an
-"untethered" flag when a failed session goal broke this one, section 19), and —
+{-| An aspect field: the input, its accumulated Banes as dots beneath, and —
 while the sheet is editable — a "see examples" toggle that opens a short list of
 sample aspects from `ASPECTS.md` to write against.
 -}
-aspectField : Bool -> Maybe ( Int, Aspect ) -> CharacterSheet -> Maybe Untether -> Aspect -> CharacterField -> String -> Element Msg
-aspectField editable examplesOpen ch untether aspect fieldTag value =
+aspectField : Bool -> Maybe ( Int, Aspect ) -> CharacterSheet -> Aspect -> CharacterField -> String -> Element Msg
+aspectField editable examplesOpen ch aspect fieldTag value =
     let
         count =
             aspectBaneCount aspect ch.aspectBanes
 
-        broken =
-            case untether of
-                Just u ->
-                    u.slot == ch.slot && u.aspect == aspect
-
-                Nothing ->
-                    False
-
         extras =
-            if broken then
-                [ el [ Font.size 10, Font.color Ui.danger, Font.semiBold ]
-                    (text Copy.untetheredAspectFlag)
-                ]
-
-            else if count > 0 then
+            if count > 0 then
                 [ Element.row [ spacing Ui.xs, Element.centerY ]
                     (List.repeat count Ui.baneDot
                         ++ [ el [ Font.size 10, Font.color Ui.inkSoft ]

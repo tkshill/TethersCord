@@ -3,7 +3,7 @@
 Every character in TethersCord is written around three **aspects**: an
 **Archetype**, a **Desire**, and a **Quest**. This document is a bank of examples
 to pull from, or push against, when you write yours. `DESIGN_PRINCIPLES.md` holds
-the reasoning; roadmap section 19 covers how aspects behave in play.
+the reasoning; `CLAUDE.md` covers how aspects behave in play.
 
 A curated handful of these also show up in the app, under "see examples" on each
 aspect field.
@@ -17,9 +17,8 @@ the sheet. In a roll, spending a boon to **Highlight** an aspect is you saying
 for that one roll.
 
 Aspects only ever **accumulate Banes**. A mixed roll drops a Bane onto one of
-your three at random; the Banes stay until a failed session goal **untethers**
-you on one of them, at which point that aspect is rewritten or replaced and all
-three clear. So aspects are written to hold tension from the start — something
+your three at random, and they stay there — there is currently no mechanic that
+clears them. So aspects are written to hold tension from the start — something
 about them is already in conflict with the world.
 
 ## What makes a strong aspect
@@ -153,12 +152,16 @@ Three aspects together, with the friction between them noted.
 
 ---
 
-## Rewriting an aspect after an untether
+## Rewriting a strained aspect
 
-When a failed session goal untethers you on an aspect, you rewrite or replace it
-before the next session. A rewrite changes what the aspect **means** — it never
-adds a rating or a power (principle 5: grow in depth, not strength). Some shapes
-a rewrite can take:
+TethersCord used to force a rewrite automatically, through an "untether"
+mechanic tied to a failed session goal; that trigger has been retired, and
+session goals no longer resolve with a roll at all. The rewrite itself is
+still good practice whenever the table feels an aspect's accumulated Banes
+have made it stop fitting the fiction — it's just a judgment call now, not an
+automatic event. A rewrite changes what the aspect **means** — it never adds a
+rating or a power (principle 5: grow in depth, not strength). Some shapes a
+rewrite can take:
 
 - **Reword the same idea, harder.** "The soldier who was told the war was over"
   becomes "The soldier who kept fighting after everyone went home."
@@ -166,5 +169,5 @@ a rewrite can take:
   "The healer who has stopped flinching, and misses the fear."
 - **Name what the strain did.** The Banes were about betrayal; the new
   Archetype is "The one who assumes the worst now, and is usually right."
-- **Replace it entirely** with something the reckoning scene made true, if the
-  old idea has nowhere left to go.
+- **Replace it entirely** with something a scene made true, if the old idea has
+  nowhere left to go.

@@ -20,7 +20,6 @@ module Api exposing
     , postStartSession
     , postStones
     , postSuggestCompel
-    , postUntetherResolve
     , postUpdateEntity
     , postUseAbility
     , postUseFloatingBoon
@@ -287,18 +286,12 @@ postSessionGoal flags auth goal toMsg =
     postJson flags auth "/session/goal" (Encode.object [ ( "goal", Encode.string goal ) ]) toMsg
 
 
-{-| Facilitator-only: end the running session and roll its pool for the outcome.
+{-| Facilitator-only: end the running session. Tops the shared pool back up to
+its floor of 2 Boon / 2 Bane if it has fallen short of either.
 -}
 postEndSession : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
 postEndSession flags auth toMsg =
     postEmpty flags auth "/session/end" toMsg
-
-
-{-| Facilitator-only: close an in-progress reckoning (section 19).
--}
-postUntetherResolve : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
-postUntetherResolve flags auth toMsg =
-    postEmpty flags auth "/untether/resolve" toMsg
 
 
 {-| Facilitator-only: open an overcome against the character in `slot`.
@@ -418,36 +411,14 @@ decodeUsedAbility =
 
 decodeSession : Decode.Decoder Session
 decodeSession =
-    Decode.map4 Session
+    Decode.map2 Session
         (Decode.field "id" Decode.string)
         (Decode.field "goal" Decode.string)
-        (Decode.field "pool" decodeStoneList)
-        (Decode.field "carriedBanes" Decode.int)
 
 
 decodeOvercome : Decode.Decoder Overcome
 decodeOvercome =
     Decode.map Overcome (Decode.field "targetSlot" Decode.int)
-
-
-decodeAspect : Decode.Decoder Types.Aspect
-decodeAspect =
-    Decode.string
-        |> Decode.andThen
-            (\s ->
-                case s of
-                    "archetype" ->
-                        Decode.succeed Types.Archetype
-
-                    "desire" ->
-                        Decode.succeed Types.Desire
-
-                    "quest" ->
-                        Decode.succeed Types.Quest
-
-                    _ ->
-                        Decode.fail ("Unknown aspect " ++ s)
-            )
 
 
 decodeAspectBanes : Decode.Decoder Types.AspectBanes
@@ -456,13 +427,6 @@ decodeAspectBanes =
         (Decode.field "archetype" Decode.int)
         (Decode.field "desire" Decode.int)
         (Decode.field "quest" Decode.int)
-
-
-decodeUntether : Decode.Decoder Types.Untether
-decodeUntether =
-    Decode.map2 Types.Untether
-        (Decode.field "slot" Decode.int)
-        (Decode.field "aspect" decodeAspect)
 
 
 decodeTableEntity : Decode.Decoder TableEntity
@@ -475,13 +439,11 @@ decodeTableEntity =
 
 decodeSessionSummary : Decode.Decoder SessionSummary
 decodeSessionSummary =
-    Decode.map6 SessionSummary
+    Decode.map4 SessionSummary
         (Decode.field "id" Decode.string)
         (Decode.field "goal" Decode.string)
         (Decode.field "startedAt" (Decode.map Time.millisToPosix Decode.int))
         (Decode.field "endedAt" (Decode.map Time.millisToPosix Decode.int))
-        (Decode.field "outcome" Decode.string)
-        (Decode.field "outcomeKind" Types.decodeSessionOutcome)
 
 
 decodeCharacterSheet : Decode.Decoder CharacterSheet
@@ -546,4 +508,3 @@ decodeGameState =
         |> andMap (Decode.field "usedAbilities" (Decode.list decodeUsedAbility))
         |> andMap (Decode.field "npcs" (Decode.list decodeTableEntity))
         |> andMap (Decode.field "locations" (Decode.list decodeTableEntity))
-        |> andMap (Decode.field "untether" (Decode.nullable decodeUntether))

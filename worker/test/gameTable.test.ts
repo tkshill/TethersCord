@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { aspectBaneBag, routeOvercomeDraw } from "../src/gameLogic";
+import { routeOvercomeDraw } from "../src/gameLogic";
 import { call, claim, readState, seedAuth } from "./helpers";
 
 async function firstProposalId(table: string, token: string): Promise<string> {
@@ -572,52 +572,28 @@ function aspectBaneTotal(
   return c.aspectBanes.archetype + c.aspectBanes.desire + c.aspectBanes.quest;
 }
 
-describe("section 19 — stone routing (pure)", () => {
+describe("stone routing (pure)", () => {
   it("routeOvercomeDraw sends two of a kind whole and a mixed draw's Bane to an aspect", () => {
-    expect(routeOvercomeDraw(["Boon", "Boon"], false)).toEqual({
+    expect(routeOvercomeDraw(["Boon", "Boon"])).toEqual({
       poolAdds: ["Boon", "Boon"],
       marksAspect: false,
     });
-    expect(routeOvercomeDraw(["Bane", "Bane"], false)).toEqual({
+    expect(routeOvercomeDraw(["Bane", "Bane"])).toEqual({
       poolAdds: ["Bane", "Bane"],
       marksAspect: false,
     });
-    expect(routeOvercomeDraw(["Boon", "Bane"], false)).toEqual({
+    expect(routeOvercomeDraw(["Boon", "Bane"])).toEqual({
       poolAdds: ["Boon"],
       marksAspect: true,
     });
   });
-
-  it("routeOvercomeDraw keeps an untethered target's mixed Bane in the pool (the frenzy)", () => {
-    expect(routeOvercomeDraw(["Bane", "Boon"], true)).toEqual({
-      poolAdds: ["Bane", "Boon"],
-      marksAspect: false,
-    });
-  });
-
-  it("aspectBaneBag weights every aspect Bane on every sheet once", () => {
-    expect(
-      aspectBaneBag([
-        { slot: 0, aspectBanes: { archetype: 0, desire: 0, quest: 0 } },
-      ]),
-    ).toEqual([]);
-
-    const bag = aspectBaneBag([
-      { slot: 0, aspectBanes: { archetype: 2, desire: 0, quest: 1 } },
-      { slot: 1, aspectBanes: { archetype: 0, desire: 1, quest: 0 } },
-    ]);
-    expect(bag).toHaveLength(4);
-    expect(bag.filter((e) => e.slot === 0 && e.aspect === "archetype")).toHaveLength(2);
-    expect(bag.filter((e) => e.slot === 0 && e.aspect === "quest")).toHaveLength(1);
-    expect(bag.filter((e) => e.slot === 1 && e.aspect === "desire")).toHaveLength(1);
-  });
 });
 
-describe("section 19 — the overcome aftermath (integration)", () => {
+describe("the combined pool — overcomes and session end (integration)", () => {
   it(
     "wires the overcome routing into accept + D1: every drawn stone lands in exactly one place",
     async () => {
-      const table = "gt19-route";
+      const table = "gt-combined-route";
       const { token: fac } = await seedAuth(undefined, { facilitator: true });
       await call(table, "/session/start", { token: fac, body: { goal: "escalate" } });
 
@@ -629,10 +605,11 @@ describe("section 19 — the overcome aftermath (integration)", () => {
         const after = await readState(table, fac);
 
         const aspectDelta = aspectBaneTotal(after, 0) - aspectBaneTotal(before, 0);
-        const poolDelta =
-          (after.session?.pool.length ?? 0) - (before.session?.pool.length ?? 0);
+        const poolSizeDelta = after.stonePool.length - before.stonePool.length;
 
-        expect(aspectDelta + poolDelta).toBe(2);
+        // Every stone drawn either returns to the pool or becomes an aspect
+        // Bane — never both, never neither.
+        expect(aspectDelta + poolSizeDelta).toBe(0);
         expect([0, 1]).toContain(aspectDelta);
         expect(after.overcome).toBeNull();
       }
@@ -640,95 +617,57 @@ describe("section 19 — the overcome aftermath (integration)", () => {
     20_000,
   );
 
-  it(
-    "session end draws one stone: a Boon carries the pool's Banes, a Bane fails and flushes the carry",
-    async () => {
-      const table = "gt19-verdict";
-      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+  it("tops the pool up to at least 2 Boon and 2 Bane on session end, and leaves it alone when it already qualifies", async () => {
+    const table = "gt-pool-topup";
+    const { token: fac } = await seedAuth(undefined, { facilitator: true });
 
-      let sawMet = false;
-      let sawFailed = false;
+    // A fresh table starts at the 2 Boon / 2 Bane floor already — ending
+    // immediately should not add anything.
+    await call(table, "/session/start", { token: fac, body: { goal: "first" } });
+    await call(table, "/session/end", { token: fac });
+    let state = await readState(table, fac);
+    expect(state.stonePool.filter((s) => s === "Boon")).toHaveLength(2);
+    expect(state.stonePool.filter((s) => s === "Bane")).toHaveLength(2);
 
-      for (let i = 0; i < 24 && !(sawMet && sawFailed); i++) {
-        await call(table, "/session/start", { token: fac, body: { goal: `g${i}` } });
-        await call(table, "/overcome/start", { token: fac, body: { slot: 0 } });
-        await call(table, "/stones/roll", { token: fac });
-        await call(table, "/stones/accept", { token: fac });
+    // Drain the pool with mixed overcomes until it falls under the floor,
+    // then confirm ending the session tops it back up.
+    await call(table, "/session/start", { token: fac, body: { goal: "drain" } });
+    for (let i = 0; i < 20; i++) {
+      state = await readState(table, fac);
+      if (state.stonePool.length < 4) break;
+      await call(table, "/overcome/start", { token: fac, body: { slot: 0 } });
+      await call(table, "/stones/roll", { token: fac });
+      await call(table, "/stones/accept", { token: fac });
+    }
+    state = await readState(table, fac);
+    const drainedBoons = state.stonePool.filter((s) => s === "Boon").length;
+    const drainedBanes = state.stonePool.filter((s) => s === "Bane").length;
+    expect(drainedBoons < 2 || drainedBanes < 2).toBe(true);
 
-        const running = await readState(table, fac);
-        const banesInPool =
-          running.session?.pool.filter((s) => s === "Bane").length ?? 0;
+    await call(table, "/session/end", { token: fac });
+    state = await readState(table, fac);
+    const toppedUpBoons = state.stonePool.filter((s) => s === "Boon").length;
+    const toppedUpBanes = state.stonePool.filter((s) => s === "Bane").length;
+    expect(toppedUpBoons).toBe(Math.max(drainedBoons, 2));
+    expect(toppedUpBanes).toBe(Math.max(drainedBanes, 2));
+  }, 30_000);
 
-        await call(table, "/session/end", { token: fac });
-        const ended = await readState(table, fac);
-        const { outcome, outcomeKind } = ended.sessionHistory[0];
+  it("carries the pool across a session boundary — nothing resets on start or end", async () => {
+    const table = "gt-pool-carries";
+    const { token: fac } = await seedAuth(undefined, { facilitator: true });
 
-        await call(table, "/session/start", { token: fac, body: { goal: "next" } });
-        const carried = (await readState(table, fac)).session?.carriedBanes ?? -1;
+    await call(table, "/session/start", { token: fac, body: { goal: "a" } });
+    await call(table, "/stones/add-boon", { token: fac });
+    await call(table, "/stones/add-boon", { token: fac });
+    let state = await readState(table, fac);
+    expect(state.stonePool).toHaveLength(6);
 
-        if (outcome.includes("met")) {
-          expect(carried).toBe(banesInPool);
-          expect(outcomeKind).toBe("met");
-          sawMet = true;
-        } else {
-          expect(outcome).toContain("failed");
-          expect(outcomeKind).toBe("failed");
-          expect(carried).toBe(0);
-          sawFailed = true;
-        }
-        await call(table, "/session/end", { token: fac });
-      }
+    await call(table, "/session/end", { token: fac });
+    state = await readState(table, fac);
+    expect(state.stonePool).toHaveLength(6); // already past the floor, nothing added
 
-      expect(sawMet).toBe(true);
-      expect(sawFailed).toBe(true);
-    },
-    30_000,
-  );
-
-  it(
-    "a failed goal untethers the Bane-carrying character and clears their aspect Banes; resolution is facilitator-only",
-    async () => {
-      const table = "gt19-untether";
-      const { token: fac } = await seedAuth(undefined, { facilitator: true });
-      const { token: player } = await seedAuth();
-
-      // Land at least one aspect Bane on slot 0.
-      await call(table, "/session/start", { token: fac, body: { goal: "seed" } });
-      for (let i = 0; i < 20; i++) {
-        if (aspectBaneTotal(await readState(table, fac), 0) > 0) break;
-        await call(table, "/overcome/start", { token: fac, body: { slot: 0 } });
-        await call(table, "/stones/roll", { token: fac });
-        await call(table, "/stones/accept", { token: fac });
-      }
-      expect(aspectBaneTotal(await readState(table, fac), 0)).toBeGreaterThan(0);
-
-      // End sessions until a failed goal triggers the untether.
-      let state = await readState(table, fac);
-      for (let i = 0; i < 20 && state.untether === null; i++) {
-        if (state.session === null) {
-          await call(table, "/session/start", { token: fac, body: { goal: `s${i}` } });
-        }
-        await call(table, "/session/end", { token: fac });
-        state = await readState(table, fac);
-      }
-
-      expect(state.untether).not.toBeNull();
-      expect(state.untether!.slot).toBe(0); // only slot 0 carried a Bane
-      expect(["archetype", "desire", "quest"]).toContain(state.untether!.aspect);
-      expect(aspectBaneTotal(state, 0)).toBe(0);
-
-      // A second reckoning does not open while one is unresolved.
-      const held = state.untether!;
-      await call(table, "/session/start", { token: fac, body: { goal: "hold" } });
-      await call(table, "/session/end", { token: fac });
-      expect((await readState(table, fac)).untether).toEqual(held);
-
-      // Resolution is facilitator-only and one-shot.
-      expect((await call(table, "/untether/resolve", { token: player })).status).toBe(403);
-      expect((await call(table, "/untether/resolve", { token: fac })).status).toBe(204);
-      expect((await readState(table, fac)).untether).toBeNull();
-      expect((await call(table, "/untether/resolve", { token: fac })).status).toBe(400);
-    },
-    30_000,
-  );
+    await call(table, "/session/start", { token: fac, body: { goal: "b" } });
+    state = await readState(table, fac);
+    expect(state.stonePool).toHaveLength(6); // session start does not touch the pool
+  });
 });

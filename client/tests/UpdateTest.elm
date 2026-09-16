@@ -207,21 +207,6 @@ suite =
                 \_ ->
                     Main.update CancelConfirm { ready | confirming = Just "clear-log" }
                         |> Expect.equal ( ready, Effect.None )
-            , test "ResolveUntether disarms and posts, guarded against a double-fire" <|
-                \_ ->
-                    let
-                        armed =
-                            { ready | confirming = Just "resolve-untether" }
-
-                        ( afterFirst, firstEffect ) =
-                            Main.update ResolveUntether armed
-                    in
-                    ( firstEffect
-                    , afterFirst.confirming
-                    , Main.update ResolveUntether afterFirst |> Tuple.second
-                    )
-                        |> Expect.equal
-                            ( Effect.PostUntetherResolve Fixtures.playerAuth, Nothing, Effect.None )
             ]
         , describe "transient errors"
             [ test "a failed mutation sets error, not status, and schedules its dismissal" <|

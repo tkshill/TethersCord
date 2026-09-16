@@ -45,7 +45,6 @@ function state(over: Partial<GameState> = {}): GameState {
     usedAbilities: [],
     npcs: [],
     locations: [],
-    untether: null,
     ...over,
   };
 }
@@ -135,12 +134,7 @@ describe("migrateStoneState", () => {
   it("returns the base blob when nothing is stored", () => {
     const s = migrateStoneState(undefined, ["Boon", "Bane", "Boon", "Bane"]);
     expect(s.stonePool).toEqual(["Boon", "Bane", "Boon", "Bane"]);
-    expect(s).toMatchObject({
-      pendingRoll: null,
-      carriedBanes: 0,
-      lastSessionFailed: false,
-      untether: null,
-    });
+    expect(s).toMatchObject({ pendingRoll: null, session: null });
   });
 
   it("folds colour-named stones and defaults every field a later feature added", () => {
@@ -152,13 +146,28 @@ describe("migrateStoneState", () => {
           // biome-ignore lint: legacy proposal shape has no floatingId / targetSlot
           { id: "p", kind: "add-boon", proposerId: "u", proposerName: "U", slot: null, delta: 0, createdAt: 1 } as never,
         ],
-        session: { id: "s", goal: "g", pool: ["Boon"] } as never,
+        session: { id: "s", goal: "g" },
       },
       ["Boon", "Bane"],
     );
     expect(s.stonePool).toEqual(["Boon", "Bane"]);
     expect(s.pendingRoll).toEqual({ chosen: ["Boon"], rest: ["Bane"] });
     expect(s.proposals[0]).toMatchObject({ floatingId: null, targetSlot: null });
-    expect(s.session).toMatchObject({ carriedBanes: 0 });
+    expect(s.session).toEqual({ id: "s", goal: "g" });
+  });
+
+  it("folds a retired per-session pool and carried-Bane count into the shared pool", () => {
+    const s = migrateStoneState(
+      {
+        stonePool: ["Boon", "Bane"],
+        pendingRoll: null,
+        session: { id: "s", goal: "g", pool: ["Boon", "Bane", "Bane"] },
+        carriedBanes: 2,
+      },
+      ["Boon", "Bane"],
+    );
+    expect(s.stonePool.filter((k) => k === "Boon")).toHaveLength(2);
+    expect(s.stonePool.filter((k) => k === "Bane")).toHaveLength(5);
+    expect(s.session).toEqual({ id: "s", goal: "g" });
   });
 });

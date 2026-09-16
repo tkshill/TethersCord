@@ -508,9 +508,6 @@ update msg model =
         EndSession ->
             guard "session:end" { model | confirming = Nothing } Effect.PostEndSession
 
-        ResolveUntether ->
-            guard "untether:resolve" { model | confirming = Nothing } Effect.PostUntetherResolve
-
         RequestConfirm key ->
             ( { model | confirming = Just key }, Effect.None )
 

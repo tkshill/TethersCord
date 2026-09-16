@@ -64,7 +64,6 @@ view model =
                     , goalEdit = model.goalEdit
                     }
                     gs
-                , View.Session.untetherBanner ctx model.confirming gs
                 , View.Stones.view ctx { inflight = model.inflight, drafts = model.proposalDrafts } gs
                 , View.Moves.view ctx gs
                 , View.Characters.view ctx
