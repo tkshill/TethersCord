@@ -12,7 +12,6 @@ The glossary `Term` list lives next door in `Copy.Terms`; `aspectExamples` here
 is the character-creation prompt list, a curated subset of `ASPECTS.md`.
 -}
 
-import Format
 import Types exposing (Aspect(..))
 
 
@@ -107,20 +106,6 @@ goalLabel =
     "Goal  "
 
 
-sessionPool : String
-sessionPool =
-    "Session pool"
-
-
-carryingBanes : Int -> String
-carryingBanes n =
-    "Carrying "
-        ++ String.fromInt n
-        ++ " "
-        ++ Format.pluralize n "Bane"
-        ++ " in from the last session"
-
-
 endSession : String
 endSession =
     "End session"
@@ -149,43 +134,6 @@ saveGoal =
 pastSessions : String
 pastSessions =
     "Past sessions"
-
-
-verdictMet : String
-verdictMet =
-    "met"
-
-
-verdictFailed : String
-verdictFailed =
-    "failed"
-
-
-verdictPartial : String
-verdictPartial =
-    "partial"
-
-
-
--- UNTETHER BANNER (View/Session.elm)
-
-
-untetheredHeadline : String -> String
-untetheredHeadline who =
-    who ++ " is untethered"
-
-
-{-| `aspect` is the lowercased aspect name, e.g. "archetype". -}
-untetheredExplanation : String -> String
-untetheredExplanation aspect =
-    " on their "
-        ++ aspect
-        ++ " — the reckoning resolves by the end of the following session, and afterward the aspect is rewritten or replaced."
-
-
-resolveUntether : String
-resolveUntether =
-    "Resolve untether"
 
 
 
@@ -425,11 +373,6 @@ youMarker =
 characterFallback : Int -> String
 characterFallback slot =
     "Character " ++ String.fromInt (slot + 1)
-
-
-untetheredAspectFlag : String
-untetheredAspectFlag =
-    "untethered — rewrite or replace this aspect"
 
 
 ownerMine : String

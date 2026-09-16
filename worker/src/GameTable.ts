@@ -21,7 +21,6 @@ import type {
   Proposal,
   ProposalDecisionInput,
   Role,
-  SessionOutcomeKind,
   SessionState,
   SessionSummary,
   StartOvercomeInput,
@@ -29,7 +28,6 @@ import type {
   StoneKind,
   TableEntity,
   CharacterSheet,
-  Untether,
   UpdateCharacterInput,
   UpdateFateInput,
   UpdateSessionGoalInput,
@@ -39,7 +37,6 @@ import type {
 } from "./types";
 import {
   applyPledge,
-  aspectBaneBag,
   ASPECT_NAMES,
   characterLabel,
   clearSlotPendingState,
@@ -47,6 +44,7 @@ import {
   markAbilityUsed,
   pickTwoRandom,
   randomInt,
+  removeStones,
   routeOvercomeDraw,
   totalCommittedBoons,
 } from "./gameLogic";
@@ -57,7 +55,6 @@ import {
 } from "./migrateStoneState";
 import {
   type CharacterRow,
-  clearAspectBanes,
   incrementAspectBane,
   rowToCharacterSheet,
   setFate,
@@ -65,9 +62,15 @@ import {
   updateFields,
 } from "./characters";
 
-// Every roll starts from this base — two Boon, two Bane — before any boons a
-// character pledges into it. Accepting a roll resets the pool to this.
+// The pool every roll draws two stones from, and the pool `/session/end` tops
+// up. There is only one pool — overcomes, plain rolls, and the once-per-session
+// top-up all read and write it; nothing ever resets it back to this base, it is
+// only ever the starting shape for a brand-new table.
 const INITIAL_STONE_POOL: readonly StoneKind[] = ["Boon", "Bane", "Boon", "Bane"];
+
+/** `/session/end` tops the pool up to at least this many of each kind. */
+const MIN_POOL_BOONS = 2;
+const MIN_POOL_BANES = 2;
 
 const CHARACTER_SLOT_COUNT = 3;
 
@@ -109,14 +112,6 @@ const MAX_MESSAGE_LENGTH = 2000;
 const MAX_FIELD_LENGTH = 500;
 const MAX_NOTES_LENGTH = 4000;
 const MAX_GOAL_LENGTH = 500;
-
-/** A session's pool starts here, then grows one stone per accepted roll. */
-const INITIAL_SESSION_POOL: readonly StoneKind[] = [
-  "Boon",
-  "Bane",
-  "Boon",
-  "Bane",
-];
 
 /** Durable Object storage keys. */
 const KEY_SESSION_ID = "sessionId";
@@ -373,13 +368,6 @@ export class GameTable implements DurableObject {
       );
     }
 
-    if (url.pathname === "/untether/resolve" && request.method === "POST") {
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleResolveUntether(authInfo))
-      );
-    }
-
     const charUpdateMatch = url.pathname.match(/^\/characters\/(\d+)\/update$/);
     if (charUpdateMatch && request.method === "POST") {
       return this.withLock(() =>
@@ -577,8 +565,6 @@ export class GameTable implements DurableObject {
     const messages = messageRows.results
       ? [...messageRows.results].reverse()
       : [];
-    this.carriedBanes = stones.carriedBanes;
-    this.lastSessionFailed = stones.lastSessionFailed;
 
     this.gameState = {
       sessionId,
@@ -595,7 +581,6 @@ export class GameTable implements DurableObject {
       characters,
       npcs,
       locations,
-      untether: stones.untether,
     };
 
     // Seed the write-skip baseline so an unchanged stone slice is not
@@ -632,14 +617,6 @@ export class GameTable implements DurableObject {
    */
   private lastSavedStones: string | null = null;
 
-  /**
-   * Banes the next session's pool inherits (section 19), and whether the last
-   * ended session failed its goal. These are DO-owned but not broadcast, so they
-   * live on the instance rather than in `GameState`; `stoneSlice` folds them in.
-   */
-  private carriedBanes = 0;
-  private lastSessionFailed = false;
-
   private stoneSlice(state: GameState): StoneState {
     return {
       stonePool: state.stonePool,
@@ -650,9 +627,6 @@ export class GameTable implements DurableObject {
       usedAbilities: state.usedAbilities,
       proposals: state.proposals,
       session: state.session,
-      carriedBanes: this.carriedBanes,
-      lastSessionFailed: this.lastSessionFailed,
-      untether: state.untether,
     };
   }
 
@@ -679,7 +653,7 @@ export class GameTable implements DurableObject {
   ): Promise<SessionSummary[]> {
     const rows = await this.env.DB.prepare(
       `
-      SELECT id, goal, started_at AS startedAt, ended_at AS endedAt, outcome
+      SELECT id, goal, started_at AS startedAt, ended_at AS endedAt
       FROM game_sessions
       WHERE session_id = ? AND ended_at IS NOT NULL
       ORDER BY started_at DESC
@@ -687,12 +661,9 @@ export class GameTable implements DurableObject {
     `,
     )
       .bind(sessionId)
-      .all<Omit<SessionSummary, "outcomeKind">>();
+      .all<SessionSummary>();
 
-    return (rows.results ?? []).map((row) => ({
-      ...row,
-      outcomeKind: deriveOutcomeKind(row.outcome),
-    }));
+    return rows.results ?? [];
   }
 
   /**
@@ -1423,24 +1394,22 @@ export class GameTable implements DurableObject {
       characters = characters.map((c) => (c.slot === slot ? { ...c, fate } : c));
     }
 
-    // Route the accepted roll's result stones (section 19). An overcome draws
-    // two: two of a kind feed the session pool whole; a mixed roll sends the
-    // Boon to the pool and drops the Bane onto one of the acting character's
-    // aspects at random — unless that character is untethered, in which case the
-    // Bane also goes to the pool (no new aspect strain mid-reckoning). A plain
-    // non-overcome roll still seeds the pool with one random result stone.
-    const priorSession = this.game.session;
+    // Route the accepted roll's result stones. An overcome draws two: two of a
+    // kind return both to the pool; a mixed roll returns the Boon and drops
+    // the Bane onto one of the acting character's aspects at random. A plain
+    // non-overcome roll returns one random result stone. Whichever stones
+    // were drawn leave the pool first — there is no reset, so anything not
+    // routed back (the Bane onto an aspect, or the plain roll's other stone)
+    // is simply gone.
     const drawn = this.game.pendingRoll?.chosen ?? [];
     const overcome = this.game.overcome;
-    const poolAdds: StoneKind[] = [];
+    let poolAdds: StoneKind[];
     let routeNote = "";
 
     if (overcome && drawn.length === 2) {
       const boons = drawn.filter((s) => s === "Boon").length;
-      const untetheredTarget =
-        this.game.untether?.slot === overcome.targetSlot;
-      const routed = routeOvercomeDraw(drawn, untetheredTarget);
-      poolAdds.push(...routed.poolAdds);
+      const routed = routeOvercomeDraw(drawn);
+      poolAdds = routed.poolAdds;
 
       if (routed.marksAspect) {
         const aspect = ASPECT_NAMES[randomInt(ASPECT_NAMES.length)];
@@ -1461,33 +1430,26 @@ export class GameTable implements DurableObject {
           routeNote = `Boon to the pool, Bane onto ${aspect}`;
         }
       } else {
-        routeNote =
-          boons === 2
-            ? "both Boons to the pool"
-            : boons === 0
-              ? "both Banes to the pool"
-              : "Boon to the pool, Bane to the pool (untethered)";
+        routeNote = boons === 2 ? "both Boons to the pool" : "both Banes to the pool";
       }
     } else if (drawn.length > 0) {
-      poolAdds.push(drawn[randomInt(drawn.length)]);
+      poolAdds = [drawn[randomInt(drawn.length)]];
+    } else {
+      poolAdds = [];
     }
 
-    const session: SessionState | null =
-      priorSession && poolAdds.length > 0
-        ? { ...priorSession, pool: [...priorSession.pool, ...poolAdds] }
-        : priorSession;
+    const stonePool = [...removeStones(this.game.stonePool, drawn), ...poolAdds];
 
     const next: GameState = {
       ...this.game,
       characters,
-      stonePool: [...INITIAL_STONE_POOL],
+      stonePool,
       pendingRoll: null,
       // Accepting the roll resolves any open overcome.
       overcome: null,
       committedBoons: [],
       // A resolved roll clears the slate; unaccepted proposals do not carry over.
       proposals: [],
-      session,
     };
 
     let overcomeLine: AddMessageInput | undefined;
@@ -1586,24 +1548,15 @@ export class GameTable implements DurableObject {
       .bind(id, this.game.sessionId, goal, Date.now())
       .run();
 
-    // Section 19: the pool starts from the base four plus every Bane carried
-    // from the previous session (Boons never carry; a failed goal flushes the
-    // carry to zero). `untether` is deliberately not touched here — a reckoning
-    // spans into the following session.
-    const carriedBanes = this.carriedBanes;
-    const pool: StoneKind[] = [
-      ...INITIAL_SESSION_POOL,
-      ...Array<StoneKind>(carriedBanes).fill("Bane"),
-    ];
-
     return this.commit(
       {
         ...this.game,
-        session: { id, goal, pool, carriedBanes },
+        session: { id, goal },
         // A new session starts from a clean slate. Nothing left open at the end
         // of the previous session (or before this one began) carries in:
         // abilities, floating boons, an unresolved overcome or roll, pledges,
-        // or a proposal queue.
+        // or a proposal queue. The stone pool is untouched — it is shared
+        // across sessions and only ever changed by rolls and moves.
         usedAbilities: [],
         floatingBoons: [],
         overcome: null,
@@ -1615,11 +1568,7 @@ export class GameTable implements DurableObject {
         authorId: authInfo.discordUserId,
         authorName: authInfo.username,
         role: authInfo.role,
-        content: `Session started — ${goal}${
-          carriedBanes > 0
-            ? ` (carrying ${carriedBanes} Bane${carriedBanes === 1 ? "" : "s"})`
-            : ""
-        }`,
+        content: `Session started — ${goal}`,
       },
     );
   }
@@ -1630,54 +1579,30 @@ export class GameTable implements DurableObject {
       return new Response("No session is running", { status: 400 });
     }
 
-    // Section 19: the goal succeeds or fails on a single stone drawn from the
-    // pool. On success the Boons flush and the Banes carry; a failure flushes
-    // the pool completely back to the base four.
+    // Ending a session no longer rolls for anything — the goal is just text.
+    // The only pool effect is a top-up: whatever is left in the shared pool
+    // stays exactly as it is, and enough fresh stones are added so it never
+    // runs dry of either kind.
     const now = Date.now();
-    const drawn = session.pool[randomInt(session.pool.length)];
-    const success = drawn === "Boon";
-    const banesInPool = session.pool.filter((s) => s === "Bane").length;
-    const nextCarry = success ? banesInPool : 0;
-    const wasConsecutiveFailure = this.lastSessionFailed;
-
-    // A failed goal untethers one character — unless a reckoning is already
-    // open, or the previous session also failed, or nobody carries an aspect
-    // Bane. The character is drawn by weighting every aspect Bane on every
-    // sheet equally; the drawn aspect is the one they untether on, and all
-    // their aspect Banes then clear.
-    let characters = this.game.characters;
-    let untether = this.game.untether;
-    let untetherNote = "";
-
-    if (!success && untether === null && !wasConsecutiveFailure) {
-      const bag = aspectBaneBag(characters);
-
-      if (bag.length > 0) {
-        const pick = bag[randomInt(bag.length)];
-        untether = { slot: pick.slot, aspect: pick.aspect };
-        const target = characters.find((c) => c.slot === pick.slot)!;
-        await clearAspectBanes(this.env.DB, target.id, now);
-        characters = characters.map((c) =>
-          c.slot === pick.slot
-            ? { ...c, aspectBanes: { archetype: 0, desire: 0, quest: 0 } }
-            : c,
-        );
-        untetherNote = ` — ${characterLabel(target)} untethered on ${pick.aspect}`;
-      }
-    }
-
-    const outcome = success
-      ? `goal met — drew Boon${nextCarry > 0 ? ` (${nextCarry} Bane${nextCarry === 1 ? "" : "s"} carried)` : ""}`
-      : `goal failed — drew Bane (pool flushed)${untetherNote}`;
+    const boons = this.game.stonePool.filter((s) => s === "Boon").length;
+    const banes = this.game.stonePool.filter((s) => s === "Bane").length;
+    const addBoons = Math.max(0, MIN_POOL_BOONS - boons);
+    const addBanes = Math.max(0, MIN_POOL_BANES - banes);
+    const stonePool = [
+      ...this.game.stonePool,
+      ...Array<StoneKind>(addBoons).fill("Boon"),
+      ...Array<StoneKind>(addBanes).fill("Bane"),
+    ];
+    const topUpNote =
+      addBoons > 0 || addBanes > 0
+        ? ` (pool topped up: +${addBoons} Boon, +${addBanes} Bane)`
+        : "";
 
     await this.env.DB.prepare(
-      `UPDATE game_sessions SET ended_at = ?, outcome = ? WHERE id = ?`,
+      `UPDATE game_sessions SET ended_at = ? WHERE id = ?`,
     )
-      .bind(now, outcome, session.id)
+      .bind(now, session.id)
       .run();
-
-    this.carriedBanes = nextCarry;
-    this.lastSessionFailed = !success;
 
     const sessionHistory = await this.loadSessionHistory(
       this.game.sessionId,
@@ -1687,8 +1612,7 @@ export class GameTable implements DurableObject {
         ...this.game,
         session: null,
         sessionHistory,
-        characters,
-        untether,
+        stonePool,
         // Ending a session discards everything left unresolved: unspent
         // floating boons, once-per-session abilities, an open overcome or roll
         // on the table, pledged boons, and any proposal the facilitator never
@@ -1704,7 +1628,7 @@ export class GameTable implements DurableObject {
         authorId: authInfo.discordUserId,
         authorName: authInfo.username,
         role: authInfo.role,
-        content: `Session ended — ${session.goal}: ${outcome}`,
+        content: `Session ended — ${session.goal}${topUpNote}`,
       },
     );
   }
@@ -1741,35 +1665,6 @@ export class GameTable implements DurableObject {
         authorName: authInfo.username,
         role: authInfo.role,
         content: `Goal updated — ${goal}`,
-      },
-    );
-  }
-
-  /**
-   * Close an in-progress reckoning (section 19). The facilitator-framed scene
-   * is table talk; this just clears the flag so a later failed goal can untether
-   * again. The player rewriting or replacing the untethered aspect happens
-   * through the normal sheet edit.
-   */
-  private async handleResolveUntether(authInfo: AuthInfo): Promise<Response> {
-    const untether = this.game.untether;
-    if (!untether) {
-      return new Response("No untether to resolve", { status: 400 });
-    }
-
-    const target = this.game.characters.find(
-      (c) => c.slot === untether.slot,
-    );
-
-    return this.commit(
-      { ...this.game, untether: null },
-      {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: `Untether resolved${
-          target ? ` — ${characterLabel(target)}` : ""
-        } (${untether.aspect})`,
       },
     );
   }
@@ -2073,19 +1968,6 @@ function capMessages(messages: Message[]): Message[] {
   return messages.length > MESSAGE_WINDOW
     ? messages.slice(messages.length - MESSAGE_WINDOW)
     : messages;
-}
-
-/**
- * Classify a stored `outcome` sentence for the history view. `/session/end`
- * writes "goal met — …" / "goal failed — …"; rows from the retired tiers read
- * "met (…)" / "partial (…)" / "failed (…)". "failed" is checked first because a
- * "goal failed" sentence also contains "goal". Anything unrecognised falls to
- * `partial`, the neutral middle.
- */
-function deriveOutcomeKind(outcome: string): SessionOutcomeKind {
-  if (outcome.includes("failed")) return "failed";
-  if (outcome.includes("met")) return "met";
-  return "partial";
 }
 
 async function readJson(request: Request): Promise<unknown> {

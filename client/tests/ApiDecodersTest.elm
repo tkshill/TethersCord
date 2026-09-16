@@ -84,11 +84,11 @@ suite =
                 decoded
                     |> Result.map .usedAbilities
                     |> Expect.equal (Ok [ { slot = 1, kinds = [ Kind.HelpOut, Kind.AddDetail ] } ])
-        , test "reads the running session and its pool" <|
+        , test "reads the running session's goal" <|
             \_ ->
                 decoded
-                    |> Result.map (.session >> Maybe.map (\s -> ( s.goal, s.pool )))
-                    |> Expect.equal (Ok (Just ( "Escape the vault", [ Boon, Bane ] )))
+                    |> Result.map (.session >> Maybe.map .goal)
+                    |> Expect.equal (Ok (Just "Escape the vault"))
         , test "reads the character sheet, including fate and owner" <|
             \_ ->
                 decoded
@@ -99,22 +99,11 @@ suite =
                 decoded
                     |> Result.map (.characters >> List.map .aspectBanes)
                     |> Expect.equal (Ok [ { archetype = 2, desire = 0, quest = 1 } ])
-        , test "reads the session's carried Banes" <|
+        , test "reads completed sessions in history: goal and dates, no verdict" <|
             \_ ->
                 decoded
-                    |> Result.map (.session >> Maybe.map .carriedBanes)
-                    |> Expect.equal (Ok (Just 1))
-        , test "reads an in-progress untether" <|
-            \_ ->
-                decoded
-                    |> Result.map .untether
-                    |> Expect.equal (Ok (Just { slot = 1, aspect = Types.Quest }))
-        , test "reads completed sessions in history, prose and classified kind" <|
-            \_ ->
-                decoded
-                    |> Result.map (.sessionHistory >> List.map (\s -> ( s.outcome, s.outcomeKind )))
-                    |> Expect.equal
-                        (Ok [ ( "goal failed — drew Bane (pool flushed)", Types.OutcomeFailed ) ])
+                    |> Result.map (.sessionHistory >> List.map .goal)
+                    |> Expect.equal (Ok [ "The bridge" ])
         , test "reads NPC and location reference rows" <|
             \_ ->
                 decoded

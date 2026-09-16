@@ -100,22 +100,6 @@ export async function incrementAspectBane(
     .run();
 }
 
-/** Zero all three aspect Bane counts (a character untethers). */
-export async function clearAspectBanes(
-  db: D1Database,
-  id: string,
-  now: number,
-): Promise<void> {
-  await db
-    .prepare(
-      `UPDATE characters
-         SET archetype_banes = 0, desire_banes = 0, quest_banes = 0, updated_at = ?
-       WHERE id = ?`,
-    )
-    .bind(now, id)
-    .run();
-}
-
 /** Persist the free-text fields of a sheet (the facilitator / owner edit). */
 export async function updateFields(
   db: D1Database,

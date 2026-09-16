@@ -20,10 +20,8 @@ module Types exposing
     , Proposal
     , Role(..)
     , Session
-    , SessionOutcome(..)
     , SessionSummary
     , TableEntity
-    , Untether
     , UsedAbility
     , abilityUsed
     , actionPending
@@ -32,7 +30,6 @@ module Types exposing
     , characterAtSlot
     , committedBoonsForSlot
     , decodeRole
-    , decodeSessionOutcome
     , entitiesForKind
     , entityKindPath
     , roleLabel
@@ -118,16 +115,6 @@ type alias Overcome =
     { targetSlot : Int }
 
 
-{-| A character whose reckoning is in progress (section 19): a failed session
-goal drew one Bane at random from every aspect Bane on every sheet, and this is
-whose it was. Cleared by the facilitator once the scene concludes.
--}
-type alias Untether =
-    { slot : Int
-    , aspect : Aspect
-    }
-
-
 {-| Boons a character has pledged into the next roll. Spent from their `fate`
 stock when the roll is accepted; only slots with a non-zero pledge appear.
 -}
@@ -138,8 +125,7 @@ type alias CommittedBoon =
 
 
 {-| The character holding `slot`, if any. One shared slot lookup for `Main` (the
-state-merge helpers) and `View` (the panels that resolve an overcome / untether
-target).
+state-merge helpers) and `View` (the panels that resolve an overcome target).
 -}
 characterAtSlot : Int -> List CharacterSheet -> Maybe CharacterSheet
 characterAtSlot slot characters =
@@ -211,42 +197,24 @@ abilityUsed slot kind used =
         |> Maybe.withDefault False
 
 
-{-| The running game session. `pool` is the session stone pool, which grows one
-stone per accepted roll.
+{-| The running game session: just an id (ties back to the `game_sessions` row)
+and a free-text goal the facilitator sets and can rewrite. Nothing about ending
+a session resolves the goal — there is no roll or verdict.
 -}
 type alias Session =
     { id : String
     , goal : String
-    , pool : List Stone
-
-    -- Banes this session's pool started with beyond the base four, carried from
-    -- the previous session (section 19).
-    , carriedBanes : Int
     }
 
 
-{-| How a completed session's goal landed. `Partial` is retired for new
-sessions (section 19 draws one stone: met or failed) but kept so older rows
-still classify.
--}
-type SessionOutcome
-    = OutcomeMet
-    | OutcomeFailed
-    | OutcomePartial
-
-
 {-| A completed session, as read back from the `game_sessions` rows for the
-table's history view. The running session is not included here. `outcome` is
-the human sentence; `outcomeKind` is the Worker's classification of it, which
-the view switches on.
+table's history view. The running session is not included here.
 -}
 type alias SessionSummary =
     { id : String
     , goal : String
     , startedAt : Time.Posix
     , endedAt : Time.Posix
-    , outcome : String
-    , outcomeKind : SessionOutcome
     }
 
 
@@ -272,8 +240,7 @@ aspectLabel aspect =
             "Quest"
 
 
-{-| Bane counts for a character's three aspects. Carried between sessions; all
-three clear together when a failed session goal untethers the character.
+{-| Bane counts for a character's three aspects. Carried between sessions.
 -}
 type alias AspectBanes =
     { archetype : Int
@@ -416,7 +383,6 @@ type alias GameState =
     , usedAbilities : List UsedAbility
     , npcs : List TableEntity
     , locations : List TableEntity
-    , untether : Maybe Untether
     }
 
 
@@ -578,7 +544,6 @@ type Msg
     | SaveSessionGoal
     | StartSession
     | EndSession
-    | ResolveUntether
     | RequestConfirm String
     | CancelConfirm
     | DismissError
@@ -625,24 +590,4 @@ decodeRole =
 
                     _ ->
                         Decode.fail "Unknown role"
-            )
-
-
-decodeSessionOutcome : Decode.Decoder SessionOutcome
-decodeSessionOutcome =
-    Decode.string
-        |> Decode.andThen
-            (\s ->
-                case s of
-                    "met" ->
-                        Decode.succeed OutcomeMet
-
-                    "failed" ->
-                        Decode.succeed OutcomeFailed
-
-                    "partial" ->
-                        Decode.succeed OutcomePartial
-
-                    _ ->
-                        Decode.fail ("Unknown session outcome " ++ s)
             )

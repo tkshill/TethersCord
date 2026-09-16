@@ -1,20 +1,20 @@
-module View.Session exposing (untetherBanner, view)
+module View.Session exposing (view)
 
-{-| The Session card — running goal or the start-session field, the session
-pool, the carried-Bane note, End session — plus the past-sessions list and the
-table-wide untether (reckoning) banner that sits just below it.
+{-| The Session card — running goal or the start-session field, End session —
+plus the past-sessions list. The stone pool now lives entirely on the Stones
+card (`View.Stones`); a session's goal is free text with no roll or verdict
+tied to ending it.
 -}
 
 import Copy
-import Element exposing (Element, el, fill, none, padding, px, spacing, text, width)
-import Element.Border as Border
+import Element exposing (Element, el, fill, none, spacing, text, width)
 import Element.Font as Font
 import Element.Input as Input
 import Format
 import Time
 import Types exposing (..)
 import Ui
-import View.Helpers exposing (ViewContext, characterLabel, glossaryTitle, inputAttrs, placeholder, stoneChip, tip)
+import View.Helpers exposing (ViewContext, glossaryTitle, inputAttrs, placeholder)
 
 
 type alias Props =
@@ -39,17 +39,6 @@ view ctx props gs =
                             [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.goalLabel)
                             , text s.goal
                             ]
-                    , Element.wrappedRow [ spacing Ui.xs, Element.centerY ]
-                        (tip "Session pool"
-                            (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.sessionPool))
-                            :: List.map stoneChip s.pool
-                        )
-                    , if s.carriedBanes > 0 then
-                        el [ Font.size 11, Font.color Ui.inkSoft ]
-                            (text (Copy.carryingBanes s.carriedBanes))
-
-                      else
-                        none
                     , if ctx.facilitator then
                         Ui.confirmButton
                             { armed = props.confirming == Just "end-session"
@@ -123,52 +112,8 @@ goalEditor confirming goalEdit currentGoal =
         ]
 
 
-{-| The reckoning line (section 19). While a character is untethered it shows
-above the roll panel for the whole table; the facilitator gets a confirm-gated
-"Resolve untether" that closes it once the scene has played out.
--}
-untetherBanner : ViewContext -> Maybe String -> GameState -> Element Msg
-untetherBanner ctx confirming gs =
-    case gs.untether of
-        Nothing ->
-            none
-
-        Just u ->
-            let
-                who =
-                    characterAtSlot u.slot gs.characters
-                        |> Maybe.map characterLabel
-                        |> Maybe.withDefault (Copy.characterFallback u.slot)
-            in
-            Element.column
-                [ width fill
-                , spacing Ui.sm
-                , padding Ui.md
-                , Border.color Ui.danger
-                , Border.width 1
-                , Border.rounded 6
-                ]
-                [ Element.paragraph [ Font.size 13 ]
-                    [ el [ Font.semiBold, Font.color Ui.danger ] (text (Copy.untetheredHeadline who))
-                    , text (Copy.untetheredExplanation (String.toLower (Types.aspectLabel u.aspect)))
-                    ]
-                , if ctx.facilitator then
-                    Ui.confirmButton
-                        { armed = confirming == Just "resolve-untether"
-                        , idle = Copy.resolveUntether
-                        , confirm = Copy.resolveUntether
-                        , onArm = RequestConfirm "resolve-untether"
-                        , onConfirm = ResolveUntether
-                        , onCancel = CancelConfirm
-                        }
-
-                  else
-                    none
-                ]
-
-
-{-| The table's completed sessions, newest first: each one's start date, goal,
-and how it landed. Hidden until a session has ended.
+{-| The table's completed sessions, newest first: each one's start date and
+goal. Hidden until a session has ended.
 -}
 sessionHistoryView : Time.Zone -> List SessionSummary -> Element msg
 sessionHistoryView zone history =
@@ -190,41 +135,8 @@ pastSessionRow zone s =
             , Font.size 11
             , Font.color Ui.inkSoft
             , Element.alignTop
-            , width (px 76)
+            , Element.width (Element.px 76)
             ]
             (text (Format.date zone s.startedAt))
-        , Element.paragraph [ Font.size 12, spacing 3 ]
-            [ text s.goal
-            , el [ Font.color (verdictColor s.outcomeKind), Font.semiBold ]
-                (text ("  " ++ verdictWord s.outcomeKind))
-            ]
+        , Element.paragraph [ Font.size 12 ] [ text s.goal ]
         ]
-
-
-{-| The one-word verdict for the history row. The Worker classifies the stored
-outcome sentence into `outcomeKind`, so the view no longer parses prose.
--}
-verdictWord : SessionOutcome -> String
-verdictWord outcome =
-    case outcome of
-        OutcomeMet ->
-            Copy.verdictMet
-
-        OutcomeFailed ->
-            Copy.verdictFailed
-
-        OutcomePartial ->
-            Copy.verdictPartial
-
-
-verdictColor : SessionOutcome -> Element.Color
-verdictColor outcome =
-    case outcome of
-        OutcomeMet ->
-            Ui.speakerColor 2
-
-        OutcomeFailed ->
-            Ui.danger
-
-        OutcomePartial ->
-            Ui.inkSoft

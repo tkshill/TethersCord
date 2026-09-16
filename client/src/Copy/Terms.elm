@@ -5,8 +5,8 @@ interface, each with a one-line `short` (used as a tooltip on the label where th
 term appears) and a two-to-three-sentence `long` (shown in the "How to play"
 card). One definition, two surfaces.
 
-The wording tracks `CLAUDE.md`, `DESIGN_PRINCIPLES.md`, and roadmap section 19.
-It is meant to be revised freely — this module has no logic, only data.
+The wording tracks `CLAUDE.md` and `DESIGN_PRINCIPLES.md`. It is meant to be
+revised freely — this module has no logic, only data.
 -}
 
 
@@ -23,12 +23,12 @@ of play. `terms` is the flat list of all of them.
 groupedTerms : List ( String, List Term )
 groupedTerms =
     [ ( "Roles", [ table, facilitator, player ] )
-    , ( "The session", [ session, goal, sessionPool, carry ] )
+    , ( "The session", [ session, goal ] )
     , ( "Stones & rolling"
       , [ stone, boon, bane, theBag, roll, overcome, highlight, pledge, proposal ]
       )
     , ( "Aspects & growth"
-      , [ aspect, archetype, desire, quest, condition, untether, frenzy ]
+      , [ aspect, archetype, desire, quest, condition ]
       )
     , ( "Moves & compels"
       , [ compel, acceptCompel, suggestCompel, floatingBoon, helpOut, addDetail, gainInsight ]
@@ -92,9 +92,9 @@ player =
 session : Term
 session =
     { term = "Session"
-    , short = "One game day with a goal, carrying its own pool of stones."
+    , short = "One game day, with a goal the table names and works toward."
     , long =
-        "A session runs from the facilitator starting it — naming a goal — to ending it. Its own stone pool fills from the rolls made during it, and at the end one stone is drawn from that pool to say whether the goal was met."
+        "A session runs from the facilitator starting it — naming a goal — to ending it. The goal is table talk, not a mechanic: nothing rolls to judge whether it was met. The stone pool runs independently of session boundaries; ending a session only tops it back up if it has run short."
     }
 
 
@@ -103,25 +103,7 @@ goal =
     { term = "Goal"
     , short = "What the table is working toward this session."
     , long =
-        "Set by the facilitator when the session starts, and editable at any time. At session end a single stone drawn from the session pool decides it: a Boon means the goal was met, a Bane means it failed."
-    }
-
-
-sessionPool : Term
-sessionPool =
-    { term = "Session pool"
-    , short = "Stones a session gathers from its rolls; one is drawn at the end to judge the goal."
-    , long =
-        "Separate from the bag. Overcome results feed it — two of a kind whole, a mixed roll's Boon only. At session end one stone is drawn from it to decide the goal. Then its Boons flush and its Banes carry into the next session."
-    }
-
-
-carry : Term
-carry =
-    { term = "Carry"
-    , short = "Banes held over from last session, already in this session's pool."
-    , long =
-        "A met goal keeps the pool's Banes for next session and flushes its Boons; a failed goal flushes everything. Because Banes build up and Boons do not, goals get harder each session until a failure resets the pool."
+        "Set by the facilitator when the session starts, and editable at any time. It names a target for the fiction; whether it is met is for the table to decide by playing it out, not by a roll."
     }
 
 
@@ -150,18 +132,18 @@ boon =
 bane : Term
 bane =
     { term = "Bane"
-    , short = "An unfavourable stone; Banes stick to aspects and carry between sessions."
+    , short = "An unfavourable stone; Banes stick to aspects and accumulate there."
     , long =
-        "The bad result of a draw. A mixed overcome roll drops one onto one of the acting character's three aspects at random, where it stays until an untether clears it. Banes in the session pool carry over; Boons do not."
+        "The bad result of a draw. A mixed overcome roll drops one onto one of the acting character's three aspects at random, where it accumulates. A Bane drawn any other way stays in the pool, same as a Boon."
     }
 
 
 theBag : Term
 theBag =
     { term = "The bag"
-    , short = "The four base stones — two Boon, two Bane — plus any boons pledged into this roll."
+    , short = "The one shared pool every roll draws from, plus any boons pledged into this roll."
     , long =
-        "Every roll starts from the same four. Highlighting an aspect pledges boons into the bag, each adding a Boon and tilting the odds; those pledged boons are spent when the roll is accepted."
+        "Nothing resets it — a fresh table starts with two Boon and two Bane, and from there it only changes through rolls and moves. Ending a session tops it back up to that floor if it has run short. Highlighting an aspect pledges boons into it for the next roll, each adding a Boon and tilting the odds; those pledged boons are spent when the roll is accepted."
     }
 
 
@@ -170,7 +152,7 @@ roll =
     { term = "Roll"
     , short = "Draw two stones from the bag to resolve a risky attempt."
     , long =
-        "The core mechanic. Two stones come out: two of a kind both feed the session pool; a mixed pair sends the Boon to the pool and a Bane onto one of the acting character's aspects at random."
+        "The core mechanic. The two drawn stones leave the bag; two of a kind both return whole, while a mixed pair returns only the Boon and sends the Bane onto one of the acting character's aspects at random."
     }
 
 
@@ -219,7 +201,7 @@ aspect =
     { term = "Aspect"
     , short = "One of a character's three always-true things: Archetype, Desire, Quest."
     , long =
-        "Aspects are written to carry latent conflict with the world. They are always true; a Highlight only makes one mechanically relevant for a roll. They only ever accumulate Banes, and are rewritten or replaced after an untether."
+        "Aspects are written to carry latent conflict with the world. They are always true; a Highlight only makes one mechanically relevant for a roll. They only ever accumulate Banes."
     }
 
 
@@ -256,24 +238,6 @@ condition =
     , short = "One evolving sentence for what the accumulated strain is doing to the character."
     , long =
         "Rewritten after a Bane lands, always emotional or identity-level, never a number. It is the whole harm model — no wounds, no death mechanic. Update it when the situation actually shifts, not once per Bane."
-    }
-
-
-untether : Term
-untether =
-    { term = "Untether"
-    , short = "A failed goal breaks one character on one aspect; they must rewrite or replace it."
-    , long =
-        "Also called a reckoning. When a session goal fails, one Bane is drawn from across every aspect of every character; its owner comes untethered on that aspect and all their aspect Banes clear. One at a time, never on two failures running, and the scene resolves by the end of the next session."
-    }
-
-
-frenzy : Term
-frenzy =
-    { term = "Frenzy"
-    , short = "The session a character is untethered: they cannot Highlight the broken aspect."
-    , long =
-        "While untethered the character is in full focus. The broken aspect cannot justify a Highlight, though the other two still can, and their own mixed-roll Banes go to the session pool instead of onto an aspect."
     }
 
 

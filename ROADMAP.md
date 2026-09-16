@@ -585,6 +585,17 @@ metrics move.
 
 ## 19. The overcome aftermath — aspects, conditions, and the tether
 
+**Superseded, in part.** The session verdict, the carried-Bane count, and
+untethering described below did not survive playtest and have been removed:
+session goals are now plain text with no roll or verdict, the per-session pool
+and the roll bag are merged into one pool that is never wholesale-reset (only
+topped up to a 2 Boon / 2 Bane floor at session end), and there is currently no
+mechanic that clears an aspect's accumulated Banes. Aspect-Bane tracking and
+the overcome routing (two of a kind returns whole, a mixed roll's Bane onto a
+random aspect) are unchanged and still described accurately below — only the
+"session pool carries" and "Untethering" subsections are stale. See `CLAUDE.md`
+for the current mechanic.
+
 **Built** (feat/section-19-overcome-aftermath), minus the open playtest
 questions. This is the rules layer that turns individual overcome outcomes into a
 character's long arc, keeping what makes Burning Wheel, Pendragon and Archive of

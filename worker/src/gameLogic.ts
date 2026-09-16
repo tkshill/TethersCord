@@ -22,6 +22,24 @@ export const ASPECT_NAMES: readonly AspectName[] = [
   "quest",
 ];
 
+/**
+ * Remove up to one occurrence of each stone in `toRemove` from `pool`. Stones
+ * carry no identity beyond their kind, so removal is by count, not by index —
+ * this is how an accepted roll's drawn stones leave the shared pool before the
+ * routed subset (`routeOvercomeDraw`'s `poolAdds`) rejoins it.
+ */
+export function removeStones(
+  pool: StoneKind[],
+  toRemove: StoneKind[],
+): StoneKind[] {
+  const result = [...pool];
+  for (const stone of toRemove) {
+    const index = result.indexOf(stone);
+    if (index !== -1) result.splice(index, 1);
+  }
+  return result;
+}
+
 /** Rejection sampling, so the low indices are not favoured by modulo bias. */
 export function randomInt(maxExclusive: number): number {
   const limit = Math.floor(0x100000000 / maxExclusive) * maxExclusive;
@@ -59,38 +77,19 @@ export function pickTwoRandom(pool: StoneKind[]): PendingRoll {
 }
 
 /**
- * Section 19 stone routing for an accepted overcome roll, kept pure so it can be
- * unit-tested exhaustively. `marksAspect` is true only for a mixed draw against
- * a not-untethered target — the caller then picks which aspect at random and
- * writes it; otherwise every drawn stone is returned in `poolAdds`.
+ * Stone routing for an accepted overcome roll, kept pure so it can be
+ * unit-tested exhaustively. `marksAspect` is true only for a mixed draw — the
+ * caller then picks which aspect at random and writes it; two of a kind
+ * returns both drawn stones in `poolAdds` untouched.
  */
 export function routeOvercomeDraw(
   drawn: StoneKind[],
-  untetheredTarget: boolean,
 ): { poolAdds: StoneKind[]; marksAspect: boolean } {
   const boons = drawn.filter((s) => s === "Boon").length;
-  if (drawn.length === 2 && boons === 1 && !untetheredTarget) {
+  if (drawn.length === 2 && boons === 1) {
     return { poolAdds: ["Boon"], marksAspect: true };
   }
   return { poolAdds: [...drawn], marksAspect: false };
-}
-
-/**
- * The weighted draw bag for untethering: one `{ slot, aspect }` entry per Bane
- * on every aspect of every character. Pure; the caller draws from it at random.
- */
-export function aspectBaneBag(
-  characters: readonly Pick<CharacterSheet, "slot" | "aspectBanes">[],
-): { slot: number; aspect: AspectName }[] {
-  const bag: { slot: number; aspect: AspectName }[] = [];
-  for (const c of characters) {
-    for (const aspect of ASPECT_NAMES) {
-      for (let i = 0; i < c.aspectBanes[aspect]; i++) {
-        bag.push({ slot: c.slot, aspect });
-      }
-    }
-  }
-  return bag;
 }
 
 export function describeStones(stones: StoneKind[]): string {

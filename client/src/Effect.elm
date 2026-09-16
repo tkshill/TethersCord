@@ -58,7 +58,6 @@ type Effect
     | PostStartSession Auth String
     | PostSessionGoal Auth String
     | PostEndSession Auth
-    | PostUntetherResolve Auth
     | PostStartOvercome Auth Int
     | PostCancelOvercome Auth
     | PostCreateEntity Auth EntityKind
@@ -156,9 +155,6 @@ perform flags effect =
         PostEndSession auth ->
             Api.postEndSession flags auth sessionUpdated
 
-        PostUntetherResolve auth ->
-            Api.postUntetherResolve flags auth untetherResolved
-
         PostStartOvercome auth slot ->
             Api.postStartOvercome flags auth slot overcomeUpdated
 
@@ -205,11 +201,6 @@ moveRaised =
 sessionUpdated : Result Http.Error () -> Msg
 sessionUpdated =
     MutationDone { family = "session:", failMsg = "Failed to update the session." }
-
-
-untetherResolved : Result Http.Error () -> Msg
-untetherResolved =
-    MutationDone { family = "untether:", failMsg = "Failed to resolve the untether." }
 
 
 stonesUpdated : Result Http.Error () -> Msg

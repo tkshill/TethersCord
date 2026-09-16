@@ -108,9 +108,8 @@ export type UsedAbilities = {
 export type AspectName = "archetype" | "desire" | "quest";
 
 /**
- * How many Banes each aspect carries (section 19). A mixed overcome roll marks
- * one aspect; the counts persist between sessions and all clear together when a
- * failed session goal untethers the character.
+ * How many Banes each aspect carries. A mixed overcome roll marks one aspect;
+ * the counts persist between sessions.
  */
 export type AspectBanes = Record<AspectName, number>;
 
@@ -153,41 +152,24 @@ export type EntityKind = "npcs" | "locations";
 
 /**
  * The running game session, if one is open. `id` ties back to the
- * `game_sessions` D1 row; `pool` is the session stone pool, held in Durable
- * Object storage and grown one stone per accepted roll.
+ * `game_sessions` D1 row. The goal is free text the facilitator sets and can
+ * rewrite; nothing about the session itself resolves it — there is no roll or
+ * verdict tied to ending a session.
  */
 export type SessionState = {
   id: string;
   goal: string;
-  pool: StoneKind[];
-  /**
-   * How many Banes this session's pool started with beyond the base four,
-   * carried from the previous session (section 19). Shown to the table so the
-   * escalating difficulty is legible; recomputed each session end.
-   */
-  carriedBanes: number;
 };
-
-/** How a completed session's goal landed. `partial` is retired for new
- * sessions (section 19's single-stone draw is met or failed) but kept so
- * historical rows written under the old tiers still classify. */
-export type SessionOutcomeKind = "met" | "failed" | "partial";
 
 /**
  * A completed session, as read back from the `game_sessions` D1 rows. Feeds the
  * table's session-history view; the running session is not included.
- *
- * `outcome` is the human sentence written at `/session/end`; `outcomeKind` is
- * that sentence classified for the view, derived on read (there is no
- * `outcome_kind` column) so it costs no migration.
  */
 export type SessionSummary = {
   id: string;
   goal: string;
   startedAt: number;
   endedAt: number;
-  outcome: string;
-  outcomeKind: SessionOutcomeKind;
 };
 
 /**
@@ -199,18 +181,6 @@ export type SessionSummary = {
  */
 export type Overcome = {
   targetSlot: number;
-};
-
-/**
- * A character whose reckoning is in progress (section 19). Set when a failed
- * session goal draws one Bane at random from every aspect Bane on every
- * character; that character is untethered on the drawn aspect and all their
- * aspect Banes clear. Cleared by `POST /untether/resolve` once the
- * facilitator-framed scene concludes. Only one at a time.
- */
-export type Untether = {
-  slot: number;
-  aspect: AspectName;
 };
 
 export type GameState = {
@@ -228,8 +198,6 @@ export type GameState = {
   characters: CharacterSheet[];
   npcs: TableEntity[];
   locations: TableEntity[];
-  /** An in-progress reckoning, or null. Section 19. */
-  untether: Untether | null;
 };
 
 export type PostMessageInput = {
