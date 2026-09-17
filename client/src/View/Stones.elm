@@ -1,9 +1,11 @@
 module View.Stones exposing (view)
 
-{-| The Stones card: the bag, the session's floating boons, the facilitator's
+{-| The Stones card: the bag, the facilitator's direct pool edits, the
+session's floating boons (also facilitator-run, 23.2), the facilitator's
 one-click draw, and the facilitator's proposal queue. A draw (23.1) is a
 stateless read of the pool — its result shows up as a log line, not as
-anything rendered here.
+anything rendered here. "Add boon" is gone for players and facilitator alike
+(23.2) — the facilitator hand-edits the pool directly instead.
 -}
 
 import Copy
@@ -12,6 +14,7 @@ import Element exposing (Element, el, fill, none, spacing, text, width)
 import Element.Font as Font
 import Element.Input as Input
 import Kind
+import Roll exposing (Stone(..), stoneLabel)
 import Set exposing (Set)
 import Types exposing (..)
 import Ui
@@ -19,11 +22,8 @@ import View.Helpers
     exposing
         ( ViewContext
         , characterLabel
-        , countProposals
         , glossaryTitle
         , inputAttrs
-        , latestProposalId
-        , pendingHint
         , stoneChip
         , tip
         )
@@ -32,6 +32,7 @@ import View.Helpers
 type alias Props =
     { inflight : Set String
     , drafts : Dict String String
+    , floatingBoonDraft : String
     }
 
 
@@ -40,9 +41,6 @@ view ctx props gs =
     let
         committed =
             List.foldl (\c acc -> acc + c.count) 0 gs.committedBoons
-
-        myAddBoons =
-            countProposals ctx.myId Kind.AddBoon gs.proposals
     in
     Ui.card
         [ glossaryTitle Copy.stonesTitle "Stone"
@@ -53,32 +51,63 @@ view ctx props gs =
                 )
             , el [ Font.size 12, Font.color Ui.inkSoft ]
                 (text (Copy.bagOf (List.length gs.stonePool + committed)))
-            , floatingBoonsBlock ctx.facilitator ctx.myId gs
+            , poolControls ctx.facilitator props.inflight
+            , floatingBoonsBlock ctx.facilitator ctx.myId props.inflight props.floatingBoonDraft gs
             , Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
-                (Ui.ghostButton
-                    { onPress = Ui.press props.inflight "stones:add-boon" AddBoon
-                    , label = Copy.addBoon
-                    }
-                    :: pendingHint myAddBoons (latestProposalId ctx.myId Kind.AddBoon gs.proposals)
-                    ++ Ui.onlyWhen ctx.facilitator
-                        [ Ui.primaryButton
-                            { onPress = Ui.press props.inflight "stones:draw" DrawStones
-                            , label = Copy.draw
-                            }
-                        ]
+                (Ui.onlyWhen ctx.facilitator
+                    [ Ui.primaryButton
+                        { onPress = Ui.press props.inflight "stones:draw" DrawStones
+                        , label = Copy.draw
+                        }
+                    ]
                 )
             , proposalsPanel ctx.facilitator props.inflight props.drafts gs.characters gs.proposals
             ]
         ]
 
 
-{-| The session's floating boons — context the facilitator has approved that
-belongs to no one. Any player can ask to spend one on the roll (a Highlight the
-facilitator then approves); the button is muted once that request is queued.
+{-| Facilitator-only hand-edit of the shared pool (23.2): add or remove one
+Boon or one Bane at a time, independent of a draw and of every other
+free-standing resource action — nothing here tries to link to the other.
 -}
-floatingBoonsBlock : Bool -> Maybe String -> GameState -> Element Msg
-floatingBoonsBlock facilitator myId gs =
-    if List.isEmpty gs.floatingBoons then
+poolControls : Bool -> Set String -> Element Msg
+poolControls facilitator inflight =
+    if not facilitator then
+        none
+
+    else
+        Element.wrappedRow [ spacing Ui.md, Element.centerY ] [ stoneControl inflight Boon, stoneControl inflight Bane ]
+
+
+stoneControl : Set String -> Stone -> Element Msg
+stoneControl inflight stone =
+    let
+        label =
+            stoneLabel stone
+    in
+    Element.row [ spacing Ui.xs, Element.centerY ]
+        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text label)
+        , Ui.ghostButton
+            { onPress = Ui.press inflight ("stones:remove-" ++ label) (RemoveStone stone)
+            , label = "−"
+            }
+        , Ui.ghostButton
+            { onPress = Ui.press inflight ("stones:add-" ++ label) (AddStone stone)
+            , label = "+"
+            }
+        ]
+
+
+{-| The session's floating boons — context the facilitator has approved, or
+(23.2) planted directly. Any player can ask to spend one on the roll (a
+Highlight the facilitator then approves); the button is muted once that
+request is queued. The facilitator can remove any of them outright, and add a
+new one directly through the field at the bottom — shown even with no
+floating boons yet, so there is always somewhere to add the first one.
+-}
+floatingBoonsBlock : Bool -> Maybe String -> Set String -> String -> GameState -> Element Msg
+floatingBoonsBlock facilitator myId inflight draft gs =
+    if List.isEmpty gs.floatingBoons && not facilitator then
         none
 
     else
@@ -96,10 +125,18 @@ floatingBoonsBlock facilitator myId gs =
                 Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
                     [ Ui.pledgedStoneChip Ui.boonFill Copy.floatingChip
                     , Element.paragraph [ Font.size 12 ] [ text fb.text ]
-                    , if queued then
+                    , if facilitator then
+                        el [ Element.alignRight ]
+                            (Ui.ghostButton
+                                { onPress = Ui.press inflight ("stones:floating-delete:" ++ fb.id) (DeleteFloatingBoon fb.id)
+                                , label = Copy.floatingBoonRemove
+                                }
+                            )
+
+                      else if queued then
                         el [ Font.size 11, Font.color Ui.inkSoft, Element.alignRight ] (text Copy.floatingBoonRequested)
 
-                      else if iOwnASheet && not facilitator then
+                      else if iOwnASheet then
                         el [ Element.alignRight ]
                             (Ui.ghostButton { onPress = Just (UseFloatingBoon fb.id), label = Copy.floatingBoonUse })
 
@@ -111,7 +148,30 @@ floatingBoonsBlock facilitator myId gs =
             (tip "Floating boon"
                 (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.floatingBoons))
                 :: List.map row gs.floatingBoons
+                ++ Ui.onlyWhen facilitator [ addFloatingBoonRow inflight draft ]
             )
+
+
+addFloatingBoonRow : Set String -> String -> Element Msg
+addFloatingBoonRow inflight draft =
+    Element.wrappedRow [ spacing Ui.sm, width fill ]
+        [ Input.text
+            (inputAttrs ++ [ width fill ])
+            { onChange = FloatingBoonDraftChanged
+            , text = draft
+            , placeholder = Just (Input.placeholder [] (text Copy.addFloatingBoonPlaceholder))
+            , label = Input.labelHidden "New floating boon"
+            }
+        , Ui.ghostButton
+            { onPress =
+                if String.trim draft == "" then
+                    Nothing
+
+                else
+                    Ui.press inflight "stones:floating-add" AddFloatingBoon
+            , label = Copy.addFloatingBoon
+            }
+        ]
 
 
 {-| Facilitator's queue of player-initiated requests awaiting a decision. Hidden

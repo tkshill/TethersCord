@@ -444,6 +444,10 @@ type alias Model =
     -- by proposal id so each queued proposal has its own field.
     , proposalDrafts : Dict String String
 
+    -- Draft text in the facilitator's "add a floating boon" field (23.2) —
+    -- planting a session context directly, not through an ability proposal.
+    , newFloatingBoonNote : String
+
     -- A `GET /messages/history` fetch for older log rows is in flight.
     , loadingHistory : Bool
 
@@ -537,6 +541,11 @@ type Msg
     | WsStatusChanged String
     | RetryGetGameState
     | DrawStones
+    | AddStone Stone
+    | RemoveStone Stone
+    | FloatingBoonDraftChanged String
+    | AddFloatingBoon
+    | DeleteFloatingBoon String
     | CharacterFieldInput Int CharacterField String
     | CharacterFieldBlur Int
     | FieldSaveDue Int

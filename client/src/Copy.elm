@@ -170,6 +170,29 @@ floatingBoonUse =
     "Use"
 
 
+{-| Facilitator-only: remove a session context outright (23.2). -}
+floatingBoonRemove : String
+floatingBoonRemove =
+    "Remove"
+
+
+{-| Facilitator-only: the field and button that plant a session context
+directly (23.2), below the existing floating boons.
+-}
+addFloatingBoonPlaceholder : String
+addFloatingBoonPlaceholder =
+    "Add a floating boon…"
+
+
+addFloatingBoon : String
+addFloatingBoon =
+    "Add"
+
+
+{-| Player-facing "Add boon" is disconnected (23.2) — the facilitator hand-edits
+the pool directly now — but the underlying proposal it posted is untouched, so
+the string stays for whenever that's re-wired.
+-}
 addBoon : String
 addBoon =
     "Add boon"

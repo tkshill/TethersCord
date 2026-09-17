@@ -20,6 +20,7 @@ import Http
 import Kind exposing (AbilityKind)
 import Ports
 import Process
+import Roll exposing (Stone)
 import Task
 import Time
 import Types exposing (Auth, CharacterSheet, EntityKind, Flags, Msg(..), TableEntity)
@@ -55,6 +56,10 @@ type Effect
     | PostSuggestCompel Auth Int
     | PostAcceptCompelMove Auth
     | PostUseFloatingBoon Auth String
+    | PostAddStone Auth Stone
+    | PostRemoveStone Auth Stone
+    | PostAddFloatingBoon Auth String
+    | PostDeleteFloatingBoon Auth String
     | PostStartSession Auth String
     | PostSessionGoal Auth String
     | PostEndSession Auth
@@ -143,6 +148,18 @@ perform flags effect =
 
         PostUseFloatingBoon auth floatingId ->
             Api.postUseFloatingBoon flags auth floatingId moveRaised
+
+        PostAddStone auth stone ->
+            Api.postAddStone flags auth stone stonesUpdated
+
+        PostRemoveStone auth stone ->
+            Api.postRemoveStone flags auth stone stonesUpdated
+
+        PostAddFloatingBoon auth text ->
+            Api.postAddFloatingBoon flags auth text stonesUpdated
+
+        PostDeleteFloatingBoon auth floatingId ->
+            Api.postDeleteFloatingBoon flags auth floatingId stonesUpdated
 
         PostStartSession auth goal ->
             Api.postStartSession flags auth goal sessionUpdated
