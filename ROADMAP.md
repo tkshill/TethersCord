@@ -7,13 +7,17 @@ incremental work on top of it.
 against.
 
 **Phase 1** (sections 1–16, 19, 21, 22) is shipped — each section is the record
-of what landed and the decisions taken along the way. **Phase 2**, at the end,
-collects everything still open, moved out of those sections so the outstanding
-work sits in one list. Sections whose entire content was still open (17
-Campaigns, 18 AI session summary, 20 Character growth) moved wholesale into
-Phase 2, so those numbers are skipped below — the section numbers are stable
-anchors referenced from `CLAUDE.md` and commit messages, so nothing is
-renumbered.
+of what landed and the decisions taken along the way. **Phase 2** (section 23)
+is the current plan: a deliberate simplification for the ongoing testing
+phase, moving stone and resource management onto the facilitator by hand and
+rebuilding the view as three viewport-sized columns. **Phase 3**, at the end,
+collects everything else still open, moved out of the Phase 1 sections so the
+outstanding-but-not-next work sits in one list — it kept its original `P2.x`
+item labels since they're referenced from `CLAUDE.md` and commit messages, so
+those weren't renumbered when the phase was renamed. Sections whose entire
+content was still open (17 Campaigns, 18 AI session summary, 20 Character
+growth) moved wholesale into Phase 3, so those numbers are skipped below — the
+section numbers are stable anchors, so nothing is renumbered.
 
 # Phase 1 — shipped
 
@@ -975,13 +979,281 @@ Phase 2 (P2.2).
 - **Phase 2 P2.3** delta broadcasts — untouched here; the route table and
   `commit()` helper give it fewer call sites to rewrite when it lands.
 
-# Phase 2 — outstanding work
+# Phase 2 — facilitator-run resources and a three-column layout
+
+## 23. Facilitator-run resources and a three-column layout
+
+**Planning — not yet built.** A deliberate simplification for the current
+testing phase, in the spirit of `DESIGN_PRINCIPLES.md` #10 ("remove mechanics
+until anything less would compromise the principles above") — the automatic
+stone-routing and proposal/ability machinery built in sections 5, 10, and 19
+asks the table to learn buttons before they've learned each other. This
+section replaces most of that automation with the facilitator moving
+resources by hand while everyone else plays the scene in voice, and rebuilds
+the view around that: three viewport-sized columns (character sheets and the
+facilitator panel; game state — NPCs, locations, session aspects; the event
+log) under one top bar carrying the session text and the stone pool.
+
+**This is explicitly a "for now."** The goal-directed and once-per-session
+mechanics from sections 5, 10, and 19 are not deleted, only set aside — they
+may come back once the table has played long enough with the manual version to
+say what it actually needs. Every "open question" below is a real unknown, not
+a placeholder for an answer already decided — capture what playtest says
+rather than locking these in ahead of the table (per the project's working
+notes on game design: loose ideas stay open questions until play settles
+them).
+
+### 23.1 The overcome roll: one click, draw two stones, touch nothing else
+
+- [ ] **The roll no longer touches the pool.** `pickTwoRandom`
+      (`gameLogic.ts:56`) already samples two stones without mutating its
+      input; the roll keeps using it, but the pool itself is never written by
+      a draw. Today's `/stones/accept` takes the drawn pair *out* of the pool
+      and `routeOvercomeDraw` (`gameLogic.ts:85`) decides what goes back —
+      that whole write path is gone. Drawing two stones is a **read** of the
+      current pool, not a write to it, full stop.
+- [ ] **That collapses the roll to one click, no reroll.** With no pool
+      mutation to commit, there is nothing left for `/stones/accept` to
+      accept, and a "Reroll" would just be the facilitator triggering the
+      overcome again if they choose to — a second draw from the same
+      untouched pool, not a distinct action with its own cost or route.
+      `pendingRoll`, `/stones/accept`, `/stones/reroll`, and the
+      roll/reroll/accept three-step lifecycle all retire in favour of one
+      stateless action that draws and logs in the same click.
+- [ ] **Overcomes lose their target, and with it most of their reason to be a
+      separate concept from a plain roll.** `Overcome`
+      (`worker/src/types.ts:182`), `POST /overcome/start` / `/overcome/cancel`,
+      and the target carve-out in `rollGate` (section 10) all assumed a roll
+      that named a character and then did something to them. None of that is
+      true anymore — a draw is just a draw. Working assumption: there's no
+      longer a distinct "start an overcome" step, just the one facilitator
+      action described above; if the table finds it still wants an overcome
+      framed as its own beat, that's a small addition back, not a blocker to
+      building the rest of this section without it.
+- [ ] **Press Fate goes with the target.** The target-paid `REROLL_COST`
+      (section 10, `View/Stones.elm:40`) has no target to pay it and no
+      distinct reroll left to buy — retired outright, not reworked.
+- [ ] **Aspect-Bane auto-marking goes with `routeOvercomeDraw`.**
+      `archetype_banes` / `desire_banes` / `quest_banes` (migration `0009`)
+      stop being written by a roll — there's no "mixed roll" outcome for code
+      to interpret anymore, just two stones shown. The columns and sheet dots
+      stay in place; see the open questions for whether they freeze as
+      history or become a manual facilitator field.
+- [ ] The draw is a **log line only** (23.7): the facilitator clicks, the two
+      stones appear in the log, and that's the whole of the action. What the
+      table decides those two stones mean for the pool, a sheet, or a session
+      context is a separate, unconnected click through 23.2 — see that
+      section for why the interface doesn't try to link the two.
+
+### 23.2 Facilitator: three free-standing resource actions
+
+The facilitator's edits are **independent of each other and of a roll** — the
+interface makes no attempt to associate a stone the facilitator adds to the
+pool, or a session context they create, with the overcome that was just
+drawn. That's deliberate, for now: the facilitator reads the table and the two
+drawn stones, decides what they mean, and expresses that decision as any
+number of these free, uncosted actions — clicking one has no effect on what
+any of the others can do next. Read this as **one instance of a general
+"the facilitator can hand-edit game state" capability**, not the whole of
+it — anything shared that currently has no facilitator-write path is fair
+game for this section; these three are just the ones known to need one today.
+
+- [ ] **Character sheets need no new route — they're already covered.**
+      `/characters/:slot/update` (fields) and `/characters/:slot/fate`
+      (boons, `{ delta }`, already signed either direction) are already
+      owner-or-facilitator (section 4) and unchanged by this refactor:
+      players keep editing their own sheets, and the facilitator keeps the
+      existing edit rights over any sheet. **Adjusting a player's boons** is
+      just the client surfacing that existing fate route as a
+      facilitator-visible +/- affordance next to each sheet in the left
+      column, in place of relying on the pledge/proposal path to move boons
+      onto a character.
+- [ ] **Add or remove a stone from the pool.** New facilitator-only routes:
+      `POST /stones/add` / `/stones/remove`, each taking
+      `{ kind: "Boon" | "Bane" }`. `removeStones` (`gameLogic.ts:31`) already
+      exists for the removal half; `add` is new — the pool previously only
+      grew from an accepted roll or a proposal, never a direct facilitator
+      write.
+- [ ] **Add or remove a session context.** A session context (23.3's widened
+      `FloatingBoon` — Boon or Bane, with a text note) is created *and*
+      deleted directly by the facilitator, not only through an
+      ability/proposal accept. See 23.3 for whether a dedicated "use" route
+      still makes sense once removal is just a facilitator delete.
+- [ ] Open question (see below): does the player-initiated `add-boon` /
+      `pledge` proposal path stay live at all, now that the facilitator can
+      do all three of the above directly?
+
+### 23.3 Session aspects — floating boons *and* banes, with context
+
+- [ ] Widen `FloatingBoon` (`worker/src/types.ts:94`) with a `kind: StoneKind`
+      alongside its `text` / `createdByName`, so the facilitator can plant a
+      floating **Bane** — a named complication hanging over the table — not
+      only a floating Boon.
+- [ ] **The facilitator creates one directly**, typing the note and picking
+      the kind on the spot, rather than only through the accept-arm of an Add
+      a Detail / Gain Insight ability proposal — this direct path is what
+      "make session aspects" means here. Whether the two abilities still feed
+      the same list as a player-initiated option, or the facilitator becomes
+      the only way a session aspect is created, is the same open question as
+      23.2's last item.
+- [ ] **`/stones/use-floating` likely retires along with the rest of the
+      accept-into-a-roll machinery** (23.1) — a roll no longer draws from
+      anything but the pool, so "spend a floating Boon into the roll" has
+      nothing left to feed. A session context's lifecycle becomes create
+      (23.3) and delete (23.2) only; there's no third "use" state distinct
+      from the facilitator just deleting it once its moment has passed.
+- [ ] Client: the "Floating boons" block in `View/Stones.elm` (currently
+      `floatingBoonsBlock`, lines 157–192) becomes a "Session aspects" list
+      mixing both kinds, styled by `kind` off the existing `Ui.stoneChip`;
+      it moves into the centre (game-state) column (23.5).
+
+### 23.4 Moves: inert display, not code deletion
+
+Per principle 10, this is subtraction from the interface, not from the
+schema. The Moves card (Help Out, Add a Detail, Gain Insight, Suggest Compel —
+section 10 — plus Accept Compel) stops being clickable and becomes plain
+text: a reminder of what a player can *say* at the table, not a control that
+posts anything. Nothing about it is deleted:
+
+- [ ] **The `Msg` constructors, `Effect`s, `Api` calls, and the worker's
+      proposal / ability routes all stay in the code as-is**, just
+      disconnected from any control the player can press. Mark every
+      disconnected call site with a comment — e.g. `-- OFF while testing
+      simplified interface` — so re-wiring later is a search for that
+      string, not an archaeology dig through git blame.
+- [ ] `View.Moves` (`client/src/View/Moves.elm`) keeps its layout and copy
+      but drops the `onPress` off every button — or swaps
+      `Ui.primaryButton` / `Ui.ghostButton` for a plain label — so the card
+      reads as reference text, not affordances.
+- [ ] The proposal queue (section 5) empties from the client side the same
+      way: with `add-boon` and the abilities no longer posting proposals,
+      and `pledge` the one open question (23.2), the Proposals panel in
+      `View/Stones.elm` may end up with nothing to show. Leave the panel and
+      `proposals/:id/{accept,reject,withdraw}` in place rather than deleting
+      them, for the same find-it-later reason as the Moves card above.
+
+### 23.5 Layout: three columns, sized to the viewport
+
+Today's `Ui.page` (`client/src/Ui.elm:242`) is a single centred column with
+cards stacked top to bottom inside a document-height `Element.layout`; only
+the message log scrolls on its own (`View/Log.elm`'s `scrollbarY` region).
+This replaces that shell with three independently-scrolling columns filling
+the viewport:
+
+- [ ] **`Ui.page` becomes a fixed-height, three-column row.** `html` / `body`
+      need `height: 100%` (new CSS in `client/index.html` — elm-ui measures
+      against its parent), the outer `Element.layout` gets `height fill`, and
+      the current outer `Element.column` becomes an `Element.row [ height
+      fill, width fill ]`. Each column is its own `Element.column [ height
+      fill, scrollbarY, width (fillPortion n) ]`.
+- [ ] **Left — character sheets and the facilitator panel.** `View.Characters`
+      moves here as-is: its tab strip (`View/Characters.elm:67`,
+      `Model.selectedSlot`) already lets any viewer, facilitator included,
+      switch which sheet is showing, which is what covers "the facilitator
+      can switch their view to see the player sheets" — no new switcher
+      needed, just this column reusing the existing one. 23.2's facilitator
+      controls (pool add/remove, adjust-a-player's-boons) become their own
+      panel in this column, visible only to the facilitator.
+- [ ] **Centre — game state.** NPCs (`View.Entities Npc`), Locations
+      (`View.Entities Location`), and the new session-aspects list (23.3) —
+      three things that already read as "reference state the facilitator
+      curates," so grouping them is a reshuffle of `View.elm`'s section list,
+      not a rewrite of any of the three modules.
+- [ ] **Right — the event log.** `View.Log` moves here close to unchanged; it
+      already owns the `scrollbarY` region and DOM id the pin-to-bottom
+      behaviour (`Effect.ScrollLogToBottom`) needs, which keeps working once
+      it's the whole column rather than one card among several.
+- [ ] **Composer** stays pinned under the log column, not the whole page.
+- [ ] **Narrow-viewport fallback — open question.** A strict three-column row
+      does not survive phone width, and `Element.row` doesn't wrap into
+      stacked columns the way `wrappedRow` does. Likely needs a width
+      breakpoint (a `Browser.Dom` viewport read, or a `Model` flag driven by a
+      CSS media query) that drops back to the current single stacked column
+      below some threshold. Discord Activities usually run in a fairly wide
+      embed, so "good enough," not "pixel-true," may be the right bar —
+      worth checking against an actual narrow Activity window before
+      overbuilding this.
+
+### 23.6 Top bar: session text and the pool
+
+- [ ] A persistent bar above the three columns (not inside any of them):
+      the running session's goal text (today the whole `View.Session` card,
+      `client/src/View/Session.elm`) and the stone pool (today the bag row
+      inside `View.Stones`, `View/Stones.elm:99`). Both keep their existing
+      data source (`gs.session`, `gs.stonePool`) — this is a move, not a new
+      field.
+- [ ] Session start / end / goal-edit controls (facilitator-only, section 12)
+      go here too, likely behind a small popover or expander rather than
+      full-width, since the bar needs to stay one line at rest.
+- [ ] `View.Stones` as a card disappears once its pieces move: the pool (and
+      the pledge summary, if pledges survive — open question) go to the top
+      bar, session aspects to the centre column (23.3), and the single
+      one-click roll action (23.1) to the facilitator panel in the left
+      column (23.5).
+
+### 23.7 Overcome and roll results: log line only
+
+- [ ] Now mechanically simple, since 23.1 removed the pending/accept
+      lifecycle entirely: the facilitator's click *is* the draw, so the only
+      place its result can show up is wherever that click's handler writes a
+      log line. There's no more inline pending-roll rendering to remove from
+      `View/Stones.elm` (23.6 already removes the whole card) — just confirm
+      the new one-click worker handler (23.1) writes a log line itself, since
+      the old `/stones/accept` was where that used to happen and it no
+      longer exists.
+
+### Sequencing
+
+A bigger cut than sections 1–22: it changes a wire shape (`Overcome` drops
+`targetSlot`, `FloatingBoon` gains `kind`), retires the whole pending-roll /
+accept lifecycle along with `routeOvercomeDraw` and the target-paid reroll
+cost, disconnects a whole client card from its handlers without deleting
+them, and rebuilds the view shell from the ground up. Character sheet editing
+(`/characters/:slot/update` and its client form) is untouched throughout —
+it's the one piece of shared state this section doesn't touch. Suggested
+order, each its own branch off `main`:
+
+1. **23.1 + 23.2** (worker) — the stateless one-click overcome draw and the
+   three free-standing facilitator routes (pool add/remove, session-context
+   add/remove; player-boon adjustment needs no new route), with worker
+   tests, decoupled from any client change; the existing single-column UI
+   can drive the new routes with a minimal client change as an intermediate
+   step.
+2. **23.3** (worker + client) — the `FloatingBoon` → session-aspect widening,
+   isolated from the layout rewrite since it's the other wire-format change.
+3. **23.4** (client) — disconnect the Moves card and the proposal-posting
+   controls, marking every dead call site per 23.4's comment convention. Can
+   land any time after 23.1–23.3 give it somewhere to point instead, and
+   before or in parallel with the layout rewrite.
+4. **23.5 + 23.6 + 23.7** (client) — the three-column shell and top bar, once
+   the data shape it's arranging is settled.
+
+### Open questions to settle before or during play
+
+- [ ] Does `pledge` (Highlight an Aspect) survive as the one remaining
+      player-initiated shared-state action, or does the facilitator absorb
+      pledging too? A related wrinkle 23.1 surfaces: today's draw pulls from
+      the pool *plus* any pledged boons (`drawFromBag`,
+      `worker/src/GameTable.ts:1276`), so if pledges no longer affect a
+      draw's odds either, there may be nothing left for a pledge to do.
+- [ ] Does `/overcome/start` / `/overcome/cancel` survive as a distinct
+      facilitator step now that an overcome has no target and no pool
+      write, or is it fully folded into the single one-click "Roll" action
+      from 23.1?
+- [ ] Does aspect-Bane tracking freeze as read-only history, become a manual
+      facilitator field, or drop off the sheet display while nothing writes
+      it?
+- [ ] The narrow-viewport fallback for the three-column shell (23.5's last
+      item).
+
+# Phase 3 — potential future plans
 
 Everything still open, moved out of the Phase 1 sections above so it sits in one
 list. Same conventions: each item is its own branch off `main` with a
 professional commit message, and `DESIGN_PRINCIPLES.md` is the yardstick. Items
 are roughly in value-over-effort order; the last two are explicitly not planned
-or not scheduled.
+or not scheduled. Section 23 above (Phase 2) is next; everything here is
+further out.
 
 ## P2.1 — Remaining test coverage (from §11)
 
