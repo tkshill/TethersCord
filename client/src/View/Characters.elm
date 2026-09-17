@@ -1,8 +1,9 @@
 module View.Characters exposing (view)
 
 {-| The Characters card: a tab strip over the three sheets and the selected
-sheet itself — owner row, boons (grant / highlight), the text fields, and the
-three aspects with their accumulated Banes.
+sheet itself — owner row, boons (facilitator Grant only, for now — see
+`pledgeControls`), the text fields, and the three aspects with their
+accumulated Banes.
 -}
 
 import Copy
@@ -11,17 +12,14 @@ import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
 import Format
-import Kind
 import Types exposing (..)
 import Ui
 import View.Helpers
     exposing
         ( ViewContext
         , characterLabel
-        , countProposals
         , glossaryTitle
         , inputAttrs
-        , latestProposalId
         , pendingHint
         , placeholder
         , tip
@@ -89,20 +87,6 @@ characterSheet facilitator myId aspectExamplesOpen gs ch =
 
         editable =
             facilitator || mine || ch.ownerId == Nothing
-
-        pendingPledges =
-            if mine then
-                countProposals myId Kind.Pledge gs.proposals
-
-            else
-                0
-
-        pendingPledgeId =
-            if mine then
-                latestProposalId myId Kind.Pledge gs.proposals
-
-            else
-                Nothing
     in
     Element.column
         [ spacing Ui.sm
@@ -113,7 +97,7 @@ characterSheet facilitator myId aspectExamplesOpen gs ch =
         , Border.rounded 6
         ]
         [ ownerRow facilitator mine ch
-        , boonsBlock facilitator mine ch (committedBoonsForSlot ch.slot gs.committedBoons) pendingPledges pendingPledgeId
+        , boonsBlock facilitator ch (committedBoonsForSlot ch.slot gs.committedBoons)
         , field editable ch NameField "" "Name" ch.name
         , field editable ch NotableFeaturesField "" Copy.notableFeaturesLabel ch.notableFeatures
         , aspectField editable aspectExamplesOpen ch Archetype ArchetypeField ch.archetype
@@ -293,17 +277,18 @@ readOnlyField tipKey label value =
 
 {-| A character's boons, at the top of the sheet where a player can see their
 spendable stones alongside the current roll. The boons show as circles; the ones
-pledged into the next roll carry a centre dot rather than a separate count. The
-facilitator gets a Grant `+` / `−`; the sheet's owner gets a Pledge `+` / `−`
-and a note of any unresolved pledge proposals.
+pledged into the next roll carry a centre dot rather than a separate count. Only
+the facilitator gets a control here (Grant `+` / `−`) — the player-facing Pledge
+control is disconnected for now (`pledgeControls`), so boon movement is left to
+the facilitator while the table plays with the manual version of section 23.
 -}
-boonsBlock : Bool -> Bool -> CharacterSheet -> Int -> Int -> Maybe String -> Element Msg
-boonsBlock facilitator mine ch pledged pending pendingId =
+boonsBlock : Bool -> CharacterSheet -> Int -> Element Msg
+boonsBlock facilitator ch pledged =
     Element.column [ spacing Ui.xs, width fill ]
         [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.boonsLabel)
         , boonCircles ch.fate pledged
         , Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
-            (grantControls facilitator ch ++ pledgeControls mine pending pendingId)
+            (grantControls facilitator ch)
         ]
 
 
@@ -332,6 +317,13 @@ grantControls facilitator ch =
 
     else
         []
+
+
+-- OFF while testing the facilitator-run interface (roadmap section 23) —
+-- `boonsBlock` no longer calls this, so a player can no longer pledge a boon
+-- from the sheet. The proposal machinery behind it (`Kind.Pledge`,
+-- `applyPledge`, `/stones/commit`, `drawFromBag`'s committed-boons odds bump)
+-- is untouched; re-wiring this is a one-line change back in `boonsBlock`.
 
 
 pledgeControls : Bool -> Int -> Maybe String -> List (Element Msg)

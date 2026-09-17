@@ -542,20 +542,8 @@ update msg model =
                 _ ->
                     ( model, Effect.None )
 
-        RollStones ->
-            guard "stones:roll" model (\auth -> Effect.PostStones auth "/stones/roll")
-
-        RerollStones ->
-            guard "stones:reroll" model (\auth -> Effect.PostStones auth "/stones/reroll")
-
-        AcceptRoll ->
-            guard "stones:accept" model (\auth -> Effect.PostStones auth "/stones/accept")
-
-        StartOvercome slot ->
-            guard "overcome:start" model (\auth -> Effect.PostStartOvercome auth slot)
-
-        CancelOvercome ->
-            guard "overcome:cancel" model Effect.PostCancelOvercome
+        DrawStones ->
+            guard "stones:draw" model (\auth -> Effect.PostStones auth "/stones/draw")
 
         -- Field edits update the local sheet at once and mark the slot dirty; the
         -- write is deferred to a single debounced flush (`FieldSaveDue`).

@@ -15,7 +15,6 @@ import type {
   FloatingBoon,
   GameState,
   Message,
-  Overcome,
   PendingRoll,
   PostMessageInput,
   Proposal,
@@ -23,7 +22,6 @@ import type {
   Role,
   SessionState,
   SessionSummary,
-  StartOvercomeInput,
   StartSessionInput,
   StoneKind,
   TableEntity,
@@ -37,15 +35,11 @@ import type {
 } from "./types";
 import {
   applyPledge,
-  ASPECT_NAMES,
   characterLabel,
   clearSlotPendingState,
   describeStones,
   markAbilityUsed,
   pickTwoRandom,
-  randomInt,
-  removeStones,
-  routeOvercomeDraw,
   totalCommittedBoons,
 } from "./gameLogic";
 import {
@@ -55,17 +49,17 @@ import {
 } from "./migrateStoneState";
 import {
   type CharacterRow,
-  incrementAspectBane,
   rowToCharacterSheet,
   setFate,
   setOwner,
   updateFields,
 } from "./characters";
 
-// The pool every roll draws two stones from, and the pool `/session/end` tops
-// up. There is only one pool — overcomes, plain rolls, and the once-per-session
-// top-up all read and write it; nothing ever resets it back to this base, it is
-// only ever the starting shape for a brand-new table.
+// The pool every draw reads two stones from, and the pool `/session/end` tops
+// up. There is only one pool — a draw only ever reads it (23.1), so the
+// facilitator's direct edits and the once-per-session top-up are the only
+// writes; nothing ever resets it back to this base, it is only ever the
+// starting shape for a brand-new table.
 const INITIAL_STONE_POOL: readonly StoneKind[] = ["Boon", "Bane", "Boon", "Bane"];
 
 /** `/session/end` tops the pool up to at least this many of each kind. */
@@ -73,9 +67,6 @@ const MIN_POOL_BOONS = 2;
 const MIN_POOL_BANES = 2;
 
 const CHARACTER_SLOT_COUNT = 3;
-
-/** Boons the overcome target spends to Reroll while an overcome is open. */
-const REROLL_COST = 2;
 
 /** Boons the facilitator pays out for an approved Accept Compel move. */
 const ACCEPT_COMPEL_BOONS = 2;
@@ -312,38 +303,10 @@ export class GameTable implements DurableObject {
       return this.withLock(() => this.handleUseFloating(request, authInfo));
     }
 
-    if (url.pathname === "/stones/roll" && request.method === "POST") {
-      return (
-        this.rollGate(authInfo) ??
-        this.withLock(() => this.handleRoll(authInfo, "Rolled"))
-      );
-    }
-
-    if (url.pathname === "/stones/reroll" && request.method === "POST") {
-      return (
-        this.rollGate(authInfo) ??
-        this.withLock(() => this.handleRoll(authInfo, "Rerolled"))
-      );
-    }
-
-    if (url.pathname === "/stones/accept" && request.method === "POST") {
+    if (url.pathname === "/stones/draw" && request.method === "POST") {
       return (
         facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleAcceptRoll(authInfo))
-      );
-    }
-
-    if (url.pathname === "/overcome/start" && request.method === "POST") {
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleStartOvercome(request, authInfo))
-      );
-    }
-
-    if (url.pathname === "/overcome/cancel" && request.method === "POST") {
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleCancelOvercome(authInfo))
+        this.withLock(() => this.handleDraw(authInfo))
       );
     }
 
@@ -570,8 +533,6 @@ export class GameTable implements DurableObject {
       sessionId,
       messages,
       stonePool: stones.stonePool,
-      pendingRoll: stones.pendingRoll,
-      overcome: stones.overcome,
       committedBoons: stones.committedBoons,
       floatingBoons: stones.floatingBoons,
       usedAbilities: stones.usedAbilities,
@@ -593,10 +554,9 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * The stone pool and pending roll are the only state this Durable Object
-   * genuinely owns, so they live in its own storage. Keeping them in memory
-   * loses them every time the DO hibernates, which is roughly ten seconds
-   * after a table goes quiet.
+   * The stone pool is the only state this Durable Object genuinely owns, so
+   * it lives in its own storage. Keeping it in memory loses it every time the
+   * DO hibernates, which is roughly ten seconds after a table goes quiet.
    */
   private async loadStoneState(): Promise<StoneState> {
     const stored = await this.state.storage.get<LegacyStoneState>(KEY_STONES);
@@ -620,8 +580,6 @@ export class GameTable implements DurableObject {
   private stoneSlice(state: GameState): StoneState {
     return {
       stonePool: state.stonePool,
-      pendingRoll: state.pendingRoll,
-      overcome: state.overcome,
       committedBoons: state.committedBoons,
       floatingBoons: state.floatingBoons,
       usedAbilities: state.usedAbilities,
@@ -908,11 +866,11 @@ export class GameTable implements DurableObject {
     ) {
       return new Response("That ability is already proposed", { status: 409 });
     }
-    if (
-      kind === "help-out" &&
-      (!this.game.overcome || !this.game.pendingRoll)
-    ) {
-      return new Response("Help Out needs an overcome roll to help with", {
+    if (kind === "help-out") {
+      // 23.1 retired the overcome/pending-roll lifecycle Help Out rerolled,
+      // so there is no roll left to help with — refuse rather than raise a
+      // proposal `handleProposalDecision` could never usefully accept.
+      return new Response("Help Out has no roll to help with", {
         status: 400,
       });
     }
@@ -1089,28 +1047,15 @@ export class GameTable implements DurableObject {
           break;
         }
 
-        case "help-out": {
-          if (!state.overcome || !state.pendingRoll) {
-            return new Response(
-              "Help Out needs an overcome roll to help with",
-              { status: 400 },
-            );
-          }
-          const pendingRoll = this.drawFromBag();
-          state = {
-            ...state,
-            pendingRoll,
-            usedAbilities: markAbilityUsed(
-              state.usedAbilities,
-              proposal.slot ?? -1,
-              "help-out",
-            ),
-          };
-          logLine = `Help Out — ${proposal.proposerName} · rerolled ${describeStones(
-            pendingRoll.chosen,
-          )}`;
-          break;
-        }
+        case "help-out":
+          // Unreachable: `handleUseAbility` refuses every help-out raise
+          // outright now that 23.1 has retired the overcome/pending-roll
+          // lifecycle it rerolled, so no proposal of this kind ever reaches
+          // an accept. Kept only so this switch stays exhaustive over
+          // `ProposalKind`.
+          return new Response("Help Out has no roll to help with", {
+            status: 400,
+          });
 
         case "add-detail":
         case "gain-insight": {
@@ -1301,230 +1246,24 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * Gate for `/stones/roll` and `/stones/reroll`. The facilitator may always
-   * roll. While an overcome is open, the player whose sheet is its target may
-   * roll too; nobody else.
+   * The facilitator's one-click overcome/roll draw (23.1): a read of the
+   * current pool via `drawFromBag`, never a write to it — what the two drawn
+   * stones mean for the pool, a sheet, or a session context is a separate
+   * decision the facilitator expresses through the free-standing resource
+   * actions, not something this route tries to infer. `this.game` is passed
+   * through unchanged; the only effect is the log line.
    */
-  private rollGate(authInfo: AuthInfo): Response | undefined {
-    if (authInfo.role === "facilitator") return undefined;
-
-    const overcome = this.game.overcome;
-    if (overcome) {
-      const own = this.game.characters.find(
-        (c) => c.ownerId === authInfo.discordUserId,
-      );
-      if (own && own.slot === overcome.targetSlot) return undefined;
-    }
-
-    return new Response(
-      "Only the facilitator or the overcome target can roll",
-      { status: 403 },
-    );
-  }
-
-  private async handleRoll(
-    authInfo: AuthInfo,
-    verb: "Rolled" | "Rerolled",
-  ): Promise<Response> {
-    const overcome = this.game.overcome;
-    let characters = this.game.characters;
-    let costNote = "";
-
-    // A Reroll during an overcome is bought with the target's boons.
-    if (verb === "Rerolled" && overcome) {
-      const target = characters.find((c) => c.slot === overcome.targetSlot);
-      if (!target) {
-        return new Response("The overcome target has no sheet", { status: 400 });
-      }
-      if (target.fate < REROLL_COST) {
-        return new Response(
-          `The overcome target needs ${REROLL_COST} boons to reroll`,
-          { status: 400 },
-        );
-      }
-
-      const fate = target.fate - REROLL_COST;
-      await setFate(this.env.DB, target.id, fate, Date.now());
-      characters = characters.map((c) =>
-        c.slot === target.slot ? { ...c, fate } : c,
-      );
-      costNote = ` — reroll cost ${REROLL_COST} boons`;
-    }
-
+  private async handleDraw(authInfo: AuthInfo): Promise<Response> {
     const committed = totalCommittedBoons(this.game.committedBoons);
-    const pendingRoll = this.drawFromBag();
+    const { chosen } = this.drawFromBag();
+    const committedNote = committed > 0 ? ` — ${committed} boon committed` : "";
 
-    const committedNote =
-      committed > 0 ? ` — ${committed} boon committed` : "";
-    const label = overcome
-      ? verb === "Rerolled"
-        ? "Overcome reroll"
-        : "Overcome roll"
-      : verb;
-
-    return this.commit(
-      { ...this.game, characters, pendingRoll },
-      {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: `${label}: ${describeStones(pendingRoll.chosen)}${committedNote}${costNote}`,
-      },
-    );
-  }
-
-  private async handleAcceptRoll(authInfo: AuthInfo): Promise<Response> {
-    // Nothing to accept without a roll on the table — refuse rather than
-    // silently reset the pool and drop the proposal queue.
-    if (!this.game.pendingRoll) {
-      return new Response("No roll to accept", { status: 400 });
-    }
-
-    // Spend the pledged boons from each character's stock, then clear the pool
-    // and pledges back to the base state.
-    const now = Date.now();
-    let characters = this.game.characters;
-
-    for (const { slot, count } of this.game.committedBoons) {
-      const character = characters.find((c) => c.slot === slot);
-      if (!character || count <= 0) continue;
-
-      const fate = Math.max(0, character.fate - count);
-      await setFate(this.env.DB, character.id, fate, now);
-      characters = characters.map((c) => (c.slot === slot ? { ...c, fate } : c));
-    }
-
-    // Route the accepted roll's result stones. An overcome draws two: two of a
-    // kind return both to the pool; a mixed roll returns the Boon and drops
-    // the Bane onto one of the acting character's aspects at random. A plain
-    // non-overcome roll returns one random result stone. Whichever stones
-    // were drawn leave the pool first — there is no reset, so anything not
-    // routed back (the Bane onto an aspect, or the plain roll's other stone)
-    // is simply gone.
-    const drawn = this.game.pendingRoll?.chosen ?? [];
-    const overcome = this.game.overcome;
-    let poolAdds: StoneKind[];
-    let routeNote = "";
-
-    if (overcome && drawn.length === 2) {
-      const boons = drawn.filter((s) => s === "Boon").length;
-      const routed = routeOvercomeDraw(drawn);
-      poolAdds = routed.poolAdds;
-
-      if (routed.marksAspect) {
-        const aspect = ASPECT_NAMES[randomInt(ASPECT_NAMES.length)];
-        const target = characters.find((c) => c.slot === overcome.targetSlot);
-        if (target) {
-          await incrementAspectBane(this.env.DB, target.id, aspect, now);
-          characters = characters.map((c) =>
-            c.slot === target.slot
-              ? {
-                  ...c,
-                  aspectBanes: {
-                    ...c.aspectBanes,
-                    [aspect]: c.aspectBanes[aspect] + 1,
-                  },
-                }
-              : c,
-          );
-          routeNote = `Boon to the pool, Bane onto ${aspect}`;
-        }
-      } else {
-        routeNote = boons === 2 ? "both Boons to the pool" : "both Banes to the pool";
-      }
-    } else if (drawn.length > 0) {
-      poolAdds = [drawn[randomInt(drawn.length)]];
-    } else {
-      poolAdds = [];
-    }
-
-    const stonePool = [...removeStones(this.game.stonePool, drawn), ...poolAdds];
-
-    const next: GameState = {
-      ...this.game,
-      characters,
-      stonePool,
-      pendingRoll: null,
-      // Accepting the roll resolves any open overcome.
-      overcome: null,
-      committedBoons: [],
-      // A resolved roll clears the slate; unaccepted proposals do not carry over.
-      proposals: [],
-    };
-
-    let overcomeLine: AddMessageInput | undefined;
-    if (overcome) {
-      const target = characters.find((c) => c.slot === overcome.targetSlot);
-      overcomeLine = {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: `Overcome${target ? ` — ${characterLabel(target)}` : ""}: ${
-          routeNote || drawn.join(", ")
-        }`,
-      };
-    }
-
-    return this.commit(next, overcomeLine);
-  }
-
-  private async handleStartOvercome(
-    request: Request,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    if (this.game.overcome) {
-      return new Response("An overcome is already open", { status: 409 });
-    }
-
-    const input = (await readJson(request)) as StartOvercomeInput | null;
-    const slot = input?.slot;
-    if (
-      typeof slot !== "number" ||
-      !Number.isInteger(slot) ||
-      slot < 0 ||
-      slot >= CHARACTER_SLOT_COUNT
-    ) {
-      return new Response("slot out of range", { status: 400 });
-    }
-
-    const target = this.game.characters.find((c) => c.slot === slot);
-    if (!target) {
-      return new Response("Not found", { status: 404 });
-    }
-
-    // A fresh attempt: drop any roll still sitting on the table.
-    return this.commit(
-      { ...this.game, overcome: { targetSlot: slot }, pendingRoll: null },
-      {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: `Overcome — ${characterLabel(target)} attempts something risky`,
-      },
-    );
-  }
-
-  private async handleCancelOvercome(authInfo: AuthInfo): Promise<Response> {
-    const overcome = this.game.overcome;
-    if (!overcome) {
-      return new Response("No overcome is open", { status: 400 });
-    }
-
-    const target = this.game.characters.find(
-      (c) => c.slot === overcome.targetSlot,
-    );
-
-    return this.commit(
-      { ...this.game, overcome: null },
-      {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: `Overcome called off${
-          target ? ` — ${characterLabel(target)}` : ""
-        }`,
-      },
-    );
+    return this.commit(this.game, {
+      authorId: authInfo.discordUserId,
+      authorName: authInfo.username,
+      role: authInfo.role,
+      content: `Drew: ${describeStones(chosen)}${committedNote}`,
+    });
   }
 
   private async handleStartSession(
@@ -1554,13 +1293,11 @@ export class GameTable implements DurableObject {
         session: { id, goal },
         // A new session starts from a clean slate. Nothing left open at the end
         // of the previous session (or before this one began) carries in:
-        // abilities, floating boons, an unresolved overcome or roll, pledges,
-        // or a proposal queue. The stone pool is untouched — it is shared
-        // across sessions and only ever changed by rolls and moves.
+        // abilities, floating boons, pledges, or a proposal queue. The stone
+        // pool is untouched — it is shared across sessions and only ever
+        // changed by moves and the facilitator's direct edits.
         usedAbilities: [],
         floatingBoons: [],
-        overcome: null,
-        pendingRoll: null,
         committedBoons: [],
         proposals: [],
       },
@@ -1614,13 +1351,11 @@ export class GameTable implements DurableObject {
         sessionHistory,
         stonePool,
         // Ending a session discards everything left unresolved: unspent
-        // floating boons, once-per-session abilities, an open overcome or roll
-        // on the table, pledged boons, and any proposal the facilitator never
-        // accepted or rejected. Nothing from a closed session carries in.
+        // floating boons, once-per-session abilities, pledged boons, and any
+        // proposal the facilitator never accepted or rejected. Nothing from a
+        // closed session carries in.
         floatingBoons: [],
         usedAbilities: [],
-        overcome: null,
-        pendingRoll: null,
         committedBoons: [],
         proposals: [],
       },

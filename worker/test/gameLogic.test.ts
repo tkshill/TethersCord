@@ -34,13 +34,11 @@ function state(over: Partial<GameState> = {}): GameState {
     sessionId: "t",
     messages: [],
     stonePool: [],
-    pendingRoll: null,
     committedBoons: [],
     proposals: [],
     session: null,
     characters: [],
     sessionHistory: [],
-    overcome: null,
     floatingBoons: [],
     usedAbilities: [],
     npcs: [],
@@ -134,14 +132,17 @@ describe("migrateStoneState", () => {
   it("returns the base blob when nothing is stored", () => {
     const s = migrateStoneState(undefined, ["Boon", "Bane", "Boon", "Bane"]);
     expect(s.stonePool).toEqual(["Boon", "Bane", "Boon", "Bane"]);
-    expect(s).toMatchObject({ pendingRoll: null, session: null });
+    expect(s).toMatchObject({ session: null });
   });
 
-  it("folds colour-named stones and defaults every field a later feature added", () => {
+  it("folds colour-named stones, drops the retired pendingRoll/overcome fields, and defaults every field a later feature added", () => {
     const s = migrateStoneState(
       {
         stonePool: ["WhiteStone", "BlackStone"],
+        // A pre-23.1 blob may still carry these; they are read without error
+        // and simply dropped, like every other retired field.
         pendingRoll: { chosen: ["WhiteStone"], rest: ["BlackStone"] },
+        overcome: { targetSlot: 1 },
         proposals: [
           // biome-ignore lint: legacy proposal shape has no floatingId / targetSlot
           { id: "p", kind: "add-boon", proposerId: "u", proposerName: "U", slot: null, delta: 0, createdAt: 1 } as never,
@@ -151,7 +152,8 @@ describe("migrateStoneState", () => {
       ["Boon", "Bane"],
     );
     expect(s.stonePool).toEqual(["Boon", "Bane"]);
-    expect(s.pendingRoll).toEqual({ chosen: ["Boon"], rest: ["Bane"] });
+    expect(s).not.toHaveProperty("pendingRoll");
+    expect(s).not.toHaveProperty("overcome");
     expect(s.proposals[0]).toMatchObject({ floatingId: null, targetSlot: null });
     expect(s.session).toEqual({ id: "s", goal: "g" });
   });
@@ -160,7 +162,6 @@ describe("migrateStoneState", () => {
     const s = migrateStoneState(
       {
         stonePool: ["Boon", "Bane"],
-        pendingRoll: null,
         session: { id: "s", goal: "g", pool: ["Boon", "Bane", "Bane"] },
         carriedBanes: 2,
       },

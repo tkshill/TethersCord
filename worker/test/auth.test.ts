@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { call, claim, seedAuth } from "./helpers";
+import { call, seedAuth } from "./helpers";
 
-// The bearer-token gate on every /api/table route, the facilitator-only gate on
-// the privileged ones, and the roll gate that also lets the overcome target in.
+// The bearer-token gate on every /api/table route, and the facilitator-only
+// gate on the privileged ones.
 describe("route auth", () => {
   it("401s a request with no Authorization header", async () => {
     const res = await call("t-noauth", "/messages", { method: "GET" });
@@ -85,39 +85,17 @@ describe("route auth", () => {
     });
   });
 
-  describe("rollGate", () => {
-    it("403s a player rolling with no overcome open", async () => {
-      await seedAuth("player-roll");
-      const res = await call("t-roll", "/stones/roll", { token: "player-roll" });
+  describe("/stones/draw", () => {
+    it("403s a player drawing", async () => {
+      await seedAuth("player-draw");
+      const res = await call("t-draw", "/stones/draw", { token: "player-draw" });
       expect(res.status).toBe(403);
     });
 
-    it("lets the facilitator roll", async () => {
-      await seedAuth("fac-roll", { facilitator: true });
-      const res = await call("t-facroll", "/stones/roll", { token: "fac-roll" });
+    it("204s a facilitator drawing", async () => {
+      await seedAuth("fac-draw", { facilitator: true });
+      const res = await call("t-facdraw", "/stones/draw", { token: "fac-draw" });
       expect(res.status).toBe(204);
-    });
-
-    it("lets the overcome target roll, but not another player", async () => {
-      const table = "t-overcome-roll";
-      await seedAuth("fac-oc", { facilitator: true });
-      await seedAuth("target", { userId: "target-user" });
-      await seedAuth("bystander", { userId: "bystander-user" });
-
-      await claim(table, "target", 0);
-      const started = await call(table, "/overcome/start", {
-        token: "fac-oc",
-        body: { slot: 0 },
-      });
-      expect(started.status).toBe(204);
-
-      const bystander = await call(table, "/stones/roll", {
-        token: "bystander",
-      });
-      expect(bystander.status).toBe(403);
-
-      const target = await call(table, "/stones/roll", { token: "target" });
-      expect(target.status).toBe(204);
     });
   });
 });

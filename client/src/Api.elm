@@ -3,7 +3,6 @@ module Api exposing
     , getGameState
     , getMessageHistory
     , postAcceptCompelMove
-    , postCancelOvercome
     , postCharacterUpdate
     , postClaimSlot
     , postClearMessages
@@ -16,7 +15,6 @@ module Api exposing
     , postProposalDecision
     , postReleaseSlot
     , postSessionGoal
-    , postStartOvercome
     , postStartSession
     , postStones
     , postSuggestCompel
@@ -41,7 +39,7 @@ import Json.Encode as Encode
 import Kind
 import Roll exposing (Stone(..))
 import Time
-import Types exposing (Auth, CharacterSheet, CommittedBoon, EntityKind, FloatingBoon, Flags, GameState, Overcome, PendingRoll, Proposal, Session, SessionSummary, TableEntity, UsedAbility, decodeRole, entityKindPath)
+import Types exposing (Auth, CharacterSheet, CommittedBoon, EntityKind, FloatingBoon, Flags, GameState, Proposal, Session, SessionSummary, TableEntity, UsedAbility, decodeRole, entityKindPath)
 
 
 
@@ -294,20 +292,6 @@ postEndSession flags auth toMsg =
     postEmpty flags auth "/session/end" toMsg
 
 
-{-| Facilitator-only: open an overcome against the character in `slot`.
--}
-postStartOvercome : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
-postStartOvercome flags auth slot toMsg =
-    postJson flags auth "/overcome/start" (Encode.object [ ( "slot", Encode.int slot ) ]) toMsg
-
-
-{-| Facilitator-only: call off the open overcome without resolving it.
--}
-postCancelOvercome : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
-postCancelOvercome flags auth toMsg =
-    postEmpty flags auth "/overcome/cancel" toMsg
-
-
 {-| Facilitator-only: add a blank NPC / location row for the table.
 -}
 postCreateEntity : Flags -> Auth -> EntityKind -> (Result Http.Error () -> msg) -> Cmd msg
@@ -367,13 +351,6 @@ decodeStoneList =
             )
 
 
-decodePendingRoll : Decode.Decoder PendingRoll
-decodePendingRoll =
-    Decode.map2 PendingRoll
-        (Decode.field "chosen" decodeStoneList)
-        (Decode.field "rest" decodeStoneList)
-
-
 decodeCommittedBoon : Decode.Decoder CommittedBoon
 decodeCommittedBoon =
     Decode.map2 CommittedBoon
@@ -414,11 +391,6 @@ decodeSession =
     Decode.map2 Session
         (Decode.field "id" Decode.string)
         (Decode.field "goal" Decode.string)
-
-
-decodeOvercome : Decode.Decoder Overcome
-decodeOvercome =
-    Decode.map Overcome (Decode.field "targetSlot" Decode.int)
 
 
 decodeAspectBanes : Decode.Decoder Types.AspectBanes
@@ -497,13 +469,11 @@ decodeGameState =
         (Decode.field "sessionId" Decode.string)
         (Decode.field "messages" (Decode.list decodeMessage))
         (Decode.field "stonePool" decodeStoneList)
-        (Decode.field "pendingRoll" (Decode.nullable decodePendingRoll))
         (Decode.field "committedBoons" (Decode.list decodeCommittedBoon))
         (Decode.field "proposals" (Decode.list decodeProposal))
         (Decode.field "session" (Decode.nullable decodeSession))
         (Decode.field "characters" (Decode.list decodeCharacterSheet))
-        |> andMap (Decode.field "sessionHistory" (Decode.list decodeSessionSummary))
-        |> andMap (Decode.field "overcome" (Decode.nullable decodeOvercome))
+        (Decode.field "sessionHistory" (Decode.list decodeSessionSummary))
         |> andMap (Decode.field "floatingBoons" (Decode.list decodeFloatingBoon))
         |> andMap (Decode.field "usedAbilities" (Decode.list decodeUsedAbility))
         |> andMap (Decode.field "npcs" (Decode.list decodeTableEntity))

@@ -8,6 +8,34 @@ version yet, so headings are dates.
 
 ## [Unreleased]
 
+### Changed
+
+- **The overcome roll collapses to one stateless click** (roadmap section
+  23.1, Phase 2 — facilitator-run resources). `POST /api/table/:id/stones/draw`
+  (facilitator-only) replaces the whole roll/reroll/accept lifecycle: it reads
+  two stones off the shared pool and posts a log line naming them, and never
+  writes the pool. Retired outright, not reworked: `pendingRoll` and
+  `Overcome` (with `POST .../overcome/start` / `.../overcome/cancel` and the
+  overcome-target carve-out in the roll gate), the target-paid Press Fate
+  reroll cost, and the aspect-Bane auto-marking a mixed overcome roll used to
+  write (`archetype_banes` / `desire_banes` / `quest_banes` stay on the sheet,
+  frozen, until a later section decides what if anything writes them again).
+  The client's Stones card lost its two-state pending-roll UI along with the
+  roll/reroll/accept buttons in favour of a single facilitator "Draw two
+  stones" button; the Help Out ability, which used to reroll an open
+  overcome, has nothing left to reroll and the worker now refuses every raise
+  of it. What the drawn stones mean for the pool, a sheet, or a session
+  context is left to the facilitator's judgement and separate action — no
+  code here tries to infer it (that lands in 23.2, not yet built).
+- **Pledging a boon ("Highlight") is now facilitator-run too.** The
+  player-facing Pledge `+` / `−` control on each sheet is disconnected
+  (`View/Characters.elm`); boon movement is the facilitator's Grant control
+  alone for now. Resolves the open question 23.1 left about whether pledge
+  survives as a player-initiated action — it doesn't, for the current
+  testing phase. The proposal machinery underneath (`Kind.Pledge`,
+  `applyPledge`, `POST .../stones/commit`, and `drawFromBag`'s
+  committed-boons odds bump) is untouched, just unreachable from the UI.
+
 ### Added
 
 - The overcome aftermath — aspects and a single persistent stone pool:

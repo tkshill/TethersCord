@@ -71,13 +71,11 @@ gameState =
     { sessionId = "sess-1"
     , messages = []
     , stonePool = []
-    , pendingRoll = Nothing
     , committedBoons = []
     , proposals = []
     , session = Nothing
     , characters = [ character ]
     , sessionHistory = []
-    , overcome = Nothing
     , floatingBoons = []
     , usedAbilities = []
     , npcs = []
@@ -121,8 +119,8 @@ model =
 
 
 {-| A full `GameState` wire payload as the Worker broadcasts it, exercising every
-sub-decoder: an open overcome, a pending roll, floating boons, used abilities,
-and a proposal of each awkward `kind`.
+sub-decoder: floating boons, used abilities, and a proposal of each awkward
+`kind`.
 -}
 snapshotJson : String
 snapshotJson =
@@ -135,7 +133,6 @@ snapshotJson =
           , "content": "welcome", "createdAt": 1700000001000 }
         ]
     , "stonePool": ["Boon", "Bane", "Boon"]
-    , "pendingRoll": { "chosen": ["Boon"], "rest": ["Bane", "Boon"] }
     , "committedBoons": [ { "slot": 1, "count": 2 } ]
     , "proposals":
         [ { "id": "p1", "kind": "add-boon", "proposerId": "u1", "proposerName": "Ada"
@@ -158,7 +155,6 @@ snapshotJson =
         [ { "id": "s0", "goal": "The bridge", "startedAt": 1699000000000
           , "endedAt": 1699000900000 }
         ]
-    , "overcome": { "targetSlot": 1 }
     , "floatingBoons":
         [ { "id": "f1", "text": "the rope still holds", "createdByName": "Gm"
           , "createdAt": 1700000002000 }
