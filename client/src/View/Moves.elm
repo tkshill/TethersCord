@@ -2,8 +2,16 @@ module View.Moves exposing (view)
 
 {-| The Moves card, shown once the viewer holds a sheet: the once-per-session
 abilities (Help Out / Add a Detail / Gain Insight), Suggest Compel against
-another claimed sheet, and the any-time Accept Compel. Every one is a request
-the facilitator approves.
+another claimed sheet, and the any-time Accept Compel.
+
+-- OFF while testing simplified interface (roadmap section 23.4): every entry
+here used to be a button posting a proposal for the facilitator to accept or
+reject. The `Msg` constructors (`UseAbility`, `SuggestCompel`,
+`AcceptCompelMove`), their `Effect`s, `Api` calls, and the worker's proposal
+routes are all still live and untouched — only this card's `onPress` hooks
+are gone, so it now reads as a reminder of what a player can say at the
+table, not a control that posts anything. Re-wiring is a search for this
+comment.
 -}
 
 import Copy
@@ -12,7 +20,7 @@ import Element.Font as Font
 import Kind
 import Types exposing (..)
 import Ui
-import View.Helpers exposing (ViewContext, characterLabel, latestProposalId, tip, withdrawLink)
+import View.Helpers exposing (ViewContext, characterLabel, tip)
 
 
 view : ViewContext -> GameState -> Element Msg
@@ -24,22 +32,12 @@ view ctx gs =
         Just ch ->
             Ui.card
                 [ Ui.sectionTitle Copy.movesTitle
-                , abilityRow ctx.myId gs ch
-                , suggestCompelRow ctx.myId gs ch
-                , let
-                    pendingId =
-                        latestProposalId ctx.myId Kind.AcceptCompel gs.proposals
-                  in
-                  Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
-                    (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.anyTime)
-                        :: tip "Accept Compel" (moveButton (pendingId /= Nothing) Copy.acceptCompel AcceptCompelMove)
-                        :: (if pendingId == Nothing then
-                                []
-
-                            else
-                                [ withdrawLink pendingId ]
-                           )
-                    )
+                , abilityRow gs ch
+                , suggestCompelRow gs ch
+                , Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
+                    [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.anyTime)
+                    , tip "Accept Compel" (moveLabel Copy.acceptCompel)
+                    ]
                 ]
 
 
@@ -50,65 +48,38 @@ myOwnedSheet myId gs =
         |> List.head
 
 
-abilityRow : Maybe String -> GameState -> CharacterSheet -> Element Msg
-abilityRow myId gs ch =
+abilityRow : GameState -> CharacterSheet -> Element Msg
+abilityRow gs ch =
     if gs.session == Nothing then
         el [ Font.size 12, Font.color Ui.inkSoft ]
             (text Copy.abilitiesNeedSession)
 
     else
         let
-            -- 23.1 retired the overcome/pending-roll lifecycle Help Out
-            -- rerolled, so there is no longer a roll it can help with; the
-            -- worker refuses every raise outright (400) to match.
-            overcomeRoll =
-                False
-
-            button kind label available =
+            entry kind label =
                 let
-                    used =
-                        abilityUsed ch.slot kind gs.usedAbilities
-
-                    pendingId =
-                        latestProposalId myId (Kind.AbilityProposal kind) gs.proposals
-
-                    pending =
-                        pendingId /= Nothing
-
                     suffix =
-                        if used then
+                        if abilityUsed ch.slot kind gs.usedAbilities then
                             Copy.usedSuffix
-
-                        else if pending then
-                            Copy.pendingSuffix
 
                         else
                             ""
-
-                    btn =
-                        tip label
-                            (moveButton (used || pending || not available) (label ++ suffix) (UseAbility kind))
                 in
-                if pending then
-                    Element.row [ spacing Ui.xs, Element.centerY ] [ btn, withdrawLink pendingId ]
-
-                else
-                    btn
+                tip label (moveLabel (label ++ suffix))
         in
         Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
             [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.oncePerSession)
-            , button Kind.HelpOut Copy.helpOut overcomeRoll
-            , button Kind.AddDetail Copy.addDetail True
-            , button Kind.GainInsight Copy.gainInsight True
+            , entry Kind.HelpOut Copy.helpOut
+            , entry Kind.AddDetail Copy.addDetail
+            , entry Kind.GainInsight Copy.gainInsight
             ]
 
 
 {-| Suggest Compel: a once-per-session ability that names another player's
-character. One button per other claimed sheet; the whole row collapses to a
-"(used)" / "(pending)" note once raised.
+character. One label per other claimed sheet; "(used)" once raised.
 -}
-suggestCompelRow : Maybe String -> GameState -> CharacterSheet -> Element Msg
-suggestCompelRow myId gs ch =
+suggestCompelRow : GameState -> CharacterSheet -> Element Msg
+suggestCompelRow gs ch =
     if gs.session == Nothing then
         none
 
@@ -117,12 +88,6 @@ suggestCompelRow myId gs ch =
             used =
                 abilityUsed ch.slot Kind.SuggestCompel gs.usedAbilities
 
-            pendingId =
-                latestProposalId myId (Kind.AbilityProposal Kind.SuggestCompel) gs.proposals
-
-            pending =
-                pendingId /= Nothing
-
             targets =
                 gs.characters
                     |> List.filter (\c -> c.slot /= ch.slot && c.ownerId /= Nothing)
@@ -130,9 +95,6 @@ suggestCompelRow myId gs ch =
             suffix =
                 if used then
                     Copy.usedSuffix
-
-                else if pending then
-                    Copy.pendingSuffix
 
                 else
                     ""
@@ -143,34 +105,22 @@ suggestCompelRow myId gs ch =
                 :: (if used then
                         []
 
-                    else if pending then
-                        [ withdrawLink pendingId ]
-
                     else if List.isEmpty targets then
                         [ el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.noOtherPlayers) ]
 
                     else
-                        List.map
-                            (\c ->
-                                Ui.ghostButton
-                                    { onPress = Just (SuggestCompel c.slot)
-                                    , label = characterLabel c
-                                    }
-                            )
-                            targets
+                        List.map (\c -> moveLabel (characterLabel c)) targets
                    )
             )
 
 
-{-| A ghost button that goes inert (no `onPress`) when `disabled`. -}
-moveButton : Bool -> String -> Msg -> Element Msg
-moveButton disabled label msg =
-    Ui.ghostButton
-        { onPress =
-            if disabled then
-                Nothing
-
-            else
-                Just msg
-        , label = label
-        }
+{-| What was `Ui.ghostButton` before 23.4 — same size and position in the
+row, but plain text: nothing here posts anymore.
+-}
+moveLabel : String -> Element Msg
+moveLabel label =
+    el
+        [ Font.size 13
+        , Font.color Ui.ink
+        ]
+        (text label)

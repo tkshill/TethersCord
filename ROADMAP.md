@@ -983,7 +983,7 @@ Phase 2 (P2.2).
 
 ## 23. Facilitator-run resources and a three-column layout
 
-**In progress — 23.1–23.3 done, 23.4–23.7 not yet built.** A deliberate simplification for the current
+**In progress — 23.1–23.4 done, 23.5–23.7 not yet built.** A deliberate simplification for the current
 testing phase, in the spirit of `DESIGN_PRINCIPLES.md` #10 ("remove mechanics
 until anything less would compromise the principles above") — the automatic
 stone-routing and proposal/ability machinery built in sections 5, 10, and 19
@@ -1157,7 +1157,7 @@ game for this section; these three are just the ones known to need one today.
       rewrite, not done here. The facilitator's create row gained a Boon /
       Bane picker (`Ui.tab`-style toggle) next to the text field.
 
-### 23.4 Moves: inert display, not code deletion
+### 23.4 Moves: inert display, not code deletion — done
 
 Per principle 10, this is subtraction from the interface, not from the
 schema. The Moves card (Help Out, Add a Detail, Gain Insight, Suggest Compel —
@@ -1165,22 +1165,27 @@ section 10 — plus Accept Compel) stops being clickable and becomes plain
 text: a reminder of what a player can *say* at the table, not a control that
 posts anything. Nothing about it is deleted:
 
-- [ ] **The `Msg` constructors, `Effect`s, `Api` calls, and the worker's
+- [x] **The `Msg` constructors, `Effect`s, `Api` calls, and the worker's
       proposal / ability routes all stay in the code as-is**, just
-      disconnected from any control the player can press. Mark every
-      disconnected call site with a comment — e.g. `-- OFF while testing
-      simplified interface` — so re-wiring later is a search for that
-      string, not an archaeology dig through git blame.
-- [ ] `View.Moves` (`client/src/View/Moves.elm`) keeps its layout and copy
-      but drops the `onPress` off every button — or swaps
-      `Ui.primaryButton` / `Ui.ghostButton` for a plain label — so the card
-      reads as reference text, not affordances.
-- [ ] The proposal queue (section 5) empties from the client side the same
-      way: with `add-boon` and the abilities no longer posting proposals,
-      and `pledge` the one open question (23.2), the Proposals panel in
-      `View/Stones.elm` may end up with nothing to show. Leave the panel and
-      `proposals/:id/{accept,reject,withdraw}` in place rather than deleting
-      them, for the same find-it-later reason as the Moves card above.
+      disconnected from any control the player can press. `client/src/View/
+      Moves.elm` carries a single `-- OFF while testing simplified interface
+      (roadmap section 23.4)` note in its module doc naming every disconnected
+      `Msg` (`UseAbility`, `SuggestCompel`, `AcceptCompelMove`), so re-wiring
+      later is a search for that string, not an archaeology dig through git
+      blame.
+- [x] `View.Moves` keeps its layout and copy but drops every button for a
+      plain `moveLabel` text element (`used`-suffix logic unchanged, just no
+      longer wired to an `onPress`) — the card reads as reference text, not
+      affordances. The dead `overcomeRoll = False` branch 23.1 left behind
+      (Help Out's click was already permanently refused) fell out with it,
+      since nothing in the card is clickable to gate anymore.
+- [x] The proposal-pending / withdraw affordance this card used to show
+      inline (`latestProposalId`, `withdrawLink`) is gone with it — nothing
+      here can queue a new proposal, so there is nothing left to withdraw
+      from *this* card. The general Proposals panel in `View/Stones.elm` and
+      `proposals/:id/{accept,reject,withdraw}` are untouched and still the
+      place to resolve or withdraw anything already queued, for the same
+      find-it-later reason as the rest of this section.
 
 ### 23.5 Layout: three columns, sized to the viewport
 
@@ -1278,10 +1283,9 @@ order, each its own branch off `main`:
    column are still bundled with 23.5, as originally planned, so the visible
    card heading and glossary term are unchanged for now — only the type, the
    facilitator's create route, and the client's kind-aware rendering landed.
-3. **23.4** (client) — disconnect the Moves card and the proposal-posting
-   controls, marking every dead call site per 23.4's comment convention. Can
-   land any time after 23.1–23.3 give it somewhere to point instead, and
-   before or in parallel with the layout rewrite.
+3. **23.4** (client) — done: the Moves card and its proposal-posting controls
+   are disconnected, marked with 23.4's `-- OFF while testing simplified
+   interface` comment convention.
 4. **23.5 + 23.6 + 23.7** (client) — the three-column shell and top bar, once
    the data shape it's arranging is settled.
 
