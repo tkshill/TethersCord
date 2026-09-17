@@ -102,7 +102,10 @@ suggestCompelRow gs ch =
         Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
             (tip "Suggest Compel"
                 (el [ Font.size 11, Font.color Ui.inkSoft ] (text (Copy.suggestCompel ++ suffix)))
-                :: (if List.isEmpty targets then
+                :: (if used then
+                        []
+
+                    else if List.isEmpty targets then
                         [ el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.noOtherPlayers) ]
 
                     else
