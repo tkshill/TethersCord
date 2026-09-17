@@ -64,7 +64,12 @@ view model =
                     , goalEdit = model.goalEdit
                     }
                     gs
-                , View.Stones.view ctx { inflight = model.inflight, drafts = model.proposalDrafts } gs
+                , View.Stones.view ctx
+                    { inflight = model.inflight
+                    , drafts = model.proposalDrafts
+                    , floatingBoonDraft = model.newFloatingBoonNote
+                    }
+                    gs
                 , View.Moves.view ctx gs
                 , View.Characters.view ctx
                     { selectedSlot = model.selectedSlot

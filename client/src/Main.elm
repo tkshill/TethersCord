@@ -16,6 +16,7 @@ import Effect exposing (Effect)
 import Json.Decode as Decode
 import Kind
 import Ports
+import Roll exposing (stoneLabel)
 import Set
 import Time
 import Types exposing (..)
@@ -118,6 +119,7 @@ init flags =
       , newSessionGoal = ""
       , goalEdit = ""
       , proposalDrafts = Dict.empty
+      , newFloatingBoonNote = ""
       , loadingHistory = False
       , noMoreHistory = False
       , guideExpanded = False
@@ -544,6 +546,31 @@ update msg model =
 
         DrawStones ->
             guard "stones:draw" model (\auth -> Effect.PostStones auth "/stones/draw")
+
+        -- Facilitator-only hand-edits of the shared pool (23.2), independent
+        -- of a draw and of each other.
+        AddStone stone ->
+            guard ("stones:add-" ++ stoneLabel stone) model (\auth -> Effect.PostAddStone auth stone)
+
+        RemoveStone stone ->
+            guard ("stones:remove-" ++ stoneLabel stone) model (\auth -> Effect.PostRemoveStone auth stone)
+
+        FloatingBoonDraftChanged s ->
+            ( { model | newFloatingBoonNote = s }, Effect.None )
+
+        AddFloatingBoon ->
+            if String.trim model.newFloatingBoonNote == "" then
+                ( model, Effect.None )
+
+            else
+                guard "stones:floating-add"
+                    { model | newFloatingBoonNote = "" }
+                    (\auth -> Effect.PostAddFloatingBoon auth model.newFloatingBoonNote)
+
+        DeleteFloatingBoon floatingId ->
+            guard ("stones:floating-delete:" ++ floatingId)
+                model
+                (\auth -> Effect.PostDeleteFloatingBoon auth floatingId)
 
         -- Field edits update the local sheet at once and mark the slot dirty; the
         -- write is deferred to a single debounced flush (`FieldSaveDue`).

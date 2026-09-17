@@ -108,6 +108,7 @@ model =
     , newSessionGoal = ""
     , goalEdit = ""
     , proposalDrafts = Dict.empty
+    , newFloatingBoonNote = ""
     , loadingHistory = False
     , noMoreHistory = False
     , guideExpanded = False

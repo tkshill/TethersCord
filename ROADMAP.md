@@ -983,7 +983,7 @@ Phase 2 (P2.2).
 
 ## 23. Facilitator-run resources and a three-column layout
 
-**In progress — 23.1 and 23.2's worker routes done, no client for 23.2 yet, 23.3–23.7 not yet built.** A deliberate simplification for the current
+**In progress — 23.1 and 23.2 done, 23.3–23.7 not yet built.** A deliberate simplification for the current
 testing phase, in the spirit of `DESIGN_PRINCIPLES.md` #10 ("remove mechanics
 until anything less would compromise the principles above") — the automatic
 stone-routing and proposal/ability machinery built in sections 5, 10, and 19
@@ -1057,7 +1057,7 @@ them).
       this is the same "does pledge survive" open question below, not a new
       decision.
 
-### 23.2 Facilitator: three free-standing resource actions — worker done, no client yet
+### 23.2 Facilitator: three free-standing resource actions — done
 
 The facilitator's edits are **independent of each other and of a roll** — the
 interface makes no attempt to associate a stone the facilitator adds to the
@@ -1101,16 +1101,23 @@ game for this section; these three are just the ones known to need one today.
       `FloatingBoon`, not yet the widened Boon-or-Bane shape 23.3 describes —
       widening the type will not need a new route, just a `kind` field on
       this one.
-- [ ] **No client yet — worker only, on purpose** (per the Sequencing note
-      below). A facilitator can drive all three through direct API calls or
-      the worker test suite; there is no button for any of them in
-      `View/Stones.elm` or `View/Characters.elm` yet. Wiring them up is a
-      small, separate follow-up whenever a client pass picks this back up
-      (naturally alongside 23.5's facilitator panel).
-- [ ] Open question (see below): does the player-initiated `add-boon`
-      proposal path stay live at all, now that the facilitator can add a
-      stone directly? (`pledge` is already answered — see the open
-      questions.)
+- [x] **Client wired up**, landing after the worker routes rather than in the
+      same pass as originally sequenced below. `View/Stones.elm` gained
+      facilitator-only pool controls (`poolControls` — Boon and Bane each get
+      their own `+` / `−` pair, posting `AddStone Stone` / `RemoveStone Stone`)
+      and, per floating boon, a facilitator "Remove" button, plus an
+      always-visible (for the facilitator) "Add a floating boon…" field and
+      button at the foot of the list — visible even with none yet, so there is
+      always somewhere to add the first one. The player-facing "Add boon"
+      button is gone entirely (see the resolved open question below); nothing
+      else in the layout moved, since 23.5's three-column shell hasn't landed.
+- [x] Resolved: the player-initiated `add-boon` proposal does not stay live.
+      The "Add boon" button is removed from `View/Stones.elm` for everyone,
+      player and facilitator alike — the facilitator now adds a Boon directly
+      via `poolControls` instead of through a proposal. `Msg.AddBoon`,
+      `Main.update`'s branch for it, and the worker's `applyAddBoon` /
+      `proposeAddBoon` / `Kind.AddBoon` all stay in code, unreachable from any
+      current UI, the same as `pledge` and Help Out.
 
 ### 23.3 Session aspects — floating boons *and* banes, with context
 
@@ -1245,10 +1252,12 @@ order, each its own branch off `main`:
 1. **23.1** (worker + minimal client) — done: the stateless one-click draw,
    with worker tests; the existing single-column UI now drives `/stones/draw`
    directly rather than the retired roll/reroll/accept lifecycle.
-   **23.2** (worker) — done: the three free-standing facilitator routes (pool
+   **23.2** — done: the three free-standing facilitator routes (pool
    add/remove, session-context add/remove; player-boon adjustment needed no
-   new route), with worker tests, decoupled from any client change as
-   planned — there is still no client for any of the three.
+   new route), with worker tests; the worker routes landed decoupled from any
+   client change as planned, and the client (`View/Stones.elm`'s pool
+   controls and session-context field, plus removing the player-facing "Add
+   boon" button) followed as its own pass right after.
 2. **23.3** (worker + client) — the `FloatingBoon` → session-aspect widening,
    isolated from the layout rewrite since it's the other wire-format change.
 3. **23.4** (client) — disconnect the Moves card and the proposal-posting
@@ -1269,12 +1278,12 @@ order, each its own branch off `main`:
       re-wire: `Kind.Pledge`, `applyPledge`, `/stones/commit`, and
       `drawFromBag`'s committed-boons odds bump all stay in code, just
       unreachable from the current UI.
-- [ ] Does the player-initiated `add-boon` proposal (`POST /stones/add-boon`
-      as a player, queued for the facilitator) stay live now that 23.2 gives
-      the facilitator a direct `POST /stones/add`? Unlike pledge, this one is
-      genuinely untouched either way — the client's "Add boon" button and the
-      worker's `proposeAddBoon` path are both still wired exactly as before;
-      no pass has decided this one yet.
+- [x] Resolved, for now, same as pledge: the player-initiated `add-boon`
+      proposal does not stay live now that the facilitator has a direct
+      `POST /stones/add`. The client's "Add boon" button is removed
+      (`View/Stones.elm`); `Msg.AddBoon`, `Main.update`'s branch, and the
+      worker's `proposeAddBoon` / `applyAddBoon` / `Kind.AddBoon` are
+      untouched and unreachable from any current UI.
 - [x] 23.1 resolved this one rather than leaving it open: `/overcome/start` /
       `/overcome/cancel` did not survive — a draw is just a draw, with no
       distinct "start an overcome" step. If the table finds it still wants an

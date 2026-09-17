@@ -3,17 +3,21 @@ module Api exposing
     , getGameState
     , getMessageHistory
     , postAcceptCompelMove
+    , postAddFloatingBoon
+    , postAddStone
     , postCharacterUpdate
     , postClaimSlot
     , postClearMessages
     , postCommitBoon
     , postCreateEntity
     , postDeleteEntity
+    , postDeleteFloatingBoon
     , postEndSession
     , postFate
     , postMessage
     , postProposalDecision
     , postReleaseSlot
+    , postRemoveStone
     , postSessionGoal
     , postStartSession
     , postStones
@@ -37,7 +41,7 @@ import Http
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Kind
-import Roll exposing (Stone(..))
+import Roll exposing (Stone(..), stoneLabel)
 import Time
 import Types exposing (Auth, CharacterSheet, CommittedBoon, EntityKind, FloatingBoon, Flags, GameState, Proposal, Session, SessionSummary, TableEntity, UsedAbility, decodeRole, entityKindPath)
 
@@ -268,6 +272,37 @@ Highlight.
 postUseFloatingBoon : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
 postUseFloatingBoon flags auth floatingId toMsg =
     postJson flags auth "/stones/use-floating" (Encode.object [ ( "floatingId", Encode.string floatingId ) ]) toMsg
+
+
+{-| Facilitator-only (23.2): add one stone directly to the shared pool,
+independent of a draw.
+-}
+postAddStone : Flags -> Auth -> Stone -> (Result Http.Error () -> msg) -> Cmd msg
+postAddStone flags auth stone toMsg =
+    postJson flags auth "/stones/add" (Encode.object [ ( "kind", Encode.string (stoneLabel stone) ) ]) toMsg
+
+
+{-| Facilitator-only (23.2): remove one stone of `stone`'s kind directly from
+the shared pool. The Worker 400s if the pool holds none of that kind.
+-}
+postRemoveStone : Flags -> Auth -> Stone -> (Result Http.Error () -> msg) -> Cmd msg
+postRemoveStone flags auth stone toMsg =
+    postJson flags auth "/stones/remove" (Encode.object [ ( "kind", Encode.string (stoneLabel stone) ) ]) toMsg
+
+
+{-| Facilitator-only (23.2): plant a session context directly, without routing
+through an Add a Detail / Gain Insight proposal.
+-}
+postAddFloatingBoon : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postAddFloatingBoon flags auth text toMsg =
+    postJson flags auth "/stones/floating-boons" (Encode.object [ ( "text", Encode.string text ) ]) toMsg
+
+
+{-| Facilitator-only (23.2): remove a session context outright.
+-}
+postDeleteFloatingBoon : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postDeleteFloatingBoon flags auth floatingId toMsg =
+    postEmpty flags auth ("/stones/floating-boons/" ++ floatingId ++ "/delete") toMsg
 
 
 {-| Facilitator-only: open a session with a goal.

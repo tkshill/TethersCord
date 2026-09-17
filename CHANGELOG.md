@@ -38,25 +38,32 @@ version yet, so headings are dates.
 
 ### Added
 
-- **Three free-standing facilitator resource routes, worker only** (roadmap
-  section 23.2, Phase 2 — facilitator-run resources). No client yet — these
-  are reachable by direct API call and the worker test suite only, deferred
-  to a later client pass:
+- **Three free-standing facilitator resource actions** (roadmap section 23.2,
+  Phase 2 — facilitator-run resources):
   - `POST /api/table/:id/stones/add` / `.../stones/remove` (`{ kind: "Boon" |
     "Bane" }`, facilitator-only) hand-edit the shared pool directly,
     independent of a draw. `add` always succeeds; `remove` 400s if the pool
     holds none of that kind. Neither posts a log line — silent bookkeeping,
-    like the facilitator's existing direct `add-boon`.
+    like the facilitator's existing direct `add-boon`. The client surfaces
+    these as a Boon `+`/`−` pair and a Bane `+`/`−` pair in the Stones card,
+    facilitator-only.
   - `POST /api/table/:id/stones/floating-boons` (`{ text }`) and
     `POST .../stones/floating-boons/:id/delete` (facilitator-only) create and
     remove a session context (`FloatingBoon`) directly, without routing
     through an Add a Detail / Gain Insight proposal. Both post a log line
     (`Session note added/removed — <text>`). Lands ahead of section 23.3, so
     it's today's Boon-only `FloatingBoon`, not yet the widened Boon-or-Bane
-    shape 23.3 will add.
+    shape 23.3 will add. The client shows a facilitator-only "Remove" next to
+    each floating boon and an always-visible "Add a floating boon…" field —
+    visible even with none yet, so there's always somewhere to add the first
+    one.
   - Adjusting a player's boons needed no new route — the sheet's Grant `+` /
-    `−` already covers it (section 4), and is now the only way a boon moves
-    onto a character since Pledge was disconnected.
+    `−` already covers it (section 4), and is now the only client path onto a
+    character's boons: the player-facing "Add boon" button is removed
+    entirely (the facilitator adds a Boon directly instead), alongside Pledge.
+    `Msg.AddBoon`, the worker's `applyAddBoon` / `proposeAddBoon` /
+    `Kind.AddBoon`, and the pledge proposal machinery are all untouched,
+    unreachable from any current UI.
 - The overcome aftermath — aspects and a single persistent stone pool:
   - **Aspects accumulate Banes.** A mixed overcome roll (one Boon, one Bane)
     drops the Bane onto one of the acting character's three aspects —

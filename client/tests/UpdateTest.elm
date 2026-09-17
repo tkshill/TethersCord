@@ -11,6 +11,7 @@ import Expect
 import Fixtures
 import Http
 import Main
+import Roll exposing (Stone(..))
 import Set
 import Test exposing (Test, describe, test)
 import Time
@@ -148,6 +149,33 @@ suite =
                     Main.update DrawStones settled
                         |> Tuple.second
                         |> Expect.equal (Effect.PostStones Fixtures.playerAuth "/stones/draw")
+            , test "AddStone posts the stone's kind" <|
+                \_ ->
+                    Main.update (AddStone Bane) ready
+                        |> Tuple.second
+                        |> Expect.equal (Effect.PostAddStone Fixtures.playerAuth Bane)
+            , test "RemoveStone posts the stone's kind" <|
+                \_ ->
+                    Main.update (RemoveStone Boon) ready
+                        |> Tuple.second
+                        |> Expect.equal (Effect.PostRemoveStone Fixtures.playerAuth Boon)
+            , test "AddFloatingBoon does nothing on a blank draft" <|
+                \_ ->
+                    Main.update AddFloatingBoon { ready | newFloatingBoonNote = "   " }
+                        |> Expect.equal ( { ready | newFloatingBoonNote = "   " }, Effect.None )
+            , test "AddFloatingBoon posts the draft as typed (worker trims it) and clears the field" <|
+                \_ ->
+                    let
+                        ( next, effect ) =
+                            Main.update AddFloatingBoon { ready | newFloatingBoonNote = "  a detail  " }
+                    in
+                    ( next.newFloatingBoonNote, effect )
+                        |> Expect.equal ( "", Effect.PostAddFloatingBoon Fixtures.playerAuth "  a detail  " )
+            , test "DeleteFloatingBoon posts to the delete route with auth" <|
+                \_ ->
+                    Main.update (DeleteFloatingBoon "f1") ready
+                        |> Tuple.second
+                        |> Expect.equal (Effect.PostDeleteFloatingBoon Fixtures.playerAuth "f1")
             , test "AcceptProposal carries that row's trimmed draft note as context" <|
                 \_ ->
                     Main.update (AcceptProposal "p1")
