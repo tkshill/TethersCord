@@ -1101,6 +1101,9 @@ export class GameTable implements DurableObject {
           }
           const floating: FloatingBoon = {
             id: crypto.randomUUID(),
+            // An ability always produces a Boon; only the facilitator's
+            // direct create (`handleAddFloatingBoon`) can pick Bane (23.3).
+            kind: "Boon",
             text,
             createdByName: proposal.proposerName,
             createdAt: Date.now(),
@@ -1345,16 +1348,20 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * Facilitator-only (23.2): plant a session context directly, the same
-   * shape an accepted Add a Detail / Gain Insight creates, without routing
-   * through that ability's proposal. `FloatingBoon` is Boon-only until 23.3
-   * widens it with a `kind`.
+   * Facilitator-only (23.2, widened 23.3): plant a session context directly —
+   * Boon or Bane, the facilitator's choice — the same shape an accepted Add
+   * a Detail / Gain Insight creates (always a Boon), without routing through
+   * that ability's proposal.
    */
   private async handleAddFloatingBoon(
     request: Request,
     authInfo: AuthInfo,
   ): Promise<Response> {
     const input = (await readJson(request)) as AddFloatingBoonInput | null;
+    const kind = input?.kind;
+    if (kind !== "Boon" && kind !== "Bane") {
+      return new Response("kind must be Boon or Bane", { status: 400 });
+    }
     const text = boundedString(input?.text, MAX_GOAL_LENGTH).trim();
     if (!text) {
       return new Response("text is required", { status: 400 });
@@ -1362,6 +1369,7 @@ export class GameTable implements DurableObject {
 
     const floating: FloatingBoon = {
       id: crypto.randomUUID(),
+      kind,
       text,
       createdByName: authInfo.username,
       createdAt: Date.now(),
@@ -1373,7 +1381,7 @@ export class GameTable implements DurableObject {
         authorId: authInfo.discordUserId,
         authorName: authInfo.username,
         role: authInfo.role,
-        content: `Session note added — ${text}`,
+        content: `Session note added (${kind}) — ${text}`,
       },
     );
   }
@@ -1403,7 +1411,7 @@ export class GameTable implements DurableObject {
         authorId: authInfo.discordUserId,
         authorName: authInfo.username,
         role: authInfo.role,
-        content: `Session note removed — ${floating.text}`,
+        content: `Session note removed (${floating.kind}) — ${floating.text}`,
       },
     );
   }

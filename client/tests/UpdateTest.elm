@@ -159,6 +159,10 @@ suite =
                     Main.update (RemoveStone Boon) ready
                         |> Tuple.second
                         |> Expect.equal (Effect.PostRemoveStone Fixtures.playerAuth Boon)
+            , test "FloatingBoonKindChanged sets the pending kind" <|
+                \_ ->
+                    Main.update (FloatingBoonKindChanged Bane) ready
+                        |> Expect.equal ( { ready | newFloatingBoonKind = Bane }, Effect.None )
             , test "AddFloatingBoon does nothing on a blank draft" <|
                 \_ ->
                     Main.update AddFloatingBoon { ready | newFloatingBoonNote = "   " }
@@ -170,7 +174,13 @@ suite =
                             Main.update AddFloatingBoon { ready | newFloatingBoonNote = "  a detail  " }
                     in
                     ( next.newFloatingBoonNote, effect )
-                        |> Expect.equal ( "", Effect.PostAddFloatingBoon Fixtures.playerAuth "  a detail  " )
+                        |> Expect.equal ( "", Effect.PostAddFloatingBoon Fixtures.playerAuth Boon "  a detail  " )
+            , test "AddFloatingBoon posts the picked kind" <|
+                \_ ->
+                    Main.update AddFloatingBoon
+                        { ready | newFloatingBoonNote = "a complication", newFloatingBoonKind = Bane }
+                        |> Tuple.second
+                        |> Expect.equal (Effect.PostAddFloatingBoon Fixtures.playerAuth Bane "a complication")
             , test "DeleteFloatingBoon posts to the delete route with auth" <|
                 \_ ->
                     Main.update (DeleteFloatingBoon "f1") ready

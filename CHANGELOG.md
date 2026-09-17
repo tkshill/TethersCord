@@ -35,6 +35,22 @@ version yet, so headings are dates.
   testing phase. The proposal machinery underneath (`Kind.Pledge`,
   `applyPledge`, `POST .../stones/commit`, and `drawFromBag`'s
   committed-boons odds bump) is untouched, just unreachable from the UI.
+- **Session contexts can now be a Bane, not only a Boon** (roadmap section
+  23.3, Phase 2 — facilitator-run resources). `FloatingBoon` gains
+  `kind: "Boon" | "Bane"` — a floating Bane is a named complication hanging
+  over the table. A pre-23.3 stored blob has no `kind`; every floating boon
+  read off an old blob defaults to `"Boon"`, the only kind that could exist
+  before now. An accepted Add a Detail / Gain Insight still only ever
+  produces a Boon — only the facilitator's direct create can choose Bane.
+  `View/Stones.elm`'s floating-boon list now renders each one as a
+  kind-coloured chip, and the facilitator's add row gained a Boon/Bane
+  picker. `/stones/use-floating` (a player spending one into the pool) is
+  disconnected from the client for the same reason `pledge` and `add-boon`
+  were, even though — unlike those two — its mechanics never actually
+  depended on anything section 23.1 retired; it always added straight to the
+  persistent pool regardless of any roll. The worker route and its proposal
+  accept are untouched and fully functional, just unreachable from any
+  current UI. A session context's lifecycle is now create and delete only.
 
 ### Added
 
@@ -47,16 +63,15 @@ version yet, so headings are dates.
     like the facilitator's existing direct `add-boon`. The client surfaces
     these as a Boon `+`/`−` pair and a Bane `+`/`−` pair in the Stones card,
     facilitator-only.
-  - `POST /api/table/:id/stones/floating-boons` (`{ text }`) and
+  - `POST /api/table/:id/stones/floating-boons` (`{ kind, text }`) and
     `POST .../stones/floating-boons/:id/delete` (facilitator-only) create and
     remove a session context (`FloatingBoon`) directly, without routing
-    through an Add a Detail / Gain Insight proposal. Both post a log line
-    (`Session note added/removed — <text>`). Lands ahead of section 23.3, so
-    it's today's Boon-only `FloatingBoon`, not yet the widened Boon-or-Bane
-    shape 23.3 will add. The client shows a facilitator-only "Remove" next to
-    each floating boon and an always-visible "Add a floating boon…" field —
-    visible even with none yet, so there's always somewhere to add the first
-    one.
+    through an Add a Detail / Gain Insight proposal (see section 23.3 below
+    for the `kind` widening). Both post a log line
+    (`Session note added/removed (<kind>) — <text>`). The client shows a
+    facilitator-only "Remove" next to each floating boon and an
+    always-visible add row with a Boon/Bane picker and text field — visible
+    even with none yet, so there's always somewhere to add the first one.
   - Adjusting a player's boons needed no new route — the sheet's Grant `+` /
     `−` already covers it (section 4), and is now the only client path onto a
     character's boons: the player-facing "Add boon" button is removed

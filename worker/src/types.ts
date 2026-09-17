@@ -57,6 +57,11 @@ export type CommittedBoon = {
  *   once-per-session abilities.
  * - `accept-compel` — the move: take on a complication for 2 boons.
  * - `use-floating` — spend a floating boon (named by `floatingId`) on the roll.
+ *
+ * `add-boon`, `pledge`, and (23.3) `use-floating` are disconnected from the
+ * current client — the facilitator hand-edits the pool and session contexts
+ * directly instead — but stay fully functional server-side, unreachable only
+ * from the UI.
  */
 export type ProposalKind =
   | "add-boon"
@@ -94,13 +99,16 @@ export type AbilityKind =
   | "suggest-compel";
 
 /**
- * A boon owned by no character. The facilitator creates one — with a note of the
- * context it stands for — by approving an Add a Detail or Gain Insight ability.
- * It waits in `gameState.floatingBoons` until a player spends it on a roll (also
- * facilitator-approved), and is discarded when the session ends.
+ * A session context owned by no character — a Boon or (23.3) a Bane, with a
+ * note of the context it stands for. The facilitator creates one directly
+ * (`POST /stones/floating-boons`), or approves an Add a Detail / Gain Insight
+ * ability, which always produces a Boon. It waits in `gameState.floatingBoons`
+ * until the facilitator deletes it — its only other lifecycle state — and is
+ * discarded when the session ends.
  */
 export type FloatingBoon = {
   id: string;
+  kind: StoneKind;
   text: string;
   createdByName: string;
   createdAt: number;
@@ -233,10 +241,11 @@ export type AddOrRemoveStoneInput = {
   kind: StoneKind;
 };
 
-/** `POST /stones/floating-boons` (23.2): the facilitator plants a session
- * context directly, the same shape an accepted Add a Detail / Gain Insight
- * creates, without routing through that proposal. */
+/** `POST /stones/floating-boons` (23.2, widened 23.3): the facilitator plants
+ * a session context directly, picking its `kind` — an accepted Add a Detail /
+ * Gain Insight still only ever produces a Boon. */
 export type AddFloatingBoonInput = {
+  kind: StoneKind;
   text: string;
 };
 

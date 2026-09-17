@@ -63,11 +63,11 @@ suite =
                 decoded
                     |> Result.map (.proposals >> List.filterMap .floatingId)
                     |> Expect.equal (Ok [ "f1" ])
-        , test "reads floating boons and their context note" <|
+        , test "reads floating boons, their kind, and their context note" <|
             \_ ->
                 decoded
-                    |> Result.map (.floatingBoons >> List.map (\b -> ( b.id, b.text )))
-                    |> Expect.equal (Ok [ ( "f1", "the rope still holds" ) ])
+                    |> Result.map (.floatingBoons >> List.map (\b -> ( b.id, b.kind, b.text )))
+                    |> Expect.equal (Ok [ ( "f1", Bane, "the rope still holds" ) ])
         , test "reads used abilities per slot" <|
             \_ ->
                 decoded

@@ -159,6 +159,10 @@ describe("migrateStoneState", () => {
           // biome-ignore lint: legacy proposal shape has no floatingId / targetSlot
           { id: "p", kind: "add-boon", proposerId: "u", proposerName: "U", slot: null, delta: 0, createdAt: 1 } as never,
         ],
+        // biome-ignore lint: a pre-23.3 floating boon has no kind
+        floatingBoons: [
+          { id: "f", text: "a note", createdByName: "Gm", createdAt: 1 } as never,
+        ],
         session: { id: "s", goal: "g" },
       },
       ["Boon", "Bane"],
@@ -167,6 +171,8 @@ describe("migrateStoneState", () => {
     expect(s).not.toHaveProperty("pendingRoll");
     expect(s).not.toHaveProperty("overcome");
     expect(s.proposals[0]).toMatchObject({ floatingId: null, targetSlot: null });
+    // Every floating boon on disk before 23.3 is implicitly a Boon.
+    expect(s.floatingBoons[0]).toMatchObject({ kind: "Boon", text: "a note" });
     expect(s.session).toEqual({ id: "s", goal: "g" });
   });
 

@@ -29,6 +29,13 @@ export type StoneState = {
 /** Shape of `KEY_STONES` as written by builds before the session pool and the
  * roll bag were merged into one pool, and before untethering was retired. */
 export type LegacyStoneKind = StoneKind | "WhiteStone" | "BlackStone";
+
+/** A `FloatingBoon` as stored before 23.3 widened it with `kind` — every one
+ * on disk from before that point is implicitly a Boon. */
+export type LegacyFloatingBoon = Omit<FloatingBoon, "kind"> & {
+  kind?: StoneKind;
+};
+
 export type LegacyStoneState = {
   stonePool: LegacyStoneKind[];
   /** Retired along with the roll/reroll/accept lifecycle (23.1) — a draw is
@@ -42,7 +49,7 @@ export type LegacyStoneState = {
    * target, so there is nothing left to be "open". */
   overcome?: { targetSlot: number } | null;
   committedBoons?: CommittedBoon[];
-  floatingBoons?: FloatingBoon[];
+  floatingBoons?: LegacyFloatingBoon[];
   usedAbilities?: UsedAbilities[];
   proposals?: Proposal[];
   session?:
@@ -98,7 +105,12 @@ export function migrateStoneState(
       ...legacyCarriedBanes,
     ],
     committedBoons: stored.committedBoons ?? [],
-    floatingBoons: stored.floatingBoons ?? [],
+    // Floating boons from before 23.3 carry no `kind` — every one on disk
+    // that old is implicitly a Boon.
+    floatingBoons: (stored.floatingBoons ?? []).map((f) => ({
+      ...f,
+      kind: f.kind ?? "Boon",
+    })),
     usedAbilities: stored.usedAbilities ?? [],
     // Proposals from before the moves work carry no `floatingId` / `targetSlot`.
     proposals: (stored.proposals ?? []).map((p) => ({

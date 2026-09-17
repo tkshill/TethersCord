@@ -983,7 +983,7 @@ Phase 2 (P2.2).
 
 ## 23. Facilitator-run resources and a three-column layout
 
-**In progress — 23.1 and 23.2 done, 23.3–23.7 not yet built.** A deliberate simplification for the current
+**In progress — 23.1–23.3 done, 23.4–23.7 not yet built.** A deliberate simplification for the current
 testing phase, in the spirit of `DESIGN_PRINCIPLES.md` #10 ("remove mechanics
 until anything less would compromise the principles above") — the automatic
 stone-routing and proposal/ability machinery built in sections 5, 10, and 19
@@ -1119,29 +1119,43 @@ game for this section; these three are just the ones known to need one today.
       `proposeAddBoon` / `Kind.AddBoon` all stay in code, unreachable from any
       current UI, the same as `pledge` and Help Out.
 
-### 23.3 Session aspects — floating boons *and* banes, with context
+### 23.3 Session aspects — floating boons *and* banes, with context — done
 
-- [ ] Widen `FloatingBoon` (`worker/src/types.ts:94`) with a `kind: StoneKind`
+- [x] Widened `FloatingBoon` (`worker/src/types.ts`) with `kind: StoneKind`
       alongside its `text` / `createdByName`, so the facilitator can plant a
       floating **Bane** — a named complication hanging over the table — not
-      only a floating Boon.
-- [ ] **The facilitator creates one directly**, typing the note and picking
-      the kind on the spot, rather than only through the accept-arm of an Add
-      a Detail / Gain Insight ability proposal — this direct path is what
-      "make session aspects" means here. Whether the two abilities still feed
-      the same list as a player-initiated option, or the facilitator becomes
-      the only way a session aspect is created, is the same open question as
-      23.2's last item.
-- [ ] **`/stones/use-floating` likely retires along with the rest of the
-      accept-into-a-roll machinery** (23.1) — a roll no longer draws from
-      anything but the pool, so "spend a floating Boon into the roll" has
-      nothing left to feed. A session context's lifecycle becomes create
-      (23.3) and delete (23.2) only; there's no third "use" state distinct
-      from the facilitator just deleting it once its moment has passed.
-- [ ] Client: the "Floating boons" block in `View/Stones.elm` (currently
-      `floatingBoonsBlock`, lines 157–192) becomes a "Session aspects" list
-      mixing both kinds, styled by `kind` off the existing `Ui.stoneChip`;
-      it moves into the centre (game-state) column (23.5).
+      only a floating Boon. A pre-23.3 blob has no `kind` on disk;
+      `migrateStoneState` defaults every stored floating boon to `"Boon"`,
+      since that was the only kind that could ever exist before now.
+- [x] **The facilitator creates one directly**, typing the note and picking
+      the kind on the spot (`POST /stones/floating-boons`, widened from
+      23.2's Boon-only version to take `{ kind, text }`) — this direct path
+      is what "make session aspects" means here. An accepted Add a Detail /
+      Gain Insight still only ever produces a Boon (`handleProposalDecision`'s
+      literal is unconditional); nothing currently lets a player raise one
+      that comes out a Bane.
+- [x] **`/stones/use-floating` is disconnected from the client**, by explicit
+      call — its actual behaviour turned out not to depend on the
+      accept-into-a-roll machinery 23.1 retired (it always added straight to
+      the persistent pool, roll or no roll), so the roadmap's original
+      reasoning for retiring it didn't hold. It's cut anyway, for the same
+      reason `pledge` and `add-boon` were: a player-initiated action on
+      shared state, in favour of the facilitator's direct create/delete. The
+      "Use" button is gone from `View/Stones.elm`; `Msg.UseFloatingBoon`, its
+      `Main.update` branch, `Effect.PostUseFloatingBoon`,
+      `Api.postUseFloatingBoon`, and the worker's `handleUseFloating` /
+      `"use-floating"` proposal accept are all untouched and fully
+      functional, just unreachable from any current UI. A session context's
+      lifecycle is now create and delete only, nothing in between.
+- [x] Client: `View/Stones.elm`'s `floatingBoonsBlock` mixes both kinds now,
+      styled by `kind` (a new `floatingBoonChip` — `Ui.pledgedStoneChip` in
+      the Boon or Bane fill) — but it stays in the Stones card and keeps its
+      "Floating boons" heading and glossary term for now (only the glossary
+      *definition* text was updated, to describe Boon-or-Bane and the current
+      create/delete-only lifecycle). The rename to "Session aspects" and the
+      move into a centre game-state column are bundled with 23.5's layout
+      rewrite, not done here. The facilitator's create row gained a Boon /
+      Bane picker (`Ui.tab`-style toggle) next to the text field.
 
 ### 23.4 Moves: inert display, not code deletion
 
@@ -1258,8 +1272,12 @@ order, each its own branch off `main`:
    client change as planned, and the client (`View/Stones.elm`'s pool
    controls and session-context field, plus removing the player-facing "Add
    boon" button) followed as its own pass right after.
-2. **23.3** (worker + client) — the `FloatingBoon` → session-aspect widening,
-   isolated from the layout rewrite since it's the other wire-format change.
+2. **23.3** (worker + client) — done: the `FloatingBoon` → Boon-or-Bane
+   widening, isolated from the layout rewrite since it's the other
+   wire-format change. The "Session aspects" rename and the move to a centre
+   column are still bundled with 23.5, as originally planned, so the visible
+   card heading and glossary term are unchanged for now — only the type, the
+   facilitator's create route, and the client's kind-aware rendering landed.
 3. **23.4** (client) — disconnect the Moves card and the proposal-posting
    controls, marking every dead call site per 23.4's comment convention. Can
    land any time after 23.1–23.3 give it somewhere to point instead, and
@@ -1289,6 +1307,18 @@ order, each its own branch off `main`:
       distinct "start an overcome" step. If the table finds it still wants an
       overcome framed as its own beat, that's a small addition back, not a
       revert.
+- [x] Resolved, same reasoning as pledge and add-boon (23.3): `use-floating`
+      does not stay live as a player-initiated action, even though — unlike
+      those two — its own mechanics never actually depended on anything 23.1
+      retired (it always added straight to the persistent pool). Cut anyway,
+      for consistency with the direction the other two already set. The
+      worker route and proposal accept are untouched and fully functional,
+      just unreachable from the client.
+- [ ] Do Add a Detail / Gain Insight survive as player-initiated proposals
+      that create a (Boon-only) session context, now that the facilitator can
+      plant one directly in any kind? 23.3 left this live — deciding it,
+      along with the rest of the Moves card (Suggest Compel, Accept Compel),
+      is 23.4's territory, not resolved here.
 - [ ] Does aspect-Bane tracking freeze as read-only history, become a manual
       facilitator field, or drop off the sheet display while nothing writes
       it?

@@ -12,6 +12,7 @@ value; a test overrides only the fields it cares about with record update.
 -}
 
 import Dict
+import Roll exposing (Stone(..))
 import Set
 import Time
 import Types
@@ -109,6 +110,7 @@ model =
     , goalEdit = ""
     , proposalDrafts = Dict.empty
     , newFloatingBoonNote = ""
+    , newFloatingBoonKind = Boon
     , loadingHistory = False
     , noMoreHistory = False
     , guideExpanded = False
@@ -157,7 +159,7 @@ snapshotJson =
           , "endedAt": 1699000900000 }
         ]
     , "floatingBoons":
-        [ { "id": "f1", "text": "the rope still holds", "createdByName": "Gm"
+        [ { "id": "f1", "kind": "Bane", "text": "the rope still holds", "createdByName": "Gm"
           , "createdAt": 1700000002000 }
         ]
     , "usedAbilities": [ { "slot": 1, "kinds": ["help-out", "add-detail"] } ]

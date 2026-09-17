@@ -145,12 +145,14 @@ type alias Proposal =
     }
 
 
-{-| A boon owned by no character, created when the facilitator approves an
-Add a Detail / Gain Insight. `text` is the facilitator's note of the context it
-stands for. Any player can ask to spend it on a roll.
+{-| A session context owned by no character — a Boon or (23.3) a Bane, with
+`text` as the note of the context it stands for. The facilitator plants one
+directly, or approves an Add a Detail / Gain Insight (always a Boon); either
+way, the facilitator removing it is the only way it goes.
 -}
 type alias FloatingBoon =
     { id : String
+    , kind : Stone
     , text : String
     , createdByName : String
     }
@@ -448,6 +450,10 @@ type alias Model =
     -- planting a session context directly, not through an ability proposal.
     , newFloatingBoonNote : String
 
+    -- Which kind the facilitator's next planted session context will be
+    -- (23.3) — toggled by the Boon / Bane picker next to the draft field.
+    , newFloatingBoonKind : Stone
+
     -- A `GET /messages/history` fetch for older log rows is in flight.
     , loadingHistory : Bool
 
@@ -544,6 +550,7 @@ type Msg
     | AddStone Stone
     | RemoveStone Stone
     | FloatingBoonDraftChanged String
+    | FloatingBoonKindChanged Stone
     | AddFloatingBoon
     | DeleteFloatingBoon String
     | CharacterFieldInput Int CharacterField String

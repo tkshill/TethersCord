@@ -1,11 +1,13 @@
 module View.Stones exposing (view)
 
 {-| The Stones card: the bag, the facilitator's direct pool edits, the
-session's floating boons (also facilitator-run, 23.2), the facilitator's
-one-click draw, and the facilitator's proposal queue. A draw (23.1) is a
-stateless read of the pool — its result shows up as a log line, not as
-anything rendered here. "Add boon" is gone for players and facilitator alike
-(23.2) — the facilitator hand-edits the pool directly instead.
+session's floating boons — Boon or Bane, 23.3 — (also facilitator-run, 23.2),
+the facilitator's one-click draw, and the facilitator's proposal queue. A draw
+(23.1) is a stateless read of the pool — its result shows up as a log line,
+not as anything rendered here. "Add boon" is gone for players and facilitator
+alike (23.2) — the facilitator hand-edits the pool directly instead — and so
+is "Use" on a floating boon (23.3): the facilitator plants and removes session
+context directly, with no third "spend it" state in between.
 -}
 
 import Copy
@@ -33,6 +35,7 @@ type alias Props =
     { inflight : Set String
     , drafts : Dict String String
     , floatingBoonDraft : String
+    , floatingBoonKind : Stone
     }
 
 
@@ -52,7 +55,7 @@ view ctx props gs =
             , el [ Font.size 12, Font.color Ui.inkSoft ]
                 (text (Copy.bagOf (List.length gs.stonePool + committed)))
             , poolControls ctx.facilitator props.inflight
-            , floatingBoonsBlock ctx.facilitator ctx.myId props.inflight props.floatingBoonDraft gs
+            , floatingBoonsBlock ctx.facilitator props.inflight props.floatingBoonDraft props.floatingBoonKind gs
             , Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
                 (Ui.onlyWhen ctx.facilitator
                     [ Ui.primaryButton
@@ -98,32 +101,23 @@ stoneControl inflight stone =
         ]
 
 
-{-| The session's floating boons — context the facilitator has approved, or
-(23.2) planted directly. Any player can ask to spend one on the roll (a
-Highlight the facilitator then approves); the button is muted once that
-request is queued. The facilitator can remove any of them outright, and add a
-new one directly through the field at the bottom — shown even with no
-floating boons yet, so there is always somewhere to add the first one.
+{-| The session's floating boons — a Boon or (23.3) a Bane, context the
+facilitator has planted directly or approved from an Add a Detail / Gain
+Insight (always a Boon). Read-only for players; the facilitator can remove
+any of them outright, and plant a new one — kind and note — through the
+fields at the bottom, shown even with none yet so there is always somewhere
+to add the first one.
 -}
-floatingBoonsBlock : Bool -> Maybe String -> Set String -> String -> GameState -> Element Msg
-floatingBoonsBlock facilitator myId inflight draft gs =
+floatingBoonsBlock : Bool -> Set String -> String -> Stone -> GameState -> Element Msg
+floatingBoonsBlock facilitator inflight draft draftKind gs =
     if List.isEmpty gs.floatingBoons && not facilitator then
         none
 
     else
         let
-            iOwnASheet =
-                List.any (\c -> c.ownerId /= Nothing && c.ownerId == myId) gs.characters
-
             row fb =
-                let
-                    queued =
-                        List.any
-                            (\p -> p.kind == Kind.UseFloating && p.floatingId == Just fb.id)
-                            gs.proposals
-                in
                 Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
-                    [ Ui.pledgedStoneChip Ui.boonFill Copy.floatingChip
+                    [ floatingBoonChip fb.kind
                     , Element.paragraph [ Font.size 12 ] [ text fb.text ]
                     , if facilitator then
                         el [ Element.alignRight ]
@@ -133,13 +127,6 @@ floatingBoonsBlock facilitator myId inflight draft gs =
                                 }
                             )
 
-                      else if queued then
-                        el [ Font.size 11, Font.color Ui.inkSoft, Element.alignRight ] (text Copy.floatingBoonRequested)
-
-                      else if iOwnASheet then
-                        el [ Element.alignRight ]
-                            (Ui.ghostButton { onPress = Just (UseFloatingBoon fb.id), label = Copy.floatingBoonUse })
-
                       else
                         none
                     ]
@@ -148,14 +135,29 @@ floatingBoonsBlock facilitator myId inflight draft gs =
             (tip "Floating boon"
                 (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.floatingBoons))
                 :: List.map row gs.floatingBoons
-                ++ Ui.onlyWhen facilitator [ addFloatingBoonRow inflight draft ]
+                ++ Ui.onlyWhen facilitator [ addFloatingBoonRow inflight draft draftKind ]
             )
 
 
-addFloatingBoonRow : Set String -> String -> Element Msg
-addFloatingBoonRow inflight draft =
-    Element.wrappedRow [ spacing Ui.sm, width fill ]
-        [ Input.text
+{-| A session-context chip: coloured and captioned by `kind`, marked with a
+centre dot to set it apart from a plain bag stone.
+-}
+floatingBoonChip : Stone -> Element msg
+floatingBoonChip kind =
+    case kind of
+        Boon ->
+            Ui.pledgedStoneChip Ui.boonFill Copy.boonStone
+
+        Bane ->
+            Ui.pledgedStoneChip Ui.baneFill Copy.baneStone
+
+
+addFloatingBoonRow : Set String -> String -> Stone -> Element Msg
+addFloatingBoonRow inflight draft draftKind =
+    Element.wrappedRow [ spacing Ui.sm, width fill, Element.centerY ]
+        [ Ui.tab (draftKind == Boon) Copy.boonStone (FloatingBoonKindChanged Boon)
+        , Ui.tab (draftKind == Bane) Copy.baneStone (FloatingBoonKindChanged Bane)
+        , Input.text
             (inputAttrs ++ [ width fill ])
             { onChange = FloatingBoonDraftChanged
             , text = draft
