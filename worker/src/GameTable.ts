@@ -6,6 +6,8 @@ import type {
 } from "@cloudflare/workers-types";
 import type {
   AbilityKind,
+  AddFloatingBoonInput,
+  AddOrRemoveStoneInput,
   AspectName,
   CommitBoonInput,
   CommittedBoon,
@@ -40,6 +42,7 @@ import {
   describeStones,
   markAbilityUsed,
   pickTwoRandom,
+  removeStones,
   totalCommittedBoons,
 } from "./gameLogic";
 import {
@@ -307,6 +310,38 @@ export class GameTable implements DurableObject {
       return (
         facilitatorOnly(authInfo) ??
         this.withLock(() => this.handleDraw(authInfo))
+      );
+    }
+
+    if (url.pathname === "/stones/add" && request.method === "POST") {
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleAddStone(request))
+      );
+    }
+
+    if (url.pathname === "/stones/remove" && request.method === "POST") {
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleRemoveStone(request))
+      );
+    }
+
+    if (url.pathname === "/stones/floating-boons" && request.method === "POST") {
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleAddFloatingBoon(request, authInfo))
+      );
+    }
+
+    const floatingBoonMatch = url.pathname.match(
+      new RegExp(`^/stones/floating-boons/(${UUID})/delete$`),
+    );
+    if (floatingBoonMatch && request.method === "POST") {
+      const [, floatingId] = floatingBoonMatch;
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleDeleteFloatingBoon(floatingId, authInfo))
       );
     }
 
@@ -1264,6 +1299,113 @@ export class GameTable implements DurableObject {
       role: authInfo.role,
       content: `Drew: ${describeStones(chosen)}${committedNote}`,
     });
+  }
+
+  /**
+   * Facilitator-only (23.2): add one stone directly to the shared pool, no
+   * proposal needed. Independent of a draw and of every other free-standing
+   * resource action — the interface makes no attempt to link this to
+   * anything. Silent like the facilitator's direct `add-boon`: a hand-edit to
+   * the pool, not a narrated table event.
+   */
+  private async handleAddStone(request: Request): Promise<Response> {
+    const input = (await readJson(request)) as AddOrRemoveStoneInput | null;
+    const kind = input?.kind;
+    if (kind !== "Boon" && kind !== "Bane") {
+      return new Response("kind must be Boon or Bane", { status: 400 });
+    }
+
+    return this.commit({
+      ...this.game,
+      stonePool: [...this.game.stonePool, kind],
+    });
+  }
+
+  /**
+   * Facilitator-only (23.2): remove one stone of `kind` directly from the
+   * shared pool. 400s when the pool holds none of that kind, rather than
+   * silently broadcasting a pool that never actually changed.
+   */
+  private async handleRemoveStone(request: Request): Promise<Response> {
+    const input = (await readJson(request)) as AddOrRemoveStoneInput | null;
+    const kind = input?.kind;
+    if (kind !== "Boon" && kind !== "Bane") {
+      return new Response("kind must be Boon or Bane", { status: 400 });
+    }
+    if (!this.game.stonePool.includes(kind)) {
+      return new Response(`The pool has no ${kind} to remove`, {
+        status: 400,
+      });
+    }
+
+    return this.commit({
+      ...this.game,
+      stonePool: removeStones(this.game.stonePool, [kind]),
+    });
+  }
+
+  /**
+   * Facilitator-only (23.2): plant a session context directly, the same
+   * shape an accepted Add a Detail / Gain Insight creates, without routing
+   * through that ability's proposal. `FloatingBoon` is Boon-only until 23.3
+   * widens it with a `kind`.
+   */
+  private async handleAddFloatingBoon(
+    request: Request,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    const input = (await readJson(request)) as AddFloatingBoonInput | null;
+    const text = boundedString(input?.text, MAX_GOAL_LENGTH).trim();
+    if (!text) {
+      return new Response("text is required", { status: 400 });
+    }
+
+    const floating: FloatingBoon = {
+      id: crypto.randomUUID(),
+      text,
+      createdByName: authInfo.username,
+      createdAt: Date.now(),
+    };
+
+    return this.commit(
+      { ...this.game, floatingBoons: [...this.game.floatingBoons, floating] },
+      {
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: `Session note added — ${text}`,
+      },
+    );
+  }
+
+  /**
+   * Facilitator-only (23.2): remove a session context outright. There is no
+   * "use" state distinct from this now that a roll no longer draws from
+   * anything but the pool (23.1) — the lifecycle is just create and delete.
+   */
+  private async handleDeleteFloatingBoon(
+    floatingId: string,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    const floating = this.game.floatingBoons.find((f) => f.id === floatingId);
+    if (!floating) {
+      return new Response("No such floating boon", { status: 404 });
+    }
+
+    return this.commit(
+      {
+        ...this.game,
+        floatingBoons: this.game.floatingBoons.filter(
+          (f) => f.id !== floatingId,
+        ),
+      },
+      {
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: `Session note removed — ${floating.text}`,
+      },
+    );
   }
 
   private async handleStartSession(

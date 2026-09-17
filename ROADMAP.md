@@ -983,7 +983,7 @@ Phase 2 (P2.2).
 
 ## 23. Facilitator-run resources and a three-column layout
 
-**In progress — 23.1 done, 23.2–23.7 not yet built.** A deliberate simplification for the current
+**In progress — 23.1 and 23.2's worker routes done, no client for 23.2 yet, 23.3–23.7 not yet built.** A deliberate simplification for the current
 testing phase, in the spirit of `DESIGN_PRINCIPLES.md` #10 ("remove mechanics
 until anything less would compromise the principles above") — the automatic
 stone-routing and proposal/ability machinery built in sections 5, 10, and 19
@@ -1057,7 +1057,7 @@ them).
       this is the same "does pledge survive" open question below, not a new
       decision.
 
-### 23.2 Facilitator: three free-standing resource actions
+### 23.2 Facilitator: three free-standing resource actions — worker done, no client yet
 
 The facilitator's edits are **independent of each other and of a roll** — the
 interface makes no attempt to associate a stone the facilitator adds to the
@@ -1070,30 +1070,47 @@ any of the others can do next. Read this as **one instance of a general
 it — anything shared that currently has no facilitator-write path is fair
 game for this section; these three are just the ones known to need one today.
 
-- [ ] **Character sheets need no new route — they're already covered.**
+- [x] **Character sheets need no new route — they're already covered.**
       `/characters/:slot/update` (fields) and `/characters/:slot/fate`
       (boons, `{ delta }`, already signed either direction) are already
       owner-or-facilitator (section 4) and unchanged by this refactor:
       players keep editing their own sheets, and the facilitator keeps the
-      existing edit rights over any sheet. **Adjusting a player's boons** is
-      just the client surfacing that existing fate route as a
-      facilitator-visible +/- affordance next to each sheet in the left
-      column, in place of relying on the pledge/proposal path to move boons
-      onto a character.
-- [ ] **Add or remove a stone from the pool.** New facilitator-only routes:
-      `POST /stones/add` / `/stones/remove`, each taking
-      `{ kind: "Boon" | "Bane" }`. `removeStones` (`gameLogic.ts:31`) already
-      exists for the removal half; `add` is new — the pool previously only
-      grew from an accepted roll or a proposal, never a direct facilitator
-      write.
-- [ ] **Add or remove a session context.** A session context (23.3's widened
-      `FloatingBoon` — Boon or Bane, with a text note) is created *and*
-      deleted directly by the facilitator, not only through an
-      ability/proposal accept. See 23.3 for whether a dedicated "use" route
-      still makes sense once removal is just a facilitator delete.
-- [ ] Open question (see below): does the player-initiated `add-boon` /
-      `pledge` proposal path stay live at all, now that the facilitator can
-      do all three of the above directly?
+      existing edit rights over any sheet. **Adjusting a player's boons**
+      already had its client affordance — the sheet's Grant `+` / `−`
+      (`View/Characters.elm`'s `grantControls`) — predating this section; the
+      pledge/proposal path it used to sit alongside is now disconnected
+      too (see the open questions below), so Grant is the only way a boon
+      moves onto a character.
+- [x] **Add or remove a stone from the pool.** Facilitator-only
+      `POST /stones/add` / `/stones/remove` (`handleAddStone` /
+      `handleRemoveStone`, `GameTable.ts`), each taking
+      `{ kind: "Boon" | "Bane" }`. `add` always succeeds; `remove` 400s if the
+      pool holds none of that kind rather than silently broadcasting an
+      unchanged pool. `removeStones` (`gameLogic.ts`) is the removal half,
+      unused since 23.1 retired the roll's own pool write — this is its first
+      real caller. Neither route posts a log line, matching the facilitator's
+      existing direct `add-boon` (silent bookkeeping, not a narrated event).
+- [x] **Add or remove a session context.** Facilitator-only
+      `POST /stones/floating-boons` (`{ text }`) and
+      `POST /stones/floating-boons/:id/delete` create and remove a
+      `FloatingBoon` directly — the same shape an accepted Add a Detail /
+      Gain Insight produces, without routing through that proposal. Both post
+      a log line (`Session note added/removed — <text>`), unlike the pool
+      routes, since a context note is worth recording. **Scope note:** this
+      lands ahead of 23.3, so it creates/deletes today's Boon-only
+      `FloatingBoon`, not yet the widened Boon-or-Bane shape 23.3 describes —
+      widening the type will not need a new route, just a `kind` field on
+      this one.
+- [ ] **No client yet — worker only, on purpose** (per the Sequencing note
+      below). A facilitator can drive all three through direct API calls or
+      the worker test suite; there is no button for any of them in
+      `View/Stones.elm` or `View/Characters.elm` yet. Wiring them up is a
+      small, separate follow-up whenever a client pass picks this back up
+      (naturally alongside 23.5's facilitator panel).
+- [ ] Open question (see below): does the player-initiated `add-boon`
+      proposal path stay live at all, now that the facilitator can add a
+      stone directly? (`pledge` is already answered — see the open
+      questions.)
 
 ### 23.3 Session aspects — floating boons *and* banes, with context
 
@@ -1228,9 +1245,10 @@ order, each its own branch off `main`:
 1. **23.1** (worker + minimal client) — done: the stateless one-click draw,
    with worker tests; the existing single-column UI now drives `/stones/draw`
    directly rather than the retired roll/reroll/accept lifecycle.
-   **23.2** (worker) — not yet built: the three free-standing facilitator
-   routes (pool add/remove, session-context add/remove; player-boon
-   adjustment needs no new route), decoupled from any client change.
+   **23.2** (worker) — done: the three free-standing facilitator routes (pool
+   add/remove, session-context add/remove; player-boon adjustment needed no
+   new route), with worker tests, decoupled from any client change as
+   planned — there is still no client for any of the three.
 2. **23.3** (worker + client) — the `FloatingBoon` → session-aspect widening,
    isolated from the layout rewrite since it's the other wire-format change.
 3. **23.4** (client) — disconnect the Moves card and the proposal-posting
@@ -1251,7 +1269,13 @@ order, each its own branch off `main`:
       re-wire: `Kind.Pledge`, `applyPledge`, `/stones/commit`, and
       `drawFromBag`'s committed-boons odds bump all stay in code, just
       unreachable from the current UI.
-- [ ] 23.1 resolved this one rather than leaving it open: `/overcome/start` /
+- [ ] Does the player-initiated `add-boon` proposal (`POST /stones/add-boon`
+      as a player, queued for the facilitator) stay live now that 23.2 gives
+      the facilitator a direct `POST /stones/add`? Unlike pledge, this one is
+      genuinely untouched either way — the client's "Add boon" button and the
+      worker's `proposeAddBoon` path are both still wired exactly as before;
+      no pass has decided this one yet.
+- [x] 23.1 resolved this one rather than leaving it open: `/overcome/start` /
       `/overcome/cancel` did not survive — a draw is just a draw, with no
       distinct "start an overcome" step. If the table finds it still wants an
       overcome framed as its own beat, that's a small addition back, not a

@@ -6,6 +6,7 @@ import {
   describeStones,
   markAbilityUsed,
   pickTwoRandom,
+  removeStones,
   totalCommittedBoons,
 } from "../src/gameLogic";
 import { migrateStoneState } from "../src/migrateStoneState";
@@ -124,6 +125,17 @@ describe("small helpers", () => {
     expect(rest).toHaveLength(2);
     expect([...chosen, ...rest].sort()).toEqual(
       ["Bane", "Bane", "Boon", "Boon"],
+    );
+  });
+
+  it("removeStones drops by count, not identity, and no-ops what isn't there", () => {
+    expect(removeStones(["Boon", "Bane", "Boon"], ["Boon"])).toEqual([
+      "Bane",
+      "Boon",
+    ]);
+    expect(removeStones(["Boon"], ["Bane"])).toEqual(["Boon"]);
+    expect(removeStones(["Boon", "Bane"], ["Boon", "Bane", "Boon"])).toEqual(
+      [],
     );
   });
 });

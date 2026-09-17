@@ -532,6 +532,150 @@ describe("GameTable state machine", () => {
     });
   });
 
+  describe("facilitator-run resources (23.2)", () => {
+    it("adds and removes a stone directly, no proposal", async () => {
+      const table = "gt-facilitator-stones";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+
+      const added = await call(table, "/stones/add", {
+        token: fac,
+        body: { kind: "Bane" },
+      });
+      expect(added.status).toBe(204);
+      let state = await readState(table, fac);
+      expect(state.stonePool.filter((s) => s === "Bane")).toHaveLength(3);
+      expect(state.proposals).toHaveLength(0);
+
+      const removed = await call(table, "/stones/remove", {
+        token: fac,
+        body: { kind: "Bane" },
+      });
+      expect(removed.status).toBe(204);
+      state = await readState(table, fac);
+      expect(state.stonePool.filter((s) => s === "Bane")).toHaveLength(2);
+    });
+
+    it("400s removing a kind the pool doesn't have, and 400s a bad kind either way", async () => {
+      const table = "gt-facilitator-stones-bad";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+
+      for (let i = 0; i < 4; i++) {
+        await call(table, "/stones/remove", { token: fac, body: { kind: "Bane" } });
+      }
+      const drained = await readState(table, fac);
+      expect(drained.stonePool.filter((s) => s === "Bane")).toHaveLength(0);
+
+      const overDrawn = await call(table, "/stones/remove", {
+        token: fac,
+        body: { kind: "Bane" },
+      });
+      expect(overDrawn.status).toBe(400);
+
+      const badAdd = await call(table, "/stones/add", {
+        token: fac,
+        body: { kind: "Coin" },
+      });
+      expect(badAdd.status).toBe(400);
+      const badRemove = await call(table, "/stones/remove", {
+        token: fac,
+        body: { kind: "Coin" },
+      });
+      expect(badRemove.status).toBe(400);
+    });
+
+    it("403s a player adding or removing a stone", async () => {
+      const table = "gt-facilitator-stones-player";
+      const { token: player } = await seedAuth();
+
+      const add = await call(table, "/stones/add", {
+        token: player,
+        body: { kind: "Boon" },
+      });
+      expect(add.status).toBe(403);
+      const remove = await call(table, "/stones/remove", {
+        token: player,
+        body: { kind: "Boon" },
+      });
+      expect(remove.status).toBe(403);
+    });
+
+    it("creates and deletes a session context directly, logging both", async () => {
+      const table = "gt-facilitator-floating";
+      const { token: fac, username: facName } = await seedAuth(undefined, {
+        facilitator: true,
+      });
+
+      const created = await call(table, "/stones/floating-boons", {
+        token: fac,
+        body: { text: "the vault door is ajar" },
+      });
+      expect(created.status).toBe(204);
+
+      let state = await readState(table, fac);
+      expect(state.floatingBoons).toHaveLength(1);
+      expect(state.floatingBoons[0]).toMatchObject({
+        text: "the vault door is ajar",
+        createdByName: facName,
+      });
+      expect(state.messages.at(-1)?.content).toBe(
+        "Session note added — the vault door is ajar",
+      );
+      const id = state.floatingBoons[0].id;
+
+      const deleted = await call(table, `/stones/floating-boons/${id}/delete`, {
+        token: fac,
+      });
+      expect(deleted.status).toBe(204);
+
+      state = await readState(table, fac);
+      expect(state.floatingBoons).toHaveLength(0);
+      expect(state.messages.at(-1)?.content).toBe(
+        "Session note removed — the vault door is ajar",
+      );
+    });
+
+    it("400s an empty session context, 404s deleting an unknown one", async () => {
+      const table = "gt-facilitator-floating-bad";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+
+      const blank = await call(table, "/stones/floating-boons", {
+        token: fac,
+        body: { text: "   " },
+      });
+      expect(blank.status).toBe(400);
+
+      const missing = crypto.randomUUID();
+      const del = await call(table, `/stones/floating-boons/${missing}/delete`, {
+        token: fac,
+      });
+      expect(del.status).toBe(404);
+    });
+
+    it("403s a player creating or deleting a session context", async () => {
+      const table = "gt-facilitator-floating-player";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+      const { token: player } = await seedAuth();
+
+      const create = await call(table, "/stones/floating-boons", {
+        token: player,
+        body: { text: "nope" },
+      });
+      expect(create.status).toBe(403);
+
+      const created = await call(table, "/stones/floating-boons", {
+        token: fac,
+        body: { text: "a real one" },
+      });
+      expect(created.status).toBe(204);
+      const id = (await readState(table, fac)).floatingBoons[0].id;
+
+      const del = await call(table, `/stones/floating-boons/${id}/delete`, {
+        token: player,
+      });
+      expect(del.status).toBe(403);
+    });
+  });
+
   describe("proposal withdraw", () => {
     it("lets the proposer withdraw, but no one else", async () => {
       const table = "gt-withdraw";
