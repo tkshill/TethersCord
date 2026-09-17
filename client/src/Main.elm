@@ -16,7 +16,7 @@ import Effect exposing (Effect)
 import Json.Decode as Decode
 import Kind
 import Ports
-import Roll exposing (stoneLabel)
+import Roll exposing (Stone(..), stoneLabel)
 import Set
 import Time
 import Types exposing (..)
@@ -120,6 +120,7 @@ init flags =
       , goalEdit = ""
       , proposalDrafts = Dict.empty
       , newFloatingBoonNote = ""
+      , newFloatingBoonKind = Boon
       , loadingHistory = False
       , noMoreHistory = False
       , guideExpanded = False
@@ -558,6 +559,9 @@ update msg model =
         FloatingBoonDraftChanged s ->
             ( { model | newFloatingBoonNote = s }, Effect.None )
 
+        FloatingBoonKindChanged kind ->
+            ( { model | newFloatingBoonKind = kind }, Effect.None )
+
         AddFloatingBoon ->
             if String.trim model.newFloatingBoonNote == "" then
                 ( model, Effect.None )
@@ -565,7 +569,7 @@ update msg model =
             else
                 guard "stones:floating-add"
                     { model | newFloatingBoonNote = "" }
-                    (\auth -> Effect.PostAddFloatingBoon auth model.newFloatingBoonNote)
+                    (\auth -> Effect.PostAddFloatingBoon auth model.newFloatingBoonKind model.newFloatingBoonNote)
 
         DeleteFloatingBoon floatingId ->
             guard ("stones:floating-delete:" ++ floatingId)

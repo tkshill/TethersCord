@@ -338,6 +338,31 @@ describe("GameTable state machine", () => {
       });
       expect(again.status).toBe(409);
     });
+
+    it("an accepted Add a Detail / Gain Insight always produces a Boon session context (23.3)", async () => {
+      const table = "gt-ability-floating-kind";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+      const { token: player } = await seedAuth();
+
+      await call(table, "/session/start", { token: fac, body: { goal: "x" } });
+      await claim(table, player, 0);
+
+      await call(table, "/abilities/use", {
+        token: player,
+        body: { kind: "add-detail" },
+      });
+      const id = await firstProposalId(table, fac);
+      await call(table, `/proposals/${id}/accept`, {
+        token: fac,
+        body: { text: "a locked door" },
+      });
+
+      const state = await readState(table, fac);
+      expect(state.floatingBoons[0]).toMatchObject({
+        kind: "Boon",
+        text: "a locked door",
+      });
+    });
   });
 
   it("pays out an accepted Suggest Compel to both characters", async () => {
@@ -599,7 +624,7 @@ describe("GameTable state machine", () => {
       expect(remove.status).toBe(403);
     });
 
-    it("creates and deletes a session context directly, logging both", async () => {
+    it("creates and deletes a Boon session context directly, logging both", async () => {
       const table = "gt-facilitator-floating";
       const { token: fac, username: facName } = await seedAuth(undefined, {
         facilitator: true,
@@ -607,18 +632,19 @@ describe("GameTable state machine", () => {
 
       const created = await call(table, "/stones/floating-boons", {
         token: fac,
-        body: { text: "the vault door is ajar" },
+        body: { kind: "Boon", text: "the vault door is ajar" },
       });
       expect(created.status).toBe(204);
 
       let state = await readState(table, fac);
       expect(state.floatingBoons).toHaveLength(1);
       expect(state.floatingBoons[0]).toMatchObject({
+        kind: "Boon",
         text: "the vault door is ajar",
         createdByName: facName,
       });
       expect(state.messages.at(-1)?.content).toBe(
-        "Session note added — the vault door is ajar",
+        "Session note added (Boon) — the vault door is ajar",
       );
       const id = state.floatingBoons[0].id;
 
@@ -630,17 +656,43 @@ describe("GameTable state machine", () => {
       state = await readState(table, fac);
       expect(state.floatingBoons).toHaveLength(0);
       expect(state.messages.at(-1)?.content).toBe(
-        "Session note removed — the vault door is ajar",
+        "Session note removed (Boon) — the vault door is ajar",
       );
     });
 
-    it("400s an empty session context, 404s deleting an unknown one", async () => {
+    it("creates a Bane session context (23.3) the same way", async () => {
+      const table = "gt-facilitator-floating-bane";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+
+      const created = await call(table, "/stones/floating-boons", {
+        token: fac,
+        body: { kind: "Bane", text: "the guard suspects something" },
+      });
+      expect(created.status).toBe(204);
+
+      const state = await readState(table, fac);
+      expect(state.floatingBoons[0]).toMatchObject({
+        kind: "Bane",
+        text: "the guard suspects something",
+      });
+      expect(state.messages.at(-1)?.content).toBe(
+        "Session note added (Bane) — the guard suspects something",
+      );
+    });
+
+    it("400s a missing/bad kind, an empty session context, 404s deleting an unknown one", async () => {
       const table = "gt-facilitator-floating-bad";
       const { token: fac } = await seedAuth(undefined, { facilitator: true });
 
+      const badKind = await call(table, "/stones/floating-boons", {
+        token: fac,
+        body: { kind: "Coin", text: "nope" },
+      });
+      expect(badKind.status).toBe(400);
+
       const blank = await call(table, "/stones/floating-boons", {
         token: fac,
-        body: { text: "   " },
+        body: { kind: "Boon", text: "   " },
       });
       expect(blank.status).toBe(400);
 
@@ -658,13 +710,13 @@ describe("GameTable state machine", () => {
 
       const create = await call(table, "/stones/floating-boons", {
         token: player,
-        body: { text: "nope" },
+        body: { kind: "Boon", text: "nope" },
       });
       expect(create.status).toBe(403);
 
       const created = await call(table, "/stones/floating-boons", {
         token: fac,
-        body: { text: "a real one" },
+        body: { kind: "Boon", text: "a real one" },
       });
       expect(created.status).toBe(204);
       const id = (await readState(table, fac)).floatingBoons[0].id;

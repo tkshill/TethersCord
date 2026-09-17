@@ -68,6 +68,7 @@ view model =
                     { inflight = model.inflight
                     , drafts = model.proposalDrafts
                     , floatingBoonDraft = model.newFloatingBoonNote
+                    , floatingBoonKind = model.newFloatingBoonKind
                     }
                     gs
                 , View.Moves.view ctx gs

@@ -290,12 +290,21 @@ postRemoveStone flags auth stone toMsg =
     postJson flags auth "/stones/remove" (Encode.object [ ( "kind", Encode.string (stoneLabel stone) ) ]) toMsg
 
 
-{-| Facilitator-only (23.2): plant a session context directly, without routing
-through an Add a Detail / Gain Insight proposal.
+{-| Facilitator-only (23.2, widened 23.3): plant a session context directly —
+Boon or Bane — without routing through an Add a Detail / Gain Insight
+proposal (which always produces a Boon).
 -}
-postAddFloatingBoon : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
-postAddFloatingBoon flags auth text toMsg =
-    postJson flags auth "/stones/floating-boons" (Encode.object [ ( "text", Encode.string text ) ]) toMsg
+postAddFloatingBoon : Flags -> Auth -> Stone -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postAddFloatingBoon flags auth kind text toMsg =
+    postJson flags
+        auth
+        "/stones/floating-boons"
+        (Encode.object
+            [ ( "kind", Encode.string (stoneLabel kind) )
+            , ( "text", Encode.string text )
+            ]
+        )
+        toMsg
 
 
 {-| Facilitator-only (23.2): remove a session context outright.
@@ -371,19 +380,22 @@ decodeMessage =
         (Decode.field "createdAt" (Decode.map Time.millisToPosix Decode.int))
 
 
+decodeStone : Decode.Decoder Stone
+decodeStone =
+    Decode.string
+        |> Decode.map
+            (\s ->
+                if s == "Boon" then
+                    Boon
+
+                else
+                    Bane
+            )
+
+
 decodeStoneList : Decode.Decoder (List Stone)
 decodeStoneList =
-    Decode.list Decode.string
-        |> Decode.map
-            (List.map
-                (\s ->
-                    if s == "Boon" then
-                        Boon
-
-                    else
-                        Bane
-                )
-            )
+    Decode.list decodeStone
 
 
 decodeCommittedBoon : Decode.Decoder CommittedBoon
@@ -408,8 +420,9 @@ decodeProposal =
 
 decodeFloatingBoon : Decode.Decoder FloatingBoon
 decodeFloatingBoon =
-    Decode.map3 FloatingBoon
+    Decode.map4 FloatingBoon
         (Decode.field "id" Decode.string)
+        (Decode.field "kind" decodeStone)
         (Decode.field "text" Decode.string)
         (Decode.field "createdByName" Decode.string)
 

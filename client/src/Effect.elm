@@ -58,7 +58,7 @@ type Effect
     | PostUseFloatingBoon Auth String
     | PostAddStone Auth Stone
     | PostRemoveStone Auth Stone
-    | PostAddFloatingBoon Auth String
+    | PostAddFloatingBoon Auth Stone String
     | PostDeleteFloatingBoon Auth String
     | PostStartSession Auth String
     | PostSessionGoal Auth String
@@ -155,8 +155,8 @@ perform flags effect =
         PostRemoveStone auth stone ->
             Api.postRemoveStone flags auth stone stonesUpdated
 
-        PostAddFloatingBoon auth text ->
-            Api.postAddFloatingBoon flags auth text stonesUpdated
+        PostAddFloatingBoon auth kind text ->
+            Api.postAddFloatingBoon flags auth kind text stonesUpdated
 
         PostDeleteFloatingBoon auth floatingId ->
             Api.postDeleteFloatingBoon flags auth floatingId stonesUpdated
