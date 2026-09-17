@@ -25,8 +25,7 @@ export const ASPECT_NAMES: readonly AspectName[] = [
 /**
  * Remove up to one occurrence of each stone in `toRemove` from `pool`. Stones
  * carry no identity beyond their kind, so removal is by count, not by index.
- * Currently unused by any route — a roll only ever reads the pool now — but
- * kept as the removal half a facilitator-only `/stones/remove` route needs.
+ * The facilitator-only `POST /stones/remove` route (23.2) is the one caller.
  */
 export function removeStones(
   pool: StoneKind[],

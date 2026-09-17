@@ -26,7 +26,7 @@ version yet, so headings are dates.
   overcome, has nothing left to reroll and the worker now refuses every raise
   of it. What the drawn stones mean for the pool, a sheet, or a session
   context is left to the facilitator's judgement and separate action — no
-  code here tries to infer it (that lands in 23.2, not yet built).
+  code here tries to infer it (see the facilitator resource routes below).
 - **Pledging a boon ("Highlight") is now facilitator-run too.** The
   player-facing Pledge `+` / `−` control on each sheet is disconnected
   (`View/Characters.elm`); boon movement is the facilitator's Grant control
@@ -38,6 +38,25 @@ version yet, so headings are dates.
 
 ### Added
 
+- **Three free-standing facilitator resource routes, worker only** (roadmap
+  section 23.2, Phase 2 — facilitator-run resources). No client yet — these
+  are reachable by direct API call and the worker test suite only, deferred
+  to a later client pass:
+  - `POST /api/table/:id/stones/add` / `.../stones/remove` (`{ kind: "Boon" |
+    "Bane" }`, facilitator-only) hand-edit the shared pool directly,
+    independent of a draw. `add` always succeeds; `remove` 400s if the pool
+    holds none of that kind. Neither posts a log line — silent bookkeeping,
+    like the facilitator's existing direct `add-boon`.
+  - `POST /api/table/:id/stones/floating-boons` (`{ text }`) and
+    `POST .../stones/floating-boons/:id/delete` (facilitator-only) create and
+    remove a session context (`FloatingBoon`) directly, without routing
+    through an Add a Detail / Gain Insight proposal. Both post a log line
+    (`Session note added/removed — <text>`). Lands ahead of section 23.3, so
+    it's today's Boon-only `FloatingBoon`, not yet the widened Boon-or-Bane
+    shape 23.3 will add.
+  - Adjusting a player's boons needed no new route — the sheet's Grant `+` /
+    `−` already covers it (section 4), and is now the only way a boon moves
+    onto a character since Pledge was disconnected.
 - The overcome aftermath — aspects and a single persistent stone pool:
   - **Aspects accumulate Banes.** A mixed overcome roll (one Boon, one Bane)
     drops the Bane onto one of the acting character's three aspects —

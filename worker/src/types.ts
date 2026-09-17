@@ -227,6 +227,19 @@ export type UseFloatingBoonInput = {
   floatingId: string;
 };
 
+/** `POST /stones/{add,remove}` (23.2): a facilitator hand-edit of the shared
+ * pool, one stone at a time, independent of any draw. */
+export type AddOrRemoveStoneInput = {
+  kind: StoneKind;
+};
+
+/** `POST /stones/floating-boons` (23.2): the facilitator plants a session
+ * context directly, the same shape an accepted Add a Detail / Gain Insight
+ * creates, without routing through that proposal. */
+export type AddFloatingBoonInput = {
+  text: string;
+};
+
 /** Create (`POST /npcs`) or update (`POST /npcs/:id/update`) a reference row. */
 export type EntityInput = {
   name?: string;
