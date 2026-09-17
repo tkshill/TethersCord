@@ -1,8 +1,11 @@
 module View exposing (logDomId, view)
 
 {-| The Activity view: the page shell (header, connection note, status banner,
-composer) plus the ordered list of section cards, each of which lives in its own
-`View.*` module and is handed a `ViewContext` computed once here.
+the top bar) over three independently-scrolling columns (roadmap section
+23.5) — left (facilitator panel, character sheets, moves), centre (NPCs,
+locations, session aspects, session history), right (the event log and the
+composer, pinned beneath it) — each card living in its own `View.*` module and
+handed a `ViewContext` computed once here.
 -}
 
 import Copy
@@ -14,12 +17,14 @@ import Types exposing (..)
 import Ui
 import View.Characters
 import View.Entities
+import View.FacilitatorPanel
 import View.Guide
 import View.Helpers exposing (ViewContext, inputAttrs, placeholder)
 import View.Log
 import View.Moves
 import View.Session
-import View.Stones
+import View.SessionAspects
+import View.TopBar
 
 
 {-| The id of the scrollable message-log container. `Effect` uses it to keep the
@@ -40,53 +45,70 @@ view model =
             , zone = model.timeZone
             }
 
-        -- The shell — header, notes, composer — renders with or without game
-        -- state; only the panels between them need a loaded board.
-        shell middle =
-            Ui.page
-                (header model
-                    :: connectionNote model.connection
-                    :: Ui.banner model.status
-                    :: Ui.errorNote model.error
-                    :: middle
-                    ++ [ composer model ]
-                )
+        top =
+            header model
+                :: connectionNote model.connection
+                :: Ui.banner model.status
+                :: Ui.errorNote model.error
+                :: (case model.gameState of
+                        Just gs ->
+                            [ View.TopBar.view ctx
+                                { confirming = model.confirming
+                                , newSessionGoal = model.newSessionGoal
+                                , goalEdit = model.goalEdit
+                                , expanded = model.sessionControlsExpanded
+                                }
+                                gs
+                            ]
+
+                        Nothing ->
+                            []
+                   )
     in
     case model.gameState of
         Nothing ->
-            shell [ placeholder Copy.loadingTable ]
+            Ui.page { top = top, columns = [ Ui.scrollColumn 1 [ placeholder Copy.loadingTable ] ] }
 
         Just gs ->
-            shell
-                [ View.Session.view ctx
-                    { confirming = model.confirming
-                    , newSessionGoal = model.newSessionGoal
-                    , goalEdit = model.goalEdit
-                    }
-                    gs
-                , View.Stones.view ctx
-                    { inflight = model.inflight
-                    , drafts = model.proposalDrafts
-                    , floatingBoonDraft = model.newFloatingBoonNote
-                    , floatingBoonKind = model.newFloatingBoonKind
-                    }
-                    gs
-                , View.Moves.view ctx gs
-                , View.Characters.view ctx
-                    { selectedSlot = model.selectedSlot
-                    , aspectExamplesOpen = model.aspectExamplesOpen
-                    }
-                    gs
-                , View.Entities.view ctx Npc gs
-                , View.Entities.view ctx Location gs
-                , View.Log.view ctx
-                    { confirming = model.confirming
-                    , loadingHistory = model.loadingHistory
-                    , noMoreHistory = model.noMoreHistory
-                    }
-                    gs
-                , View.Guide.view ctx { expanded = model.guideExpanded }
-                ]
+            Ui.page
+                { top = top
+                , columns =
+                    [ Ui.scrollColumn 3
+                        [ View.FacilitatorPanel.view ctx
+                            { inflight = model.inflight
+                            , drafts = model.proposalDrafts
+                            }
+                            gs
+                        , View.Characters.view ctx
+                            { selectedSlot = model.selectedSlot
+                            , aspectExamplesOpen = model.aspectExamplesOpen
+                            }
+                            gs
+                        , View.Moves.view ctx gs
+                        ]
+                    , Ui.scrollColumn 3
+                        [ View.Entities.view ctx Npc gs
+                        , View.Entities.view ctx Location gs
+                        , View.SessionAspects.view ctx
+                            { inflight = model.inflight
+                            , floatingBoonDraft = model.newFloatingBoonNote
+                            , floatingBoonKind = model.newFloatingBoonKind
+                            }
+                            gs
+                        , View.Session.view ctx gs
+                        , View.Guide.view ctx { expanded = model.guideExpanded }
+                        ]
+                    , Element.column [ Element.height fill, width (Element.fillPortion 4), spacing Ui.md ]
+                        [ View.Log.view ctx
+                            { confirming = model.confirming
+                            , loadingHistory = model.loadingHistory
+                            , noMoreHistory = model.noMoreHistory
+                            }
+                            gs
+                        , composer model
+                        ]
+                    ]
+                }
 
 
 connectionNote : Connection -> Element msg

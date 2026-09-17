@@ -93,12 +93,10 @@ send =
 
 
 
--- SESSION CARD (View/Session.elm)
-
-
-sessionTitle : String
-sessionTitle =
-    "Session"
+-- TOP BAR (View/TopBar.elm) — the running session's goal and the shared
+-- stone pool, both moved off the old Session / Stones cards by roadmap
+-- section 23.6. Session start / end / goal-edit sit behind the bar's
+-- expander so it stays one line at rest.
 
 
 goalLabel : String
@@ -131,33 +129,30 @@ saveGoal =
     "Save goal"
 
 
-pastSessions : String
-pastSessions =
-    "Past sessions"
-
-
-
--- STONES CARD (View/Stones.elm)
-
-
-stonesTitle : String
-stonesTitle =
-    "Stones"
-
-
-draw : String
-draw =
-    "Draw two stones"
-
-
 bagOf : Int -> String
 bagOf n =
     "Bag of " ++ String.fromInt n
 
 
-floatingBoons : String
-floatingBoons =
-    "Floating boons"
+
+-- SESSION HISTORY CARD (View/Session.elm) — all that is left of the old
+-- Session card once its goal and controls move to the top bar (23.6).
+
+
+sessionHistoryTitle : String
+sessionHistoryTitle =
+    "Session history"
+
+
+
+-- SESSION ASPECTS CARD (View/SessionAspects.elm) — the floating-boons list,
+-- renamed and moved to the centre column by roadmap section 23.5, as 23.3
+-- anticipated.
+
+
+sessionAspectsTitle : String
+sessionAspectsTitle =
+    "Session aspects"
 
 
 floatingBoonRequested : String
@@ -187,6 +182,22 @@ addFloatingBoonPlaceholder =
 addFloatingBoon : String
 addFloatingBoon =
     "Add"
+
+
+
+-- FACILITATOR PANEL (View/FacilitatorPanel.elm) — the one-click draw (23.1),
+-- direct pool edits (23.2), and the proposal queue, grouped into their own
+-- facilitator-only panel in the left column by roadmap section 23.5.
+
+
+facilitatorPanelTitle : String
+facilitatorPanelTitle =
+    "Facilitator"
+
+
+draw : String
+draw =
+    "Draw two stones"
 
 
 {-| Player-facing "Add boon" is disconnected (23.2) — the facilitator hand-edits
@@ -219,7 +230,7 @@ reject =
 
 
 
--- PROPOSAL DESCRIPTIONS (View/Stones.elm describeProposal)
+-- PROPOSAL DESCRIPTIONS (View/FacilitatorPanel.elm describeProposal)
 
 
 proposalAddBoon : String

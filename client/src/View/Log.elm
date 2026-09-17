@@ -2,12 +2,14 @@ module View.Log exposing (logDomId, view)
 
 {-| The Log card: the header with the facilitator's confirm-gated Clear log, the
 "load earlier messages" affordance, and the scrolling body of day-divided,
-speaker-coloured rows (folded behind `Element.Lazy`).
+speaker-coloured rows (folded behind `Element.Lazy`). The whole right column
+(roadmap section 23.5), so the card fills its height rather than shrinking to
+content.
 -}
 
 import Copy
 import Dict exposing (Dict)
-import Element exposing (Element, el, fill, height, maximum, none, px, spacing, text, width)
+import Element exposing (Element, el, fill, height, none, px, spacing, text, width)
 import Element.Font as Font
 import Element.Lazy
 import Format
@@ -43,7 +45,7 @@ type alias Props =
 
 view : ViewContext -> Props -> GameState -> Element Msg
 view ctx props gs =
-    Ui.card
+    Ui.cardFill
         [ logHeader ctx.facilitator props.confirming gs
         , if List.isEmpty gs.messages then
             placeholder Copy.noMessages
@@ -51,9 +53,10 @@ view ctx props gs =
           else
             Element.column
                 [ width fill
-                , height (fill |> maximum 360)
+                , height fill
                 , spacing Ui.sm
                 , Element.scrollbarY
+                , Ui.shrinkable
                 , Element.htmlAttribute (Html.Attributes.id logDomId)
                 , Ui.onScrolledToBottom 32 LogScrolled
                 ]

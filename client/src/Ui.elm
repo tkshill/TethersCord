@@ -8,6 +8,7 @@ module Ui exposing
     , errorNote
     , boonFill
     , card
+    , cardFill
     , danger
     , divider
     , facilitatorTint
@@ -27,7 +28,9 @@ module Ui exposing
     , press
     , primaryButton
     , sans
+    , scrollColumn
     , sectionTitle
+    , shrinkable
     , sm
     , speakerColor
     , stoneChip
@@ -43,7 +46,7 @@ assemble. Deliberately spare — it should read like a printed play aid, not a
 dashboard.
 -}
 
-import Element exposing (Attribute, Color, Element, el, fill, maximum, padding, rgb255, spacing, text, width)
+import Element exposing (Attribute, Color, Element, el, fill, height, padding, rgb255, spacing, text, width)
 import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
@@ -237,24 +240,66 @@ mono =
 -- LAYOUT
 
 
-{-| The outer frame. Centres a readable column on the paper surface.
+{-| The outer frame (roadmap section 23.5): `top` is a slim, non-scrolling
+strip (header, connection/status notes, the top bar) sized to its content;
+`columns` fills the rest of the viewport as a fixed-height row, each entry
+expected to be one `scrollColumn` (or, for a column with a pinned footer like
+the log's composer, an `Element.column [ height fill, width (fillPortion n) ]`
+built by the caller). `html` / `body` need `height: 100%` themselves
+(`client/index.html`) for `height fill` to have a viewport to fill against.
 -}
-page : List (Element msg) -> Html msg
-page children =
+page : { top : List (Element msg), columns : List (Element msg) } -> Html msg
+page sections =
     Element.layout
         [ Background.color paper
         , Font.color ink
         , Font.family sans
         , Font.size 14
-        , padding lg
+        , height fill
         ]
-        (Element.column
-            [ spacing lg
-            , width (fill |> maximum 880)
-            , Element.centerX
+        (Element.column [ height fill, width fill ]
+            [ Element.column [ spacing lg, padding lg, width fill ] sections.top
+            , Element.row
+                [ height fill
+                , width fill
+                , spacing lg
+                , Element.paddingEach { top = 0, right = lg, bottom = lg, left = lg }
+                , shrinkable
+                ]
+                sections.columns
             ]
-            children
         )
+
+
+{-| A flex child's `height fill` alone is not enough to make it — or anything
+scrollable nested inside it — actually clip: CSS flex items default to
+`min-height: auto`, which refuses to shrink a flex-grow item below its
+content's natural size, so the item (and everything above it, up to `page`'s
+outer column) just grows to fit instead of clipping and scrolling. This is
+the fix, on every element along a scrolling region's flex-column ancestry
+that is *itself* sized by `height fill` rather than by cross-axis stretch —
+`page`'s columns row, `scrollColumn`, `cardFill`, and a scrolling region
+inside one (`View.Log`'s message list).
+-}
+shrinkable : Attribute msg
+shrinkable =
+    Element.htmlAttribute (Html.Attributes.style "min-height" "0")
+
+
+{-| One of the three independently-scrolling columns: a vertical stack of
+cards, `fillPortion`-wide, that scrolls on its own once its content overflows
+the viewport.
+-}
+scrollColumn : Int -> List (Element msg) -> Element msg
+scrollColumn portion children =
+    Element.column
+        [ height fill
+        , width (Element.fillPortion portion)
+        , spacing lg
+        , Element.scrollbarY
+        , shrinkable
+        ]
+        children
 
 
 card : List (Element msg) -> Element msg
@@ -267,6 +312,26 @@ card children =
         , padding lg
         , spacing md
         , width fill
+        ]
+        children
+
+
+{-| As `card`, but fills the height of its container instead of shrinking to
+its content — for the log card, the one card that fills a whole column
+(right, 23.5) rather than sitting in a scrolling stack of them.
+-}
+cardFill : List (Element msg) -> Element msg
+cardFill children =
+    Element.column
+        [ Background.color panel
+        , Border.color line
+        , Border.width 1
+        , Border.rounded 8
+        , padding lg
+        , spacing md
+        , width fill
+        , height fill
+        , shrinkable
         ]
         children
 

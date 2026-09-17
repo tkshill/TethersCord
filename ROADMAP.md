@@ -981,9 +981,9 @@ Phase 2 (P2.2).
 
 # Phase 2 — facilitator-run resources and a three-column layout
 
-## 23. Facilitator-run resources and a three-column layout
+## 23. Facilitator-run resources and a three-column layout — done
 
-**In progress — 23.1–23.4 done, 23.5–23.7 not yet built.** A deliberate simplification for the current
+**Done — 23.1–23.7 all landed.** A deliberate simplification for the current
 testing phase, in the spirit of `DESIGN_PRINCIPLES.md` #10 ("remove mechanics
 until anything less would compromise the principles above") — the automatic
 stone-routing and proposal/ability machinery built in sections 5, 10, and 19
@@ -1187,7 +1187,7 @@ posts anything. Nothing about it is deleted:
       place to resolve or withdraw anything already queued, for the same
       find-it-later reason as the rest of this section.
 
-### 23.5 Layout: three columns, sized to the viewport
+### 23.5 Layout: three columns, sized to the viewport — done except the narrow-viewport fallback
 
 Today's `Ui.page` (`client/src/Ui.elm:242`) is a single centred column with
 cards stacked top to bottom inside a document-height `Element.layout`; only
@@ -1195,67 +1195,91 @@ the message log scrolls on its own (`View/Log.elm`'s `scrollbarY` region).
 This replaces that shell with three independently-scrolling columns filling
 the viewport:
 
-- [ ] **`Ui.page` becomes a fixed-height, three-column row.** `html` / `body`
-      need `height: 100%` (new CSS in `client/index.html` — elm-ui measures
-      against its parent), the outer `Element.layout` gets `height fill`, and
-      the current outer `Element.column` becomes an `Element.row [ height
-      fill, width fill ]`. Each column is its own `Element.column [ height
-      fill, scrollbarY, width (fillPortion n) ]`.
-- [ ] **Left — character sheets and the facilitator panel.** `View.Characters`
-      moves here as-is: its tab strip (`View/Characters.elm:67`,
-      `Model.selectedSlot`) already lets any viewer, facilitator included,
+- [x] **`Ui.page` becomes a fixed-height, three-column row.** `html` / `body`
+      — and `#root`, the div elm-ui mounts into: a bare `<div>` does not
+      inherit a percentage height from its parent, so the `height: 100%`
+      chain (`client/index.html`) needs it too — get an explicit height, the
+      outer `Element.layout` gets `height fill`, and the current outer
+      `Element.column` becomes an `Element.row [ height fill, width fill ]`
+      of `Ui.scrollColumn`s (`Element.column [ height fill, scrollbarY, width
+      (fillPortion n) ]`). One more piece the roadmap didn't anticipate:
+      every flex item along a scrolling region's ancestry that is sized by
+      `height fill` (rather than a row's cross-axis stretch) also needs
+      `min-height: 0` (`Ui.shrinkable`) — CSS flex items default to
+      `min-height: auto`, which refuses to shrink a flex-grow item below its
+      content's natural size, so without it a column just grows to fit its
+      content instead of clipping and scrolling. Verified with a throwaway
+      Elm harness rendering the real `View.elm` against fixture data under
+      headless Chrome (no Discord SDK involved) — confirmed the page itself
+      no longer scrolls, each column scrolls independently once its content
+      overflows, and the fix actually engages (a column's `scrollTop` is
+      genuinely settable, not just visually clipped).
+- [x] **Left — character sheets and the facilitator panel.** `View.Characters`
+      moved here as-is: its tab strip (`View/Characters.elm:67`,
+      `Model.selectedSlot`) already let any viewer, facilitator included,
       switch which sheet is showing, which is what covers "the facilitator
       can switch their view to see the player sheets" — no new switcher
       needed, just this column reusing the existing one. 23.2's facilitator
-      controls (pool add/remove, adjust-a-player's-boons) become their own
-      panel in this column, visible only to the facilitator.
-- [ ] **Centre — game state.** NPCs (`View.Entities Npc`), Locations
-      (`View.Entities Location`), and the new session-aspects list (23.3) —
-      three things that already read as "reference state the facilitator
-      curates," so grouping them is a reshuffle of `View.elm`'s section list,
-      not a rewrite of any of the three modules.
-- [ ] **Right — the event log.** `View.Log` moves here close to unchanged; it
-      already owns the `scrollbarY` region and DOM id the pin-to-bottom
-      behaviour (`Effect.ScrollLogToBottom`) needs, which keeps working once
-      it's the whole column rather than one card among several.
-- [ ] **Composer** stays pinned under the log column, not the whole page.
-- [ ] **Narrow-viewport fallback — open question.** A strict three-column row
-      does not survive phone width, and `Element.row` doesn't wrap into
-      stacked columns the way `wrappedRow` does. Likely needs a width
-      breakpoint (a `Browser.Dom` viewport read, or a `Model` flag driven by a
-      CSS media query) that drops back to the current single stacked column
-      below some threshold. Discord Activities usually run in a fairly wide
-      embed, so "good enough," not "pixel-true," may be the right bar —
-      worth checking against an actual narrow Activity window before
-      overbuilding this.
+      controls (pool add/remove) became their own panel in this column,
+      `View/FacilitatorPanel.elm`, visible only to the facilitator —
+      adjusting a player's boons needed no new panel, since the sheet's Grant
+      `+` / `−` (already in `View.Characters`) already lives in this column.
+      `View.Moves` joined this column too (not specified by the roadmap, but
+      it is about what a player can say with their own sheet, so it sits
+      with it).
+- [x] **Centre — game state.** NPCs (`View.Entities Npc`), Locations
+      (`View.Entities Location`), and the new session-aspects list (23.3,
+      extracted into its own `View/SessionAspects.elm` and renamed from
+      "Floating boons" as 23.3 anticipated) — three things that already read
+      as "reference state the facilitator curates." `View.Session` (now just
+      the past-sessions history, its goal and controls having moved to the
+      top bar — 23.6) and `View.Guide` joined this column too, for the same
+      "nowhere else the roadmap assigned them" reason as Moves above.
+- [x] **Right — the event log.** `View.Log` moved here close to unchanged; it
+      already owned the `scrollbarY` region and DOM id the pin-to-bottom
+      behaviour (`Effect.ScrollLogToBottom`) needs, which keeps working now
+      that it's the whole column (via a new `Ui.cardFill`, a `card` that
+      fills its column's height instead of shrinking to content) rather than
+      one card among several with its own internal `maximum 360` cap.
+- [x] **Composer** stays pinned under the log column, not the whole page.
+- [ ] **Narrow-viewport fallback — still an open question.** Not attempted
+      here — the strict three-column row does not survive phone width, and
+      this pass only verified the layout at Activity-embed widths. Left for
+      whenever it's actually checked against a narrow Activity window, per
+      the roadmap's own "good enough, not pixel-true" bar above.
 
-### 23.6 Top bar: session text and the pool
+### 23.6 Top bar: session text and the pool — done
 
-- [ ] A persistent bar above the three columns (not inside any of them):
-      the running session's goal text (today the whole `View.Session` card,
-      `client/src/View/Session.elm`) and the stone pool (today the bag row
-      inside `View.Stones`, `View/Stones.elm:99`). Both keep their existing
-      data source (`gs.session`, `gs.stonePool`) — this is a move, not a new
-      field.
-- [ ] Session start / end / goal-edit controls (facilitator-only, section 12)
-      go here too, likely behind a small popover or expander rather than
-      full-width, since the bar needs to stay one line at rest.
-- [ ] `View.Stones` as a card disappears once its pieces move: the pool (and
-      the pledge summary, if pledges survive — open question) go to the top
-      bar, session aspects to the centre column (23.3), and the single
-      one-click roll action (23.1) to the facilitator panel in the left
-      column (23.5).
+- [x] A persistent bar above the three columns (not inside any of them,
+      `View/TopBar.elm`): the running session's goal text (previously the
+      whole `View.Session` card) and the stone pool (previously the bag row
+      inside the old `View.Stones`). Both kept their existing data source
+      (`gs.session`, `gs.stonePool`) — a move, not a new field.
+- [x] Session start / end / goal-edit controls (facilitator-only, section 12)
+      sit behind a ▸/▾ expander (`Model.sessionControlsExpanded`, toggled by
+      `ToggleSessionControls` — same purely-local-state pattern as
+      `guideExpanded` / `ToggleGuide`) rather than full-width, so the bar
+      stays one line at rest.
+- [x] The old `View.Stones` card is gone, its pieces moved: the pool (chips
+      read-only, no pledge summary — pledge did not survive as a
+      player-initiated action, per 23.2's resolved open question) to the top
+      bar, session aspects to the centre column (23.3/23.5), and the single
+      one-click roll action (23.1) plus the pool add/remove edits and the
+      proposal queue to the facilitator panel in the left column
+      (`View/FacilitatorPanel.elm`, 23.5).
 
-### 23.7 Overcome and roll results: log line only
+### 23.7 Overcome and roll results: log line only — done
 
-- [ ] Now mechanically simple, since 23.1 removed the pending/accept
+- [x] Mechanically simple in the end, since 23.1 removed the pending/accept
       lifecycle entirely: the facilitator's click *is* the draw, so the only
       place its result can show up is wherever that click's handler writes a
-      log line. There's no more inline pending-roll rendering to remove from
-      `View/Stones.elm` (23.6 already removes the whole card) — just confirm
-      the new one-click worker handler (23.1) writes a log line itself, since
-      the old `/stones/accept` was where that used to happen and it no
-      longer exists.
+      log line. There was no inline pending-roll rendering left to remove
+      from `View/Stones.elm` (23.6 already removed the whole card) — just
+      confirming the one-click worker handler (23.1) writes a log line
+      itself: `handleDraw` (`worker/src/GameTable.ts`) posts a message
+      (`Drew: <kind>, <kind>`, plus a committed-boons note) through the same
+      `commit` path every other mutation uses, since the old `/stones/accept`
+      was where that used to happen and it no longer exists.
 
 ### Sequencing
 
@@ -1286,8 +1310,11 @@ order, each its own branch off `main`:
 3. **23.4** (client) — done: the Moves card and its proposal-posting controls
    are disconnected, marked with 23.4's `-- OFF while testing simplified
    interface` comment convention.
-4. **23.5 + 23.6 + 23.7** (client) — the three-column shell and top bar, once
-   the data shape it's arranging is settled.
+4. **23.5 + 23.6 + 23.7** (client) — done, all three together as sequenced:
+   the three-column shell (`View/FacilitatorPanel.elm`, `View/SessionAspects.elm`
+   new; `View/Stones.elm` gone), the top bar (`View/TopBar.elm` new;
+   `View/Session.elm` trimmed to just the history card), and confirming the
+   one-click draw already logs its own result.
 
 ### Open questions to settle before or during play
 
@@ -1318,11 +1345,16 @@ order, each its own branch off `main`:
       for consistency with the direction the other two already set. The
       worker route and proposal accept are untouched and fully functional,
       just unreachable from the client.
-- [ ] Do Add a Detail / Gain Insight survive as player-initiated proposals
-      that create a (Boon-only) session context, now that the facilitator can
-      plant one directly in any kind? 23.3 left this live — deciding it,
-      along with the rest of the Moves card (Suggest Compel, Accept Compel),
-      is 23.4's territory, not resolved here.
+- [x] Resolved by 23.4, uniformly with the rest of the Moves card rather than
+      as a special case: Add a Detail / Gain Insight no longer survive as
+      player-initiated proposals — `View/Moves.elm`'s `abilityRow` dropped
+      the `onPress` off every entry alike (Help Out, Add a Detail, Gain
+      Insight), so a session context now comes only from the facilitator's
+      direct create (`View/SessionAspects.elm`, any kind) or from resolving
+      whatever Add a Detail / Gain Insight proposals were already queued
+      before 23.4 shipped. The proposal routes and `handleProposalDecision`'s
+      Boon-only literal for an accepted one are untouched, just unreachable
+      from any current UI.
 - [ ] Does aspect-Bane tracking freeze as read-only history, become a manual
       facilitator field, or drop off the sheet display while nothing writes
       it?

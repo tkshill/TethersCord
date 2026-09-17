@@ -118,6 +118,7 @@ init flags =
       , logAtBottom = True
       , newSessionGoal = ""
       , goalEdit = ""
+      , sessionControlsExpanded = False
       , proposalDrafts = Dict.empty
       , newFloatingBoonNote = ""
       , newFloatingBoonKind = Boon
@@ -522,6 +523,9 @@ update msg model =
 
         ToggleGuide ->
             ( { model | guideExpanded = not model.guideExpanded }, Effect.None )
+
+        ToggleSessionControls ->
+            ( { model | sessionControlsExpanded = not model.sessionControlsExpanded }, Effect.None )
 
         ToggleAspectExamples slot aspect ->
             let

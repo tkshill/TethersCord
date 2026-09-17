@@ -63,6 +63,32 @@ version yet, so headings are dates.
   comment for easy re-wiring later. The general Proposals panel in
   `View/Stones.elm` is untouched and still resolves or withdraws anything
   already queued.
+- **A three-column, viewport-height layout, with a persistent top bar**
+  (roadmap sections 23.5–23.7, Phase 2 — facilitator-run resources). `Ui.page`
+  is no longer one centred column scrolling with the page; it is a fixed
+  three-column row, each column scrolling independently once its own content
+  overflows — left (a new `View/FacilitatorPanel.elm`: the one-click draw,
+  direct pool edits, and the proposal queue; `View.Characters`; `View.Moves`),
+  centre (`View.Entities` for NPCs and locations; a new
+  `View/SessionAspects.elm` — the floating-boons list, renamed "Session
+  aspects" and moved out of the old Stones card as 23.3 anticipated;
+  `View.Session`, trimmed to just the past-sessions history; `View.Guide`),
+  and right (`View.Log`, with the composer now pinned beneath it in the same
+  column rather than at the foot of the whole page). A new `View/TopBar.elm`
+  sits above the three columns: the running goal and the stone pool (moved
+  off the old Session / Stones cards, same data source), with session start /
+  end / goal-edit behind a facilitator-only ▸/▾ expander so the bar stays one
+  line at rest. `View/Stones.elm` is gone, its pieces distributed across the
+  three columns and the top bar as above. Getting the CSS right needed two
+  fixes beyond the obvious `height: 100%` on `html`/`body`: `#root` (the div
+  elm-ui mounts into) needed it too, since a bare `<div>` does not inherit a
+  percentage height from its parent; and every flex item along a scrolling
+  region's ancestry that is sized by `height fill` rather than a row's
+  cross-axis stretch needed an explicit `min-height: 0` (CSS flex items
+  default to `min-height: auto`, which refuses to shrink a flex-grow item
+  below its content's natural size) — both are now `Ui.shrinkable` and baked
+  into `Ui.scrollColumn` / `Ui.cardFill`. The narrow-viewport fallback the
+  roadmap flagged as an open question is not attempted here.
 
 ### Added
 
