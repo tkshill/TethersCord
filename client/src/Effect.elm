@@ -58,8 +58,6 @@ type Effect
     | PostStartSession Auth String
     | PostSessionGoal Auth String
     | PostEndSession Auth
-    | PostStartOvercome Auth Int
-    | PostCancelOvercome Auth
     | PostCreateEntity Auth EntityKind
     | PostUpdateEntity Auth EntityKind TableEntity
     | PostDeleteEntity Auth EntityKind String
@@ -155,12 +153,6 @@ perform flags effect =
         PostEndSession auth ->
             Api.postEndSession flags auth sessionUpdated
 
-        PostStartOvercome auth slot ->
-            Api.postStartOvercome flags auth slot overcomeUpdated
-
-        PostCancelOvercome auth ->
-            Api.postCancelOvercome flags auth overcomeUpdated
-
         PostCreateEntity auth kind ->
             Api.postCreateEntity flags auth kind entityMutated
 
@@ -206,11 +198,6 @@ sessionUpdated =
 stonesUpdated : Result Http.Error () -> Msg
 stonesUpdated =
     MutationDone { family = "stones:", failMsg = "Failed to update stones." }
-
-
-overcomeUpdated : Result Http.Error () -> Msg
-overcomeUpdated =
-    MutationDone { family = "overcome:", failMsg = "Failed to update the overcome." }
 
 
 characterUpdated : Result Http.Error () -> Msg

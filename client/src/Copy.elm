@@ -145,19 +145,9 @@ stonesTitle =
     "Stones"
 
 
-reroll : String
-reroll =
-    "Reroll"
-
-
-pressFate : String
-pressFate =
-    "Press Fate"
-
-
-boonsCostSuffix : Int -> String
-boonsCostSuffix n =
-    " (" ++ String.fromInt n ++ " boons)"
+draw : String
+draw =
+    "Draw two stones"
 
 
 bagOf : Int -> String
@@ -185,34 +175,9 @@ addBoon =
     "Add boon"
 
 
-roll : String
-roll =
-    "Roll"
-
-
-rolled : String
-rolled =
-    "Rolled"
-
-
 accept : String
 accept =
     "Accept"
-
-
-overcomeWith : String -> String
-overcomeWith who =
-    "Overcome — " ++ who
-
-
-callOffOvercome : String
-callOffOvercome =
-    "Call off"
-
-
-startOvercome : String
-startOvercome =
-    "Start overcome"
 
 
 proposalsTitle : String

@@ -54,9 +54,9 @@ const ASPECT_BANE_COLUMNS: Record<AspectName, string> = {
   quest: "quest_banes",
 };
 
-/** Set a sheet's boon count outright. The four boon-spending sites (the
- * suggest / accept compel payouts, the overcome reroll cost, and the pledge
- * spend on an accepted roll) all resolve their new total and call this. */
+/** Set a sheet's boon count outright. `/characters/:slot/fate` and the
+ * suggest / accept compel payouts each resolve their new total and call
+ * this. */
 export async function setFate(
   db: D1Database,
   id: string,

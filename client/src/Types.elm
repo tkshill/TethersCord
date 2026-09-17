@@ -15,8 +15,6 @@ module Types exposing
     , Model
     , Msg(..)
     , MutationOutcome
-    , Overcome
-    , PendingRoll
     , Proposal
     , Role(..)
     , Session
@@ -101,22 +99,10 @@ type alias Message =
     }
 
 
-type alias PendingRoll =
-    { chosen : List Stone
-    , rest : List Stone
-    }
-
-
-{-| An open overcome: the facilitator has framed a risky attempt and named one
-character (`targetSlot`) to resolve it. While it is set, that character's player
-may Roll and Reroll, and a Reroll costs the target boons.
--}
-type alias Overcome =
-    { targetSlot : Int }
-
-
-{-| Boons a character has pledged into the next roll. Spent from their `fate`
-stock when the roll is accepted; only slots with a non-zero pledge appear.
+{-| Boons a character has pledged toward the next draw's odds; only slots with
+a non-zero pledge appear. 23.1 retired the roll/reroll/accept lifecycle that
+used to spend these from `fate` on accept — what a pledge costs, if anything,
+going forward is an open question (see ROADMAP.md 23).
 -}
 type alias CommittedBoon =
     { slot : Int
@@ -125,7 +111,8 @@ type alias CommittedBoon =
 
 
 {-| The character holding `slot`, if any. One shared slot lookup for `Main` (the
-state-merge helpers) and `View` (the panels that resolve an overcome target).
+state-merge helpers) and `View` (the panels that resolve a proposal's target,
+e.g. a Suggest Compel).
 -}
 characterAtSlot : Int -> List CharacterSheet -> Maybe CharacterSheet
 characterAtSlot slot characters =
@@ -372,13 +359,11 @@ type alias GameState =
     { sessionId : String
     , messages : List Message
     , stonePool : List Stone
-    , pendingRoll : Maybe PendingRoll
     , committedBoons : List CommittedBoon
     , proposals : List Proposal
     , session : Maybe Session
     , characters : List CharacterSheet
     , sessionHistory : List SessionSummary
-    , overcome : Maybe Overcome
     , floatingBoons : List FloatingBoon
     , usedAbilities : List UsedAbility
     , npcs : List TableEntity
@@ -551,11 +536,7 @@ type Msg
     | ToggleAspectExamples Int Aspect
     | WsStatusChanged String
     | RetryGetGameState
-    | RollStones
-    | RerollStones
-    | AcceptRoll
-    | StartOvercome Int
-    | CancelOvercome
+    | DrawStones
     | CharacterFieldInput Int CharacterField String
     | CharacterFieldBlur Int
     | FieldSaveDue Int

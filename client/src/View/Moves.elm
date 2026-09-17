@@ -58,8 +58,11 @@ abilityRow myId gs ch =
 
     else
         let
+            -- 23.1 retired the overcome/pending-roll lifecycle Help Out
+            -- rerolled, so there is no longer a roll it can help with; the
+            -- worker refuses every raise outright (400) to match.
             overcomeRoll =
-                gs.overcome /= Nothing && gs.pendingRoll /= Nothing
+                False
 
             button kind label available =
                 let

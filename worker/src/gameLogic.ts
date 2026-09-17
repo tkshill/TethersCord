@@ -24,9 +24,9 @@ export const ASPECT_NAMES: readonly AspectName[] = [
 
 /**
  * Remove up to one occurrence of each stone in `toRemove` from `pool`. Stones
- * carry no identity beyond their kind, so removal is by count, not by index —
- * this is how an accepted roll's drawn stones leave the shared pool before the
- * routed subset (`routeOvercomeDraw`'s `poolAdds`) rejoins it.
+ * carry no identity beyond their kind, so removal is by count, not by index.
+ * Currently unused by any route — a roll only ever reads the pool now — but
+ * kept as the removal half a facilitator-only `/stones/remove` route needs.
  */
 export function removeStones(
   pool: StoneKind[],
@@ -74,22 +74,6 @@ export function pickTwoRandom(pool: StoneKind[]): PendingRoll {
   });
 
   return { chosen, rest };
-}
-
-/**
- * Stone routing for an accepted overcome roll, kept pure so it can be
- * unit-tested exhaustively. `marksAspect` is true only for a mixed draw — the
- * caller then picks which aspect at random and writes it; two of a kind
- * returns both drawn stones in `poolAdds` untouched.
- */
-export function routeOvercomeDraw(
-  drawn: StoneKind[],
-): { poolAdds: StoneKind[]; marksAspect: boolean } {
-  const boons = drawn.filter((s) => s === "Boon").length;
-  if (drawn.length === 2 && boons === 1) {
-    return { poolAdds: ["Boon"], marksAspect: true };
-  }
-  return { poolAdds: [...drawn], marksAspect: false };
 }
 
 export function describeStones(stones: StoneKind[]): string {

@@ -1,8 +1,9 @@
 module View.Stones exposing (view)
 
-{-| The Stones card: the open overcome line, the bag, the session's floating
-boons, the roll / reroll / accept lifecycle, and the facilitator's proposal
-queue.
+{-| The Stones card: the bag, the session's floating boons, the facilitator's
+one-click draw, and the facilitator's proposal queue. A draw (23.1) is a
+stateless read of the pool — its result shows up as a log line, not as
+anything rendered here.
 -}
 
 import Copy
@@ -34,14 +35,6 @@ type alias Props =
     }
 
 
-{-| Boons the overcome target spends to Reroll. Mirrors the worker's
-`REROLL_COST`.
--}
-overcomeRerollCost : Int
-overcomeRerollCost =
-    2
-
-
 view : ViewContext -> Props -> GameState -> Element Msg
 view ctx props gs =
     let
@@ -50,101 +43,30 @@ view ctx props gs =
 
         myAddBoons =
             countProposals ctx.myId Kind.AddBoon gs.proposals
-
-        target =
-            gs.overcome
-                |> Maybe.andThen (\oc -> characterAtSlot oc.targetSlot gs.characters)
-
-        amTarget =
-            case target of
-                Just t ->
-                    t.ownerId /= Nothing && t.ownerId == ctx.myId
-
-                Nothing ->
-                    False
-
-        -- The facilitator can always roll; during an overcome the target
-        -- player can too.
-        canRoll =
-            ctx.facilitator || amTarget
-
-        -- A reroll during an overcome is bought with the target's boons, so it
-        -- needs at least that many.
-        rerollAffordable =
-            case target of
-                Just t ->
-                    t.fate >= overcomeRerollCost
-
-                Nothing ->
-                    True
-
-        costSuffix =
-            Copy.boonsCostSuffix overcomeRerollCost
-
-        rerollLabel =
-            if gs.overcome == Nothing then
-                Copy.reroll
-
-            else if amTarget then
-                -- Press Fate: the target buying their own reroll.
-                Copy.pressFate ++ costSuffix
-
-            else
-                Copy.reroll ++ costSuffix
     in
     Ui.card
         [ glossaryTitle Copy.stonesTitle "Stone"
         , Element.column [ spacing Ui.md, width fill ]
-            [ overcomeBlock ctx.facilitator target gs.characters
-            , Element.wrappedRow [ spacing Ui.xs ]
+            [ Element.wrappedRow [ spacing Ui.xs ]
                 (List.map stoneChip gs.stonePool
                     ++ List.repeat committed (Ui.pledgedStoneChip Ui.boonFill Copy.pledgedChip)
                 )
             , el [ Font.size 12, Font.color Ui.inkSoft ]
                 (text (Copy.bagOf (List.length gs.stonePool + committed)))
             , floatingBoonsBlock ctx.facilitator ctx.myId gs
-            , case gs.pendingRoll of
-                Nothing ->
-                    Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
-                        (Ui.ghostButton
-                            { onPress = Ui.press props.inflight "stones:add-boon" AddBoon
-                            , label = Copy.addBoon
+            , Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
+                (Ui.ghostButton
+                    { onPress = Ui.press props.inflight "stones:add-boon" AddBoon
+                    , label = Copy.addBoon
+                    }
+                    :: pendingHint myAddBoons (latestProposalId ctx.myId Kind.AddBoon gs.proposals)
+                    ++ Ui.onlyWhen ctx.facilitator
+                        [ Ui.primaryButton
+                            { onPress = Ui.press props.inflight "stones:draw" DrawStones
+                            , label = Copy.draw
                             }
-                            :: pendingHint myAddBoons (latestProposalId ctx.myId Kind.AddBoon gs.proposals)
-                            ++ Ui.onlyWhen canRoll
-                                [ Ui.primaryButton
-                                    { onPress = Ui.press props.inflight "stones:roll" RollStones
-                                    , label = Copy.roll
-                                    }
-                                ]
-                        )
-
-                Just pending ->
-                    Element.column [ spacing Ui.sm, width fill ]
-                        [ Element.wrappedRow [ spacing Ui.xs ]
-                            (el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.rolled)
-                                :: List.map stoneChip pending.chosen
-                            )
-                        , Element.wrappedRow [ spacing Ui.sm ]
-                            (Ui.onlyWhen canRoll
-                                [ Ui.ghostButton
-                                    { onPress =
-                                        if rerollAffordable then
-                                            Ui.press props.inflight "stones:reroll" RerollStones
-
-                                        else
-                                            Nothing
-                                    , label = rerollLabel
-                                    }
-                                ]
-                                ++ Ui.onlyWhen ctx.facilitator
-                                    [ Ui.primaryButton
-                                        { onPress = Ui.press props.inflight "stones:accept" AcceptRoll
-                                        , label = Copy.accept
-                                        }
-                                    ]
-                            )
                         ]
+                )
             , proposalsPanel ctx.facilitator props.inflight props.drafts gs.characters gs.proposals
             ]
         ]
@@ -190,41 +112,6 @@ floatingBoonsBlock facilitator myId gs =
                 (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.floatingBoons))
                 :: List.map row gs.floatingBoons
             )
-
-
-{-| The overcome line. When one is open it names the target and, for the
-facilitator, offers "Call off"; otherwise the facilitator gets a button per
-character to open one. Nothing shows for a player with no overcome running.
--}
-overcomeBlock : Bool -> Maybe CharacterSheet -> List CharacterSheet -> Element Msg
-overcomeBlock facilitator target characters =
-    case target of
-        Just t ->
-            Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
-                (tip "Overcome"
-                    (el [ Font.size 12, Font.semiBold ]
-                        (text (Copy.overcomeWith (characterLabel t)))
-                    )
-                    :: Ui.onlyWhen facilitator
-                        [ Ui.ghostButton { onPress = Just CancelOvercome, label = Copy.callOffOvercome } ]
-                )
-
-        Nothing ->
-            if facilitator then
-                Element.wrappedRow [ spacing Ui.xs, Element.centerY ]
-                    (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.startOvercome)
-                        :: List.map
-                            (\c ->
-                                Ui.ghostButton
-                                    { onPress = Just (StartOvercome c.slot)
-                                    , label = characterLabel c
-                                    }
-                            )
-                            characters
-                    )
-
-            else
-                none
 
 
 {-| Facilitator's queue of player-initiated requests awaiting a decision. Hidden

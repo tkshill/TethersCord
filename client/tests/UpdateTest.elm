@@ -123,31 +123,31 @@ suite =
                     Main.update AddBoon ready
                         |> Tuple.second
                         |> Expect.equal (Effect.PostStones Fixtures.playerAuth "/stones/add-boon")
-            , test "RollStones targets the roll route" <|
+            , test "DrawStones targets the draw route" <|
                 \_ ->
-                    Main.update RollStones ready
+                    Main.update DrawStones ready
                         |> Tuple.second
-                        |> Expect.equal (Effect.PostStones Fixtures.playerAuth "/stones/roll")
-            , test "a second RollStones while the first is in flight is dropped" <|
+                        |> Expect.equal (Effect.PostStones Fixtures.playerAuth "/stones/draw")
+            , test "a second DrawStones while the first is in flight is dropped" <|
                 \_ ->
                     let
                         afterFirst =
-                            Main.update RollStones ready |> Tuple.first
+                            Main.update DrawStones ready |> Tuple.first
                     in
-                    Main.update RollStones afterFirst
+                    Main.update DrawStones afterFirst
                         |> Expect.equal ( afterFirst, Effect.None )
-            , test "StonesUpdated clears the in-flight roll so it can be fired again" <|
+            , test "StonesUpdated clears the in-flight draw so it can be fired again" <|
                 \_ ->
                     let
                         afterFirst =
-                            Main.update RollStones ready |> Tuple.first
+                            Main.update DrawStones ready |> Tuple.first
 
                         settled =
                             Main.update (stonesDone (Ok ())) afterFirst |> Tuple.first
                     in
-                    Main.update RollStones settled
+                    Main.update DrawStones settled
                         |> Tuple.second
-                        |> Expect.equal (Effect.PostStones Fixtures.playerAuth "/stones/roll")
+                        |> Expect.equal (Effect.PostStones Fixtures.playerAuth "/stones/draw")
             , test "AcceptProposal carries that row's trimmed draft note as context" <|
                 \_ ->
                     Main.update (AcceptProposal "p1")

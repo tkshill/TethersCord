@@ -24,15 +24,23 @@ export type Message = {
  */
 export type StoneKind = "Boon" | "Bane";
 
+/**
+ * The result of one draw from the pool: `chosen` is what a facilitator's
+ * `/stones/draw` shows, `rest` the remainder — the pool itself is never
+ * written by a draw, so `rest` is only ever read, never persisted.
+ */
 export type PendingRoll = {
   chosen: StoneKind[];
   rest: StoneKind[];
 };
 
 /**
- * Boon stones a character has pledged into the next roll, spent from their
- * `fate` stock when the roll is accepted. One entry per character with a
- * non-zero pledge, keyed by slot.
+ * Boon stones a character has pledged into the next draw's odds
+ * (`drawFromBag` adds one extra Boon per committed boon to the bag). One
+ * entry per character with a non-zero pledge, keyed by slot. 23.1 retired the
+ * roll/reroll/accept lifecycle that used to spend these from `fate` on
+ * accept — what a pledge costs, if anything, going forward is an open
+ * question (see ROADMAP.md 23).
  */
 export type CommittedBoon = {
   slot: number;
@@ -172,23 +180,10 @@ export type SessionSummary = {
   endedAt: number;
 };
 
-/**
- * An open overcome: the facilitator has framed a risky attempt and named one
- * character as its target. While it is set, that character's player may Roll and
- * Reroll to resolve it (otherwise a facilitator-only action), and a Reroll costs
- * the target boons. Lives alongside `pendingRoll` in Durable Object storage;
- * cleared when the roll is accepted or the overcome is called off.
- */
-export type Overcome = {
-  targetSlot: number;
-};
-
 export type GameState = {
   sessionId: string;
   messages: Message[];
   stonePool: StoneKind[];
-  pendingRoll: PendingRoll | null;
-  overcome: Overcome | null;
   committedBoons: CommittedBoon[];
   floatingBoons: FloatingBoon[];
   usedAbilities: UsedAbilities[];
@@ -220,10 +215,6 @@ export type StartSessionInput = {
 
 export type UpdateSessionGoalInput = {
   goal: string;
-};
-
-export type StartOvercomeInput = {
-  slot: number;
 };
 
 export type UseAbilityInput = {

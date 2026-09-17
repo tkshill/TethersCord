@@ -1,6 +1,5 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { routeOvercomeDraw } from "../src/gameLogic";
 import { call, claim, readState, seedAuth } from "./helpers";
 
 async function firstProposalId(table: string, token: string): Promise<string> {
@@ -238,17 +237,11 @@ describe("GameTable state machine", () => {
       await call(table, `/proposals/${pledgeId}/accept`, { token: fac });
       await call(table, "/stones/commit", { token: player, body: { delta: 1 } });
 
-      // An open overcome with a roll on the table.
-      await call(table, "/overcome/start", { token: fac, body: { slot: 0 } });
-      await call(table, "/stones/roll", { token: fac });
-
       let state = await readState(table, fac);
       expect(state.floatingBoons).toHaveLength(1);
       expect(state.usedAbilities).toHaveLength(1);
       expect(state.committedBoons).toHaveLength(1);
       expect(state.proposals).toHaveLength(1);
-      expect(state.overcome).not.toBeNull();
-      expect(state.pendingRoll).not.toBeNull();
 
       const ended = await call(table, "/session/end", { token: fac });
       expect(ended.status).toBe(204);
@@ -260,8 +253,6 @@ describe("GameTable state machine", () => {
       expect(state.usedAbilities).toHaveLength(0);
       expect(state.committedBoons).toHaveLength(0);
       expect(state.proposals).toHaveLength(0);
-      expect(state.overcome).toBeNull();
-      expect(state.pendingRoll).toBeNull();
     });
 
     it("starts a session from a clean slate, discarding stale pledges and proposals", async () => {
@@ -413,19 +404,24 @@ describe("GameTable state machine", () => {
     });
   });
 
-  it("400s /stones/accept when there is no roll on the table", async () => {
-    const table = "gt-accept-noroll";
+  it("/stones/draw is a read-only log line — the pool and proposal queue are untouched", async () => {
+    const table = "gt-draw-readonly";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
 
     // Queue a proposal so a silent reset would be visible.
     const { token: player } = await seedAuth();
     await call(table, "/stones/add-boon", { token: player });
 
-    const res = await call(table, "/stones/accept", { token: fac });
-    expect(res.status).toBe(400);
+    const before = await readState(table, fac);
+    const res = await call(table, "/stones/draw", { token: fac });
+    expect(res.status).toBe(204);
 
     const state = await readState(table, fac);
+    expect(state.stonePool).toEqual(before.stonePool);
     expect(state.proposals).toHaveLength(1); // untouched
+    expect(state.messages.at(-1)?.content).toMatch(
+      /^Drew: (Boon|Bane), (Boon|Bane)$/,
+    );
   });
 
   it("keeps a proposal queued when its target is gone by accept time", async () => {
@@ -563,59 +559,20 @@ describe("GameTable state machine", () => {
   });
 });
 
-/** Sum of a character's three aspect Bane counts. */
-function aspectBaneTotal(
-  state: import("../src/types").GameState,
-  slot: number,
-): number {
-  const c = state.characters.find((c) => c.slot === slot)!;
-  return c.aspectBanes.archetype + c.aspectBanes.desire + c.aspectBanes.quest;
-}
+describe("the combined pool — draws and session end (integration)", () => {
+  it("a draw never changes the pool, however many times it's repeated", async () => {
+    const table = "gt-draw-repeated";
+    const { token: fac } = await seedAuth(undefined, { facilitator: true });
+    await call(table, "/session/start", { token: fac, body: { goal: "escalate" } });
 
-describe("stone routing (pure)", () => {
-  it("routeOvercomeDraw sends two of a kind whole and a mixed draw's Bane to an aspect", () => {
-    expect(routeOvercomeDraw(["Boon", "Boon"])).toEqual({
-      poolAdds: ["Boon", "Boon"],
-      marksAspect: false,
-    });
-    expect(routeOvercomeDraw(["Bane", "Bane"])).toEqual({
-      poolAdds: ["Bane", "Bane"],
-      marksAspect: false,
-    });
-    expect(routeOvercomeDraw(["Boon", "Bane"])).toEqual({
-      poolAdds: ["Boon"],
-      marksAspect: true,
-    });
+    const before = await readState(table, fac);
+    for (let i = 0; i < 8; i++) {
+      const res = await call(table, "/stones/draw", { token: fac });
+      expect(res.status).toBe(204);
+    }
+    const after = await readState(table, fac);
+    expect(after.stonePool).toEqual(before.stonePool);
   });
-});
-
-describe("the combined pool — overcomes and session end (integration)", () => {
-  it(
-    "wires the overcome routing into accept + D1: every drawn stone lands in exactly one place",
-    async () => {
-      const table = "gt-combined-route";
-      const { token: fac } = await seedAuth(undefined, { facilitator: true });
-      await call(table, "/session/start", { token: fac, body: { goal: "escalate" } });
-
-      for (let i = 0; i < 8; i++) {
-        const before = await readState(table, fac);
-        await call(table, "/overcome/start", { token: fac, body: { slot: 0 } });
-        await call(table, "/stones/roll", { token: fac });
-        await call(table, "/stones/accept", { token: fac });
-        const after = await readState(table, fac);
-
-        const aspectDelta = aspectBaneTotal(after, 0) - aspectBaneTotal(before, 0);
-        const poolSizeDelta = after.stonePool.length - before.stonePool.length;
-
-        // Every stone drawn either returns to the pool or becomes an aspect
-        // Bane — never both, never neither.
-        expect(aspectDelta + poolSizeDelta).toBe(0);
-        expect([0, 1]).toContain(aspectDelta);
-        expect(after.overcome).toBeNull();
-      }
-    },
-    20_000,
-  );
 
   it("tops the pool up to at least 2 Boon and 2 Bane on session end, and leaves it alone when it already qualifies", async () => {
     const table = "gt-pool-topup";
@@ -625,32 +582,15 @@ describe("the combined pool — overcomes and session end (integration)", () => 
     // immediately should not add anything.
     await call(table, "/session/start", { token: fac, body: { goal: "first" } });
     await call(table, "/session/end", { token: fac });
-    let state = await readState(table, fac);
+    const state = await readState(table, fac);
     expect(state.stonePool.filter((s) => s === "Boon")).toHaveLength(2);
     expect(state.stonePool.filter((s) => s === "Bane")).toHaveLength(2);
 
-    // Drain the pool with mixed overcomes until it falls under the floor,
-    // then confirm ending the session tops it back up.
-    await call(table, "/session/start", { token: fac, body: { goal: "drain" } });
-    for (let i = 0; i < 20; i++) {
-      state = await readState(table, fac);
-      if (state.stonePool.length < 4) break;
-      await call(table, "/overcome/start", { token: fac, body: { slot: 0 } });
-      await call(table, "/stones/roll", { token: fac });
-      await call(table, "/stones/accept", { token: fac });
-    }
-    state = await readState(table, fac);
-    const drainedBoons = state.stonePool.filter((s) => s === "Boon").length;
-    const drainedBanes = state.stonePool.filter((s) => s === "Bane").length;
-    expect(drainedBoons < 2 || drainedBanes < 2).toBe(true);
-
-    await call(table, "/session/end", { token: fac });
-    state = await readState(table, fac);
-    const toppedUpBoons = state.stonePool.filter((s) => s === "Boon").length;
-    const toppedUpBanes = state.stonePool.filter((s) => s === "Bane").length;
-    expect(toppedUpBoons).toBe(Math.max(drainedBoons, 2));
-    expect(toppedUpBanes).toBe(Math.max(drainedBanes, 2));
-  }, 30_000);
+    // Draining the pool below the floor needs a facilitator-only removal
+    // route (23.2), not yet built — a draw itself never writes the pool
+    // (23.1), so there is no way to fall under the floor here to exercise
+    // the actual top-up arithmetic yet.
+  });
 
   it("carries the pool across a session boundary — nothing resets on start or end", async () => {
     const table = "gt-pool-carries";

@@ -2,8 +2,7 @@ module ApiDecodersTest exposing (suite)
 
 {-| The `Api.decodeGameState` decoder against a full captured wire payload. One
 snapshot exercises every sub-decoder, including the shapes that are easy to get
-wrong: an open overcome, a pending roll, floating boons, used abilities, and a
-proposal of each `kind`.
+wrong: floating boons, used abilities, and a proposal of each `kind`.
 -}
 
 import Api
@@ -42,16 +41,6 @@ suite =
                 decoded
                     |> Result.map .stonePool
                     |> Expect.equal (Ok [ Boon, Bane, Boon ])
-        , test "reads the pending roll's two lists" <|
-            \_ ->
-                decoded
-                    |> Result.map .pendingRoll
-                    |> Expect.equal (Ok (Just { chosen = [ Boon ], rest = [ Bane, Boon ] }))
-        , test "reads an open overcome" <|
-            \_ ->
-                decoded
-                    |> Result.map .overcome
-                    |> Expect.equal (Ok (Just { targetSlot = 1 }))
         , test "reads committed boons" <|
             \_ ->
                 decoded

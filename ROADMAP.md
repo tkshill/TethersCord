@@ -983,7 +983,7 @@ Phase 2 (P2.2).
 
 ## 23. Facilitator-run resources and a three-column layout
 
-**Planning — not yet built.** A deliberate simplification for the current
+**In progress — 23.1 done, 23.2–23.7 not yet built.** A deliberate simplification for the current
 testing phase, in the spirit of `DESIGN_PRINCIPLES.md` #10 ("remove mechanics
 until anything less would compromise the principles above") — the automatic
 stone-routing and proposal/ability machinery built in sections 5, 10, and 19
@@ -1003,47 +1003,59 @@ rather than locking these in ahead of the table (per the project's working
 notes on game design: loose ideas stay open questions until play settles
 them).
 
-### 23.1 The overcome roll: one click, draw two stones, touch nothing else
+### 23.1 The overcome roll: one click, draw two stones, touch nothing else — done
 
-- [ ] **The roll no longer touches the pool.** `pickTwoRandom`
-      (`gameLogic.ts:56`) already samples two stones without mutating its
-      input; the roll keeps using it, but the pool itself is never written by
-      a draw. Today's `/stones/accept` takes the drawn pair *out* of the pool
-      and `routeOvercomeDraw` (`gameLogic.ts:85`) decides what goes back —
-      that whole write path is gone. Drawing two stones is a **read** of the
-      current pool, not a write to it, full stop.
-- [ ] **That collapses the roll to one click, no reroll.** With no pool
-      mutation to commit, there is nothing left for `/stones/accept` to
-      accept, and a "Reroll" would just be the facilitator triggering the
-      overcome again if they choose to — a second draw from the same
-      untouched pool, not a distinct action with its own cost or route.
-      `pendingRoll`, `/stones/accept`, `/stones/reroll`, and the
-      roll/reroll/accept three-step lifecycle all retire in favour of one
-      stateless action that draws and logs in the same click.
-- [ ] **Overcomes lose their target, and with it most of their reason to be a
-      separate concept from a plain roll.** `Overcome`
-      (`worker/src/types.ts:182`), `POST /overcome/start` / `/overcome/cancel`,
-      and the target carve-out in `rollGate` (section 10) all assumed a roll
-      that named a character and then did something to them. None of that is
-      true anymore — a draw is just a draw. Working assumption: there's no
-      longer a distinct "start an overcome" step, just the one facilitator
-      action described above; if the table finds it still wants an overcome
-      framed as its own beat, that's a small addition back, not a blocker to
-      building the rest of this section without it.
-- [ ] **Press Fate goes with the target.** The target-paid `REROLL_COST`
-      (section 10, `View/Stones.elm:40`) has no target to pay it and no
-      distinct reroll left to buy — retired outright, not reworked.
-- [ ] **Aspect-Bane auto-marking goes with `routeOvercomeDraw`.**
+- [x] **The roll no longer touches the pool.** `pickTwoRandom`
+      (`gameLogic.ts:56`) already sampled two stones without mutating its
+      input; the new `/stones/draw` route (`handleDraw` in `GameTable.ts`)
+      uses it through `drawFromBag` and passes `this.game` through unchanged
+      to `commit` — a draw is a **read** of the current pool, not a write to
+      it, full stop. `routeOvercomeDraw` and the `removeStones` call that fed
+      it are gone from that path (`removeStones` itself stays, unused, as the
+      removal half a future `/stones/remove` needs — see 23.2).
+- [x] **That collapses the roll to one click, no reroll.** `pendingRoll`,
+      `/stones/accept`, `/stones/reroll`, and the roll/reroll/accept
+      three-step lifecycle are gone — `POST /stones/draw` (facilitator-only)
+      is the one stateless action that draws and logs in the same click.
+- [x] **Overcomes lose their target.** `Overcome`, `POST /overcome/start` /
+      `/overcome/cancel`, and the target carve-out in `rollGate` are deleted
+      (`rollGate` itself is gone — `/stones/draw` is a plain
+      `facilitatorOnly` route now that there is no target to also admit). A
+      draw is just a draw; bringing back a framed "start an overcome" beat
+      later is additive, not a revert.
+- [x] **Press Fate goes with the target.** `REROLL_COST` and the reroll-cost
+      branch in the old roll handler are deleted outright.
+- [x] **Aspect-Bane auto-marking goes with `routeOvercomeDraw`.**
       `archetype_banes` / `desire_banes` / `quest_banes` (migration `0009`)
-      stop being written by a roll — there's no "mixed roll" outcome for code
-      to interpret anymore, just two stones shown. The columns and sheet dots
-      stay in place; see the open questions for whether they freeze as
-      history or become a manual facilitator field.
-- [ ] The draw is a **log line only** (23.7): the facilitator clicks, the two
-      stones appear in the log, and that's the whole of the action. What the
-      table decides those two stones mean for the pool, a sheet, or a session
-      context is a separate, unconnected click through 23.2 — see that
-      section for why the interface doesn't try to link the two.
+      are no longer written by anything (`incrementAspectBane` stays defined,
+      unused) — the columns and sheet dots stay in place, frozen at whatever
+      they last held. Still an open question below which of the three
+      outcomes that becomes permanently.
+- [x] The draw is a **log line only**: `handleDraw` posts `Drew: <kind>,
+      <kind>` and nothing else. `View/Stones.elm`'s two-state pending-roll UI
+      collapsed to a single facilitator "Draw two stones" button as a direct
+      consequence of `pendingRoll` leaving `GameState` — the result was
+      always going to show up only in the log once there was no pending-roll
+      state left to render inline. What the table decides those two stones
+      mean for the pool, a sheet, or a session context is a separate,
+      unconnected click through 23.2 (not yet built) — see that section for
+      why the interface doesn't try to link the two.
+- [x] **Help Out has nothing left to reroll.** `handleUseAbility` now refuses
+      every `help-out` raise outright (400) instead of gating on
+      `overcome`/`pendingRoll`, and the `help-out` arm of
+      `handleProposalDecision` is unreachable dead code kept only so the
+      switch stays exhaustive — per principle 10 this is interface
+      subtraction, not schema deletion, so the `AbilityKind` / `ProposalKind`
+      variant and the client's Help Out button (now permanently disabled,
+      `View/Moves.elm`) stay in place.
+- [x] **Pledges no longer have anything to spend into.** `committedBoons`
+      still widens a draw's odds (`drawFromBag` adds one extra Boon per
+      committed boon to the bag) but the accepted-roll step that used to
+      deduct them from `fate` is gone with `handleAcceptRoll` — a pledge
+      costs nothing right now. Flagged in the type doc comments
+      (`worker/src/types.ts`, `client/src/Types.elm`) rather than resolved:
+      this is the same "does pledge survive" open question below, not a new
+      decision.
 
 ### 23.2 Facilitator: three free-standing resource actions
 
@@ -1213,12 +1225,12 @@ them, and rebuilds the view shell from the ground up. Character sheet editing
 it's the one piece of shared state this section doesn't touch. Suggested
 order, each its own branch off `main`:
 
-1. **23.1 + 23.2** (worker) — the stateless one-click overcome draw and the
-   three free-standing facilitator routes (pool add/remove, session-context
-   add/remove; player-boon adjustment needs no new route), with worker
-   tests, decoupled from any client change; the existing single-column UI
-   can drive the new routes with a minimal client change as an intermediate
-   step.
+1. **23.1** (worker + minimal client) — done: the stateless one-click draw,
+   with worker tests; the existing single-column UI now drives `/stones/draw`
+   directly rather than the retired roll/reroll/accept lifecycle.
+   **23.2** (worker) — not yet built: the three free-standing facilitator
+   routes (pool add/remove, session-context add/remove; player-boon
+   adjustment needs no new route), decoupled from any client change.
 2. **23.3** (worker + client) — the `FloatingBoon` → session-aspect widening,
    isolated from the layout rewrite since it's the other wire-format change.
 3. **23.4** (client) — disconnect the Moves card and the proposal-posting
@@ -1230,16 +1242,20 @@ order, each its own branch off `main`:
 
 ### Open questions to settle before or during play
 
-- [ ] Does `pledge` (Highlight an Aspect) survive as the one remaining
-      player-initiated shared-state action, or does the facilitator absorb
-      pledging too? A related wrinkle 23.1 surfaces: today's draw pulls from
-      the pool *plus* any pledged boons (`drawFromBag`,
-      `worker/src/GameTable.ts:1276`), so if pledges no longer affect a
-      draw's odds either, there may be nothing left for a pledge to do.
-- [ ] Does `/overcome/start` / `/overcome/cancel` survive as a distinct
-      facilitator step now that an overcome has no target and no pool
-      write, or is it fully folded into the single one-click "Roll" action
-      from 23.1?
+- [x] Resolved, for now: the facilitator absorbs pledging rather than
+      `pledge` surviving as a player-initiated action. The Pledge
+      ("Highlight") `+` / `−` control on the sheet is disconnected
+      (`View/Characters.elm`'s `boonsBlock` no longer calls
+      `pledgeControls`) — boon movement is left to the facilitator's Grant
+      control exclusively. The underlying machinery is untouched and easy to
+      re-wire: `Kind.Pledge`, `applyPledge`, `/stones/commit`, and
+      `drawFromBag`'s committed-boons odds bump all stay in code, just
+      unreachable from the current UI.
+- [ ] 23.1 resolved this one rather than leaving it open: `/overcome/start` /
+      `/overcome/cancel` did not survive — a draw is just a draw, with no
+      distinct "start an overcome" step. If the table finds it still wants an
+      overcome framed as its own beat, that's a small addition back, not a
+      revert.
 - [ ] Does aspect-Bane tracking freeze as read-only history, become a manual
       facilitator field, or drop off the sheet display while nothing writes
       it?

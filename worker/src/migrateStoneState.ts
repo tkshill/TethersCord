@@ -1,17 +1,15 @@
 // worker/src/migrateStoneState.ts
 //
-// The DO owns one blob of state D1 does not — the stone pool, pending roll,
-// proposal queue, session, overcome, floating boons, used-ability flags —
-// under `KEY_STONES`. This module keeps the load-time compatibility handling
-// (colour-named stones, missing fields added by later features, retired
-// fields folded forward) out of the main flow, so it is easy to delete once no
-// old blob can still be on disk.
+// The DO owns one blob of state D1 does not — the stone pool, proposal queue,
+// session, floating boons, used-ability flags — under `KEY_STONES`. This
+// module keeps the load-time compatibility handling (colour-named stones,
+// missing fields added by later features, retired fields folded forward) out
+// of the main flow, so it is easy to delete once no old blob can still be on
+// disk.
 
 import type {
   CommittedBoon,
   FloatingBoon,
-  Overcome,
-  PendingRoll,
   Proposal,
   SessionState,
   StoneKind,
@@ -21,8 +19,6 @@ import type {
 /** The shape held in `KEY_STONES` and folded into `GameState` on load. */
 export type StoneState = {
   stonePool: StoneKind[];
-  pendingRoll: PendingRoll | null;
-  overcome: Overcome | null;
   committedBoons: CommittedBoon[];
   floatingBoons: FloatingBoon[];
   usedAbilities: UsedAbilities[];
@@ -35,11 +31,16 @@ export type StoneState = {
 export type LegacyStoneKind = StoneKind | "WhiteStone" | "BlackStone";
 export type LegacyStoneState = {
   stonePool: LegacyStoneKind[];
-  pendingRoll: {
+  /** Retired along with the roll/reroll/accept lifecycle (23.1) — a draw is
+   * now a read-only, stateless action, so nothing is left pending between
+   * requests. Read for old blobs but dropped from `StoneState`. */
+  pendingRoll?: {
     chosen: LegacyStoneKind[];
     rest: LegacyStoneKind[];
   } | null;
-  overcome?: Overcome | null;
+  /** Retired along with `pendingRoll` (23.1) — an overcome no longer names a
+   * target, so there is nothing left to be "open". */
+  overcome?: { targetSlot: number } | null;
   committedBoons?: CommittedBoon[];
   floatingBoons?: FloatingBoon[];
   usedAbilities?: UsedAbilities[];
@@ -77,8 +78,6 @@ export function migrateStoneState(
   if (!stored) {
     return {
       stonePool: [...initialPool],
-      pendingRoll: null,
-      overcome: null,
       committedBoons: [],
       floatingBoons: [],
       usedAbilities: [],
@@ -98,13 +97,6 @@ export function migrateStoneState(
       ...legacySessionPool,
       ...legacyCarriedBanes,
     ],
-    pendingRoll: stored.pendingRoll
-      ? {
-          chosen: stored.pendingRoll.chosen.map(migrateStoneKind),
-          rest: stored.pendingRoll.rest.map(migrateStoneKind),
-        }
-      : null,
-    overcome: stored.overcome ?? null,
     committedBoons: stored.committedBoons ?? [],
     floatingBoons: stored.floatingBoons ?? [],
     usedAbilities: stored.usedAbilities ?? [],
