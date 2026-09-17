@@ -274,7 +274,7 @@ suggestCompel =
 
 floatingBoon : Term
 floatingBoon =
-    { term = "Floating boon"
+    { term = "Session aspect"
     , short = "A Boon or a Bane owned by nobody, planted by the facilitator."
     , long =
         "A session context — a Boon or a Bane, with a note of what it stands for — the facilitator plants directly, or approves from a player's Add a Detail or Gain Insight (always a Boon). It stays until the facilitator removes it, or the session ends."

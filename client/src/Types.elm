@@ -441,6 +441,11 @@ type alias Model =
     -- from the running session's goal.
     , goalEdit : String
 
+    -- Whether the top bar's session controls (start / end / edit goal) are
+    -- expanded. Collapsed on load so the bar stays one line at rest; toggled
+    -- by `ToggleSessionControls`, purely local view state.
+    , sessionControlsExpanded : Bool
+
     -- Context note the facilitator types when approving an Add a Detail or Gain
     -- Insight proposal (the text attached to the resulting floating boon), keyed
     -- by proposal id so each queued proposal has its own field.
@@ -543,6 +548,7 @@ type Msg
     | CancelConfirm
     | DismissError
     | ToggleGuide
+    | ToggleSessionControls
     | ToggleAspectExamples Int Aspect
     | WsStatusChanged String
     | RetryGetGameState

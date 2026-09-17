@@ -277,6 +277,16 @@ suite =
                     , Main.update ToggleGuide opened
                     )
                         |> Expect.equal ( True, ( ready, Effect.None ) )
+            , test "ToggleSessionControls flips the top-bar expander open and shut, no effect" <|
+                \_ ->
+                    let
+                        opened =
+                            Main.update ToggleSessionControls ready |> Tuple.first
+                    in
+                    ( opened.sessionControlsExpanded
+                    , Main.update ToggleSessionControls opened
+                    )
+                        |> Expect.equal ( True, ( ready, Effect.None ) )
             , test "ToggleAspectExamples opens one aspect's list, then closes it" <|
                 \_ ->
                     let

@@ -15,6 +15,18 @@
         font-display: swap;
         src: url("/fonts/inter-latin-wght-normal.woff2") format("woff2");
       }
+
+      /* The three-column layout (roadmap section 23.5) is a fixed-height
+         `Element.layout` that fills the viewport; elm-ui measures `height
+         fill` against its parent, so every ancestor up to `html` needs an
+         explicit height for that to reach anywhere — `#root` included, since
+         a bare `<div>` does not inherit its parent's percentage height. */
+      html,
+      body,
+      #root {
+        height: 100%;
+        margin: 0;
+      }
     </style>
     <script>
       // Inject environment-style values for the client

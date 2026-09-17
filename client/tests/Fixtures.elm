@@ -108,6 +108,7 @@ model =
     , logAtBottom = True
     , newSessionGoal = ""
     , goalEdit = ""
+    , sessionControlsExpanded = False
     , proposalDrafts = Dict.empty
     , newFloatingBoonNote = ""
     , newFloatingBoonKind = Boon
