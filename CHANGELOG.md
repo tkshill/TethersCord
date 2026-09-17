@@ -51,6 +51,18 @@ version yet, so headings are dates.
   persistent pool regardless of any roll. The worker route and its proposal
   accept are untouched and fully functional, just unreachable from any
   current UI. A session context's lifecycle is now create and delete only.
+- **The Moves card is now inert reference text, not a control** (roadmap
+  section 23.4, Phase 2 — facilitator-run resources). Help Out, Add a Detail,
+  Gain Insight, Suggest Compel, and Accept Compel no longer post proposals —
+  `View/Moves.elm` renders each as a plain label instead of a button, so the
+  card reads as a reminder of what a player can say at the table. Subtraction
+  from the interface only, per `DESIGN_PRINCIPLES.md` #10: the `Msg`
+  constructors, `Effect`s, `Api` calls, and the worker's proposal / ability
+  routes are all untouched and still fully functional, just unreachable from
+  any current UI, marked with a `-- OFF while testing simplified interface`
+  comment for easy re-wiring later. The general Proposals panel in
+  `View/Stones.elm` is untouched and still resolves or withdraws anything
+  already queued.
 
 ### Added
 
