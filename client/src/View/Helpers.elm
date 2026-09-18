@@ -1,5 +1,7 @@
 module View.Helpers exposing
     ( ViewContext
+    , accordionHeader
+    , accordionHeaderWith
     , characterLabel
     , countProposals
     , glossaryTitle
@@ -16,13 +18,14 @@ module View.Helpers exposing
 {-| Small view helpers shared by more than one of the `View.*` section modules:
 the `ViewContext` record threaded through every section, the proposal-count /
 latest-id lookups, the "(n pending) · withdraw" hint, the bordered-input
-attributes, the plain placeholder line, and the two glossary-tooltip helpers
-that pair a label with its `Copy.Terms` gloss.
+attributes, the plain placeholder line, the two glossary-tooltip helpers that
+pair a label with its `Copy.Terms` gloss, and the left panel's accordion
+header (roadmap section 24, the 1c layout variant).
 -}
 
 import Copy
 import Copy.Terms as Terms
-import Element exposing (Element, el, none, spacing, text, width)
+import Element exposing (Element, el, fill, none, spacing, text, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -178,3 +181,39 @@ withdrawLink maybeId =
 
         Nothing ->
             none
+
+
+{-| A left-panel card's title, doubled as its accordion toggle (roadmap
+section 24, the 1c layout variant) — the same self-contained pattern
+`View.Guide`'s own header already used. `title` is the card's usual heading
+element (built by the caller, so a plain `Ui.sectionTitle` or a
+`glossaryTitle` both work unchanged); clicking anywhere in the row fires
+`toggle`.
+-}
+accordionHeader : Bool -> Element msg -> msg -> Element msg
+accordionHeader open title toggle =
+    accordionHeaderWith open title toggle none
+
+
+{-| As `accordionHeader`, with a trailing element (e.g. Moves' "n of 4 left")
+shown at the row's far end regardless of open/closed state.
+-}
+accordionHeaderWith : Bool -> Element msg -> msg -> Element msg -> Element msg
+accordionHeaderWith open title toggle trailing =
+    Input.button [ width fill ]
+        { onPress = Just toggle
+        , label =
+            Element.row [ spacing Ui.sm, width fill ]
+                [ el [ Font.size 11, Font.color Ui.inkSoft ]
+                    (text
+                        (if open then
+                            "▾"
+
+                         else
+                            "▸"
+                        )
+                    )
+                , title
+                , el [ Element.alignRight ] trailing
+                ]
+        }

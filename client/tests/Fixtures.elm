@@ -120,7 +120,10 @@ model =
     , connection = Connected
     , gameStateAttempts = 0
     , timeZone = Time.utc
-    , rightPanelTab = LogTab
+    , rightPanelTab = NpcsLocationsTab
+    , openLeftSections = { facilitator = True, characters = True, moves = False }
+    , leftPanelWidth = 420
+    , draggingDivider = False
     }
 
 

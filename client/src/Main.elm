@@ -11,6 +11,7 @@ that into a `Cmd` once, here at the boundary.
 
 import Api
 import Browser
+import Browser.Events
 import Dict
 import Effect exposing (Effect)
 import Json.Decode as Decode
@@ -64,6 +65,25 @@ pledgeDelay =
     700
 
 
+{-| The left panel's width in pixels (roadmap section 24, the 1c layout
+variant), and the range the draggable divider clamps it to so neither panel
+can be dragged away to nothing.
+-}
+defaultLeftPanelWidth : Float
+defaultLeftPanelWidth =
+    420
+
+
+minLeftPanelWidth : Float
+minLeftPanelWidth =
+    280
+
+
+maxLeftPanelWidth : Float
+maxLeftPanelWidth =
+    640
+
+
 connectionFromString : String -> Connection
 connectionFromString raw =
     case raw of
@@ -78,6 +98,22 @@ connectionFromString raw =
 
         _ ->
             Offline
+
+
+{-| Flip one of the left panel's three accordion sections, leaving the other
+two untouched (roadmap section 24, the 1c layout variant).
+-}
+toggleLeftSection : LeftSection -> LeftSections -> LeftSections
+toggleLeftSection section sections =
+    case section of
+        FacilitatorSection ->
+            { sections | facilitator = not sections.facilitator }
+
+        CharactersSection ->
+            { sections | characters = not sections.characters }
+
+        MovesSection ->
+            { sections | moves = not sections.moves }
 
 
 main : Program Flags Model Msg
@@ -129,18 +165,29 @@ init flags =
       , connection = Connected
       , gameStateAttempts = 0
       , timeZone = Time.utc
-      , rightPanelTab = LogTab
+      , rightPanelTab = NpcsLocationsTab
+      , openLeftSections = { facilitator = True, characters = True, moves = False }
+      , leftPanelWidth = defaultLeftPanelWidth
+      , draggingDivider = False
       }
     , Effect.Batch [ Effect.Authorize, Effect.GetTimeZone ]
     )
 
 
 subscriptions : Model -> Sub Msg
-subscriptions _ =
+subscriptions model =
     Sub.batch
         [ Ports.fromDiscord FromDiscordRaw
         , Ports.wsGameState WsGameStateRaw
         , Ports.wsStatus WsStatusChanged
+        , if model.draggingDivider then
+            Sub.batch
+                [ Browser.Events.onMouseMove (Decode.map DividerDragged (Decode.field "movementX" Decode.float))
+                , Browser.Events.onMouseUp (Decode.succeed DividerDragEnded)
+                ]
+
+          else
+            Sub.none
         ]
 
 
@@ -530,6 +577,23 @@ update msg model =
 
         SelectRightPanelTab tab ->
             ( { model | rightPanelTab = tab }, Effect.None )
+
+        ToggleLeftSection section ->
+            ( { model | openLeftSections = toggleLeftSection section model.openLeftSections }, Effect.None )
+
+        DividerDragStarted ->
+            ( { model | draggingDivider = True }, Effect.None )
+
+        DividerDragged deltaX ->
+            ( { model
+                | leftPanelWidth =
+                    clamp minLeftPanelWidth maxLeftPanelWidth (model.leftPanelWidth + deltaX)
+              }
+            , Effect.None
+            )
+
+        DividerDragEnded ->
+            ( { model | draggingDivider = False }, Effect.None )
 
         ToggleAspectExamples slot aspect ->
             let

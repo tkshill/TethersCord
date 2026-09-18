@@ -339,6 +339,15 @@ usedSuffix =
     " (used)"
 
 
+{-| The Moves card's collapsed-accordion summary (roadmap section 24, the 1c
+layout variant): how many of the four once-per-session-or-fewer abilities
+(Alter, Add a Detail, Gain Insight, Complicate) are still unused.
+-}
+movesRemainingSummary : Int -> Int -> String
+movesRemainingSummary remaining total =
+    String.fromInt remaining ++ " of " ++ String.fromInt total ++ " left"
+
+
 pendingSuffix : String
 pendingSuffix =
     " (pending)"

@@ -1364,49 +1364,72 @@ order, each its own branch off `main`:
 ## 24. Two-panel layout, replacing the three-column shell — done
 
 Where section 23 rebuilt the view as three viewport-sized columns, this
-retires that shell in favour of two: a left panel unchanged from 23.5
-(Facilitator panel, Characters, Moves) and a right panel that trades the old
-centre and right columns — five always-visible cards — for one tabbed column
-showing one of them at a time. Chosen from three directions sketched in a
-design canvas (a steady scroll-stack left panel with a flat tab strip on the
-right; both panels tabbed, player-sheet-first; an accordion left panel with a
-draggable divider) — the scroll-stack-plus-tab-strip direction, for the
-closest fit to the existing card modules and because it needed no new
-interaction primitives (no per-section accordion state, no drag-resize port).
+retires that shell in favour of two. Chosen from three directions sketched in
+a design canvas (a steady scroll-stack left panel with a flat tab strip on
+the right; both panels tabbed, player-sheet-first; an accordion left panel
+with a draggable divider and the log pinned beneath a tab strip rather than
+inside it) — the accordion-plus-divider direction ("1c" in that canvas), after
+a first pass had already shipped and been reverted in favour of it. The top
+bar is untouched (23.6's goal expander and the Facilitator panel's own Draw
+button stay exactly where they were) — 1c's mockup also sketches an inline
+top-bar goal editor and a top-bar Draw button, but that revisits an already-
+shipped, separately-numbered decision rather than the three-vs-two-panel
+question this section is about.
 
-- [x] **Left panel unchanged.** `View.FacilitatorPanel`, `View.Characters`,
-      `View.Moves` stay exactly as 23.5 arranged them, now at `fillPortion 5`
-      of a two-way split (`Ui.scrollColumn 5`) instead of `3` of a three-way
-      one.
-- [x] **Right panel: one tabbed column.** Four tabs — Log; NPCs & Locations
-      (`View.Entities Npc` + `View.Entities Location`, previously two
-      separate cards); Session context (`View.SessionAspects` +
-      `View.Session`, previously two separate cards); How to play
-      (`View.Guide`, unchanged, including its own now slightly redundant
-      expand/collapse — left alone rather than reworking its internal state
-      for this pass) — one visible at a time at `fillPortion 7`. Which tab is
-      showing is `Model.rightPanelTab` (`RightPanelTab`), switched by the new
-      `SelectRightPanelTab` message; purely local view state, the same
-      pattern as `guideExpanded` / `ToggleGuide`, defaulting to the Log tab so
-      the table lands where the old right column always showed it. The Log
-      tab keeps `View.Log`'s own `cardFill` (it already owns the scrolling
-      DOM id the pin-to-bottom behaviour needs); the other three tabs are a
-      plain `Ui.scrollArea` stack of the cards they combine — the
-      non-`fillPortion` half of what `Ui.scrollColumn` already did, factored
-      out so a tab's content can scroll independently of the panel hosting it
-      without pretending to be one of the page's own top-level columns.
-- [x] **Composer moves off the log column onto the page.** With the log now
-      one tab among four rather than its own whole column, pinning the
-      composer beneath just the log stopped making sense — sending a message
-      should not require switching off whatever tab you're reading. `Ui.page`
+- [x] **Left panel: three collapsible accordion sections, not a fixed
+      stack.** `View.FacilitatorPanel`, `View.Characters`, `View.Moves` keep
+      their content exactly as 23.5 arranged it, but each card's own title is
+      now also its accordion toggle — the same self-contained
+      title-doubles-as-toggle pattern `View.Guide` already used, factored out
+      as `View.Helpers.accordionHeader` / `accordionHeaderWith` (the `With`
+      variant adds a trailing element, for Moves' "n of 4 left" once-per-
+      session-abilities-remaining count, visible whether or not that section
+      is open). Open/closed state is `Model.openLeftSections`
+      (`LeftSections`), toggled by `ToggleLeftSection` (`LeftSection`);
+      Facilitator and Characters default open, Moves closed, since a player
+      checks their own sheet far more often than the Moves reminder card.
+- [x] **The left/right split is mouse-draggable, not a fixed `fillPortion`.**
+      `Model.leftPanelWidth` (a pixel width, defaulting to 420, clamped to
+      280–640) sizes the left panel directly; `Ui.dragHandle`, a slim
+      `cursor: col-resize` strip with a small grip mark, sits between the two
+      panels and fires `DividerDragStarted` on mousedown. While
+      `Model.draggingDivider` is true, `Main.subscriptions` adds
+      `Browser.Events.onMouseMove` (reading the browser's own `movementX` off
+      each event, so no element geometry needs measuring) and `onMouseUp`,
+      posting `DividerDragged <deltaX>` / `DividerDragEnded`. No JS port
+      needed — `Browser.Events` (already an `elm/browser` dependency) is
+      enough on its own.
+- [x] **Right panel: a three-tab strip over shared state, with the log pinned
+      below it rather than inside it.** `RightPanelTab` — NPCs & Locations
+      (`View.Entities Npc` + `View.Entities Location`); Session context
+      (`View.SessionAspects` + `View.Session`); How to play (`View.Guide`,
+      unchanged, including its own now slightly redundant expand/collapse —
+      left alone rather than reworking its internal state for this pass) —
+      switched by `SelectRightPanelTab`, defaulting to NPCs & Locations.
+      Beneath the strip, `View.Log` is always visible regardless of which tab
+      is selected, at roughly the mockup's 56/44 split (`fillPortion 5` for
+      the tab content, `4` for the log). A tab's content is a plain
+      `Ui.scrollArea` stack of the cards it combines — the non-`fillPortion`
+      half of what `Ui.scrollColumn` already did, factored out so a region
+      can scroll independently of the panel hosting it without pretending to
+      be one of the page's own top-level columns.
+- [x] **Composer moves off the log column onto the page.** With the log no
+      longer confined to one tab's worth of visibility, and the whole point
+      of pinning it beneath the strip being that it's never hidden, the
+      composer follows it out to page level anyway — sending a message
+      should not depend on which tab is showing above the log. `Ui.page`
       gains a third region, `bottom`, rendered under the columns row with a
       hairline top border (hidden entirely when empty, as during the
       pre-game-state loading screen); the composer is its only occupant.
 - [x] Verified by rendering the real `View.view` against a hand-built fixture
       in a throwaway Elm harness under headless Chrome (same verification
-      approach 23.5 used) — checked all four right-panel tabs, both roles,
-      and that switching tabs is a real `Msg` round-trip through `Main.update`
-      rather than a hardcoded snapshot.
+      approach 23.5 used) — checked all three right-panel tabs with the log
+      pinned beneath, the accordion both open and closed (including Moves'
+      remaining-count summary), and both roles, with tab/accordion state
+      changed through the real `Main.update` rather than a hardcoded
+      snapshot. The drag interaction itself was not driven by a script (a
+      static screenshot can't show motion); its mouse-subscription gating
+      follows the same pattern already exercised elsewhere in `Main.update`.
 
 # Phase 3 — potential future plans
 

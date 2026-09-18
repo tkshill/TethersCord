@@ -3,7 +3,8 @@ module View.Characters exposing (view)
 {-| The Characters card: a tab strip over the three sheets and the selected
 sheet itself — owner row, boons (facilitator Grant only, for now — see
 `pledgeControls`), the text fields, and the three aspects with their
-accumulated Banes.
+accumulated Banes. Collapsible as one of the left panel's three accordion
+sections (roadmap section 24, the 1c layout variant).
 -}
 
 import Copy
@@ -17,6 +18,7 @@ import Ui
 import View.Helpers
     exposing
         ( ViewContext
+        , accordionHeader
         , characterLabel
         , glossaryTitle
         , inputAttrs
@@ -30,32 +32,39 @@ import View.Helpers
 type alias Props =
     { selectedSlot : Int
     , aspectExamplesOpen : Maybe ( Int, Aspect )
+    , open : Bool
     }
 
 
 view : ViewContext -> Props -> GameState -> Element Msg
 view ctx props gs =
     Ui.card
-        [ glossaryTitle Copy.charactersTitle "Aspect"
-        , let
-            selected =
-                case List.filter (\c -> c.slot == props.selectedSlot) gs.characters of
-                    first :: _ ->
-                        Just first
+        (accordionHeader props.open (glossaryTitle Copy.charactersTitle "Aspect") (ToggleLeftSection CharactersSection)
+            :: (if props.open then
+                    [ let
+                        selected =
+                            case List.filter (\c -> c.slot == props.selectedSlot) gs.characters of
+                                first :: _ ->
+                                    Just first
 
-                    [] ->
-                        List.head gs.characters
-          in
-          Element.column [ spacing Ui.md, width fill ]
-            [ tabStrip ctx.myId props.selectedSlot gs.characters
-            , case selected of
-                Just ch ->
-                    characterSheet ctx.facilitator ctx.myId props.aspectExamplesOpen gs ch
+                                [] ->
+                                    List.head gs.characters
+                      in
+                      Element.column [ spacing Ui.md, width fill ]
+                        [ tabStrip ctx.myId props.selectedSlot gs.characters
+                        , case selected of
+                            Just ch ->
+                                characterSheet ctx.facilitator ctx.myId props.aspectExamplesOpen gs ch
 
-                Nothing ->
-                    placeholder Copy.noCharacterSheets
-            ]
-        ]
+                            Nothing ->
+                                placeholder Copy.noCharacterSheets
+                        ]
+                    ]
+
+                else
+                    []
+               )
+        )
 
 
 {-| One tab per sheet, labelled by character name (or a slot number until one is

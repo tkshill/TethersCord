@@ -1,14 +1,16 @@
 module View exposing (logDomId, view)
 
 {-| The Activity view: the page shell (header, connection note, status banner,
-the top bar) over two independently-scrolling panels (roadmap section 24,
-replacing 23.5's three-column shell) — left (facilitator panel, character
-sheets, moves, unchanged from 23.5) and right, a single tabbed column
-switching between the event log, NPCs & locations, session context (session
-aspects and session history), and the guide — with the composer pinned under
-the panels row instead of under any one column, since sending a message no
-longer needs the log tab open. Each card still lives in its own `View.*`
-module and is handed a `ViewContext` computed once here.
+the top bar) over two panels (roadmap section 24, replacing 23.5's
+three-column shell; this is the "1c" layout variant) — a resizable left panel
+of accordion sections (Facilitator panel, Characters, Moves, unchanged in
+content from 23.5) and a right panel splitting its height between a tab strip
+switching between NPCs & locations, session context (session aspects and
+session history), and the guide, and the event log pinned always-visible
+beneath it — with the composer pinned under the panels row rather than under
+any one column, since sending a message doesn't depend on which tab is
+showing. Each card still lives in its own `View.*` module and is handed a
+`ViewContext` computed once here.
 -}
 
 import Copy
@@ -80,68 +82,86 @@ view model =
             Ui.page
                 { top = top
                 , columns =
-                    [ Ui.scrollColumn 5
-                        [ View.FacilitatorPanel.view ctx
-                            { inflight = model.inflight
-                            , drafts = model.proposalDrafts
-                            }
-                            gs
-                        , View.Characters.view ctx
-                            { selectedSlot = model.selectedSlot
-                            , aspectExamplesOpen = model.aspectExamplesOpen
-                            }
-                            gs
-                        , View.Moves.view ctx gs
-                        ]
+                    [ leftPanel ctx model gs
+                    , Ui.dragHandle DividerDragStarted
                     , rightPanel ctx model gs
                     ]
                 , bottom = [ composer model ]
                 }
 
 
-{-| The right panel (roadmap section 24): a tab strip over a single scrolling
-content area, in place of the old centre and right columns. `fillPortion 7`
-against the left panel's `5` mirrors the mockup's 5/7 split.
+{-| The left panel (roadmap section 24, the 1c layout variant): the same three
+cards 23.5 put here, now each its own collapsible accordion section, at a
+mouse-draggable pixel width (`Model.leftPanelWidth`) instead of a fixed
+`fillPortion` of the row.
+-}
+leftPanel : ViewContext -> Model -> GameState -> Element Msg
+leftPanel ctx model gs =
+    Element.el
+        [ Element.height fill
+        , width (Element.px (round model.leftPanelWidth))
+        , Ui.shrinkable
+        ]
+        (Ui.scrollArea
+            [ View.FacilitatorPanel.view ctx
+                { inflight = model.inflight
+                , drafts = model.proposalDrafts
+                , open = model.openLeftSections.facilitator
+                }
+                gs
+            , View.Characters.view ctx
+                { selectedSlot = model.selectedSlot
+                , aspectExamplesOpen = model.aspectExamplesOpen
+                , open = model.openLeftSections.characters
+                }
+                gs
+            , View.Moves.view ctx { open = model.openLeftSections.moves } gs
+            ]
+        )
+
+
+{-| The right panel (roadmap section 24, the 1c layout variant): a tab strip
+and its content take the top share of the panel's height; the event log is
+pinned beneath, always visible regardless of which tab is selected, at
+roughly the mockup's 56/44 split (`fillPortion 5` / `4`).
 -}
 rightPanel : ViewContext -> Model -> GameState -> Element Msg
 rightPanel ctx model gs =
     Element.column
         [ Element.height fill
-        , width (Element.fillPortion 7)
+        , width fill
         , spacing Ui.md
         , Ui.shrinkable
         ]
         [ rightPanelTabStrip model.rightPanelTab
-        , rightPanelContent ctx model gs
+        , Element.el [ Element.height (Element.fillPortion 5), width fill, Ui.shrinkable ]
+            (rightPanelTabContent ctx model gs)
+        , Element.el [ Element.height (Element.fillPortion 4), width fill, Ui.shrinkable ]
+            (View.Log.view ctx
+                { confirming = model.confirming
+                , loadingHistory = model.loadingHistory
+                , noMoreHistory = model.noMoreHistory
+                }
+                gs
+            )
         ]
 
 
 rightPanelTabStrip : RightPanelTab -> Element Msg
 rightPanelTabStrip selected =
     Element.wrappedRow [ spacing Ui.xs, width fill ]
-        [ Ui.tab (selected == LogTab) Copy.logTitle (SelectRightPanelTab LogTab)
-        , Ui.tab (selected == NpcsLocationsTab) Copy.npcsLocationsTabLabel (SelectRightPanelTab NpcsLocationsTab)
+        [ Ui.tab (selected == NpcsLocationsTab) Copy.npcsLocationsTabLabel (SelectRightPanelTab NpcsLocationsTab)
         , Ui.tab (selected == SessionTab) Copy.sessionContextTabLabel (SelectRightPanelTab SessionTab)
         , Ui.tab (selected == GuideTab) Copy.guideTabLabel (SelectRightPanelTab GuideTab)
         ]
 
 
-{-| The selected tab's content. The Log tab keeps its own `cardFill` (it
-already owns the scrolling region and DOM id the pin-to-bottom behaviour
-needs); every other tab is a plain `Ui.scrollArea` stack of the cards that tab
-combines.
+{-| The selected tab's content, a plain `Ui.scrollArea` stack of the cards that
+tab combines. The event log is not one of these tabs — see `rightPanel`.
 -}
-rightPanelContent : ViewContext -> Model -> GameState -> Element Msg
-rightPanelContent ctx model gs =
+rightPanelTabContent : ViewContext -> Model -> GameState -> Element Msg
+rightPanelTabContent ctx model gs =
     case model.rightPanelTab of
-        LogTab ->
-            View.Log.view ctx
-                { confirming = model.confirming
-                , loadingHistory = model.loadingHistory
-                , noMoreHistory = model.noMoreHistory
-                }
-                gs
-
         NpcsLocationsTab ->
             Ui.scrollArea
                 [ View.Entities.view ctx Npc gs

@@ -5,7 +5,9 @@ the one-click draw (23.1), direct pool edits (23.2), and the queue of
 player-initiated proposals awaiting a decision. Everything here is
 independent of everything else — clicking one has no effect on what any of
 the others can do next (23.2). Renders nothing for a player; the column's
-Characters card above it is the one they share.
+Characters card above it is the one they share. Collapsible as one of the
+left panel's three accordion sections (24, the 1c layout variant); its own
+title doubles as the toggle, same as `View.Guide`'s always has.
 -}
 
 import Copy
@@ -18,12 +20,13 @@ import Roll exposing (Stone(..), stoneLabel)
 import Set exposing (Set)
 import Types exposing (..)
 import Ui
-import View.Helpers exposing (ViewContext, characterLabel, inputAttrs)
+import View.Helpers exposing (ViewContext, accordionHeader, characterLabel, inputAttrs)
 
 
 type alias Props =
     { inflight : Set String
     , drafts : Dict String String
+    , open : Bool
     }
 
 
@@ -34,14 +37,20 @@ view ctx props gs =
 
     else
         Ui.card
-            [ Ui.sectionTitle Copy.facilitatorPanelTitle
-            , Ui.primaryButton
-                { onPress = Ui.press props.inflight "stones:draw" DrawStones
-                , label = Copy.draw
-                }
-            , poolControls props.inflight
-            , proposalsPanel props.inflight props.drafts gs.characters gs.proposals
-            ]
+            (accordionHeader props.open (Ui.sectionTitle Copy.facilitatorPanelTitle) (ToggleLeftSection FacilitatorSection)
+                :: (if props.open then
+                        [ Ui.primaryButton
+                            { onPress = Ui.press props.inflight "stones:draw" DrawStones
+                            , label = Copy.draw
+                            }
+                        , poolControls props.inflight
+                        , proposalsPanel props.inflight props.drafts gs.characters gs.proposals
+                        ]
+
+                    else
+                        []
+                   )
+            )
 
 
 {-| Direct hand-edit of the shared pool (23.2): add or remove one Boon or one

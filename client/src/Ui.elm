@@ -11,6 +11,7 @@ module Ui exposing
     , cardFill
     , danger
     , divider
+    , dragHandle
     , facilitatorTint
     , ghostButton
     , ink
@@ -412,6 +413,33 @@ divider label =
         , el [ Font.size 10, Font.color inkSoft, Font.letterSpacing 0.5 ] (text label)
         , rule
         ]
+
+
+{-| The draggable handle between two resizable panels (roadmap section 24, the
+1c layout variant): a slim `cursor: col-resize` strip with a small grip mark.
+`onStart` fires on mousedown; the caller tracks the mouse from there for as
+long as its own "is this dragging" flag stays true (`Main.subscriptions`),
+since a handle this size cannot itself receive the `mousemove` events once the
+pointer leaves it.
+-}
+dragHandle : msg -> Element msg
+dragHandle onStart =
+    el
+        [ width (Element.px 9)
+        , height fill
+        , Element.htmlAttribute (Html.Attributes.style "cursor" "col-resize")
+        , Element.htmlAttribute (Html.Events.on "mousedown" (Decode.succeed onStart))
+        ]
+        (el
+            [ Element.centerX
+            , Element.centerY
+            , width (Element.px 3)
+            , Element.height (Element.px 28)
+            , Background.color line
+            , Border.rounded 3
+            ]
+            Element.none
+        )
 
 
 rule : Element msg

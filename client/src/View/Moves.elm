@@ -20,25 +20,57 @@ import Element.Font as Font
 import Kind
 import Types exposing (..)
 import Ui
-import View.Helpers exposing (ViewContext, characterLabel, tip)
+import View.Helpers exposing (ViewContext, accordionHeaderWith, characterLabel, tip)
 
 
-view : ViewContext -> GameState -> Element Msg
-view ctx gs =
+{-| The four once-per-session (or fewer) abilities `remainingSummary` counts
+against — every `Kind.AbilityKind` constructor.
+-}
+allAbilities : List Kind.AbilityKind
+allAbilities =
+    [ Kind.HelpOut, Kind.AddDetail, Kind.GainInsight, Kind.SuggestCompel ]
+
+
+type alias Props =
+    { open : Bool }
+
+
+view : ViewContext -> Props -> GameState -> Element Msg
+view ctx props gs =
     case myOwnedSheet ctx.myId gs of
         Nothing ->
             none
 
         Just ch ->
             Ui.card
-                [ Ui.sectionTitle Copy.movesTitle
-                , abilityRow gs ch
-                , suggestCompelRow gs ch
-                , Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
-                    [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.anyTime)
-                    , tip "Accept Compel" (moveLabel Copy.acceptCompel)
-                    ]
-                ]
+                (accordionHeaderWith props.open (Ui.sectionTitle Copy.movesTitle) (ToggleLeftSection MovesSection) (remainingSummary gs ch)
+                    :: (if props.open then
+                            [ abilityRow gs ch
+                            , suggestCompelRow gs ch
+                            , Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
+                                [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.anyTime)
+                                , tip "Accept Compel" (moveLabel Copy.acceptCompel)
+                                ]
+                            ]
+
+                        else
+                            []
+                       )
+                )
+
+
+{-| "n of 4 left", shown beside the card title whether the accordion section is
+open or closed (roadmap section 24, the 1c layout variant) — the one thing
+about a character's Moves worth seeing at a glance without opening the card.
+-}
+remainingSummary : GameState -> CharacterSheet -> Element msg
+remainingSummary gs ch =
+    let
+        remaining =
+            List.length (List.filter (\k -> not (abilityUsed ch.slot k gs.usedAbilities)) allAbilities)
+    in
+    el [ Font.size 11, Font.color Ui.inkSoft ]
+        (text (Copy.movesRemainingSummary remaining (List.length allAbilities)))
 
 
 myOwnedSheet : Maybe String -> GameState -> Maybe CharacterSheet
