@@ -23,6 +23,7 @@ import Types
         , Flags
         , GameState
         , Model
+        , RightPanelTab(..)
         , Role(..)
         )
 
@@ -119,6 +120,10 @@ model =
     , connection = Connected
     , gameStateAttempts = 0
     , timeZone = Time.utc
+    , rightPanelTab = NpcsLocationsTab
+    , openLeftSections = { facilitator = True, characters = True, moves = False }
+    , leftPanelWidth = 420
+    , draggingDivider = False
     }
 
 

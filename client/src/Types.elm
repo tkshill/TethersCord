@@ -11,11 +11,14 @@ module Types exposing
     , FloatingBoon
     , Flags
     , GameState
+    , LeftSection(..)
+    , LeftSections
     , Message
     , Model
     , Msg(..)
     , MutationOutcome
     , Proposal
+    , RightPanelTab(..)
     , Role(..)
     , Session
     , SessionSummary
@@ -485,6 +488,24 @@ type alias Model =
     -- Viewer's local time zone, used to render message timestamps. Starts at
     -- UTC and is replaced once Time.here resolves.
     , timeZone : Time.Zone
+
+    -- Which tab the right panel's tab strip is showing (roadmap section 24).
+    -- Purely local view state, toggled by `SelectRightPanelTab`; the event log
+    -- is not one of these tabs — it is pinned beneath the strip instead — so
+    -- this defaults to the first reference-state tab.
+    , rightPanelTab : RightPanelTab
+
+    -- Which of the left panel's three accordion sections (24, the 1c layout
+    -- variant) are open. Purely local view state, toggled by
+    -- `ToggleLeftSection`.
+    , openLeftSections : LeftSections
+
+    -- The left panel's width in pixels (24, 1c), dragged by the divider
+    -- handle between the two panels. `draggingDivider` is true for the
+    -- duration of a drag, gating the mouse-move/mouse-up subscriptions that
+    -- track it (`Main.subscriptions`).
+    , leftPanelWidth : Float
+    , draggingDivider : Bool
     }
 
 
@@ -495,6 +516,37 @@ type Connection
     | Reconnecting
     | Offline
     | Rejected
+
+
+{-| The right panel's tab strip (roadmap section 24, the 1c layout variant):
+the facilitator's reference state (NPCs and locations); the table's session
+context (floating boons and session history); and the glossary. One at a
+time; the event log is not among them — it is its own pinned region beneath
+the strip, always visible regardless of which tab is selected.
+-}
+type RightPanelTab
+    = NpcsLocationsTab
+    | SessionTab
+    | GuideTab
+
+
+{-| Which of the left panel's three cards an accordion toggle names (24, 1c).
+-}
+type LeftSection
+    = FacilitatorSection
+    | CharactersSection
+    | MovesSection
+
+
+{-| Open/closed state for each of the left panel's three accordion sections.
+Facilitator and Characters default open; Moves defaults closed, since a
+player checks it far less often than their own sheet.
+-}
+type alias LeftSections =
+    { facilitator : Bool
+    , characters : Bool
+    , moves : Bool
+    }
 
 
 
@@ -549,6 +601,11 @@ type Msg
     | DismissError
     | ToggleGuide
     | ToggleSessionControls
+    | SelectRightPanelTab RightPanelTab
+    | ToggleLeftSection LeftSection
+    | DividerDragStarted
+    | DividerDragged Float
+    | DividerDragEnded
     | ToggleAspectExamples Int Aspect
     | WsStatusChanged String
     | RetryGetGameState

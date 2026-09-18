@@ -1242,11 +1242,10 @@ the viewport:
       fills its column's height instead of shrinking to content) rather than
       one card among several with its own internal `maximum 360` cap.
 - [x] **Composer** stays pinned under the log column, not the whole page.
-- [ ] **Narrow-viewport fallback — still an open question.** Not attempted
-      here — the strict three-column row does not survive phone width, and
-      this pass only verified the layout at Activity-embed widths. Left for
-      whenever it's actually checked against a narrow Activity window, per
-      the roadmap's own "good enough, not pixel-true" bar above.
+- [x] **Narrow-viewport fallback — resolved by section 24**, not by adding a
+      breakpoint to the three-column row: the row itself is retired in favour
+      of a two-panel layout, sidestepping the question this bullet asked
+      rather than answering it.
 
 ### 23.6 Top bar: session text and the pool — done
 
@@ -1358,8 +1357,79 @@ order, each its own branch off `main`:
 - [ ] Does aspect-Bane tracking freeze as read-only history, become a manual
       facilitator field, or drop off the sheet display while nothing writes
       it?
-- [ ] The narrow-viewport fallback for the three-column shell (23.5's last
-      item).
+- [x] The narrow-viewport fallback for the three-column shell (23.5's last
+      item) — resolved by section 24, which retires the three-column shell
+      rather than adding a fallback to it.
+
+## 24. Two-panel layout, replacing the three-column shell — done
+
+Where section 23 rebuilt the view as three viewport-sized columns, this
+retires that shell in favour of two. Chosen from three directions sketched in
+a design canvas (a steady scroll-stack left panel with a flat tab strip on
+the right; both panels tabbed, player-sheet-first; an accordion left panel
+with a draggable divider and the log pinned beneath a tab strip rather than
+inside it) — the accordion-plus-divider direction ("1c" in that canvas), after
+a first pass had already shipped and been reverted in favour of it. The top
+bar is untouched (23.6's goal expander and the Facilitator panel's own Draw
+button stay exactly where they were) — 1c's mockup also sketches an inline
+top-bar goal editor and a top-bar Draw button, but that revisits an already-
+shipped, separately-numbered decision rather than the three-vs-two-panel
+question this section is about.
+
+- [x] **Left panel: three collapsible accordion sections, not a fixed
+      stack.** `View.FacilitatorPanel`, `View.Characters`, `View.Moves` keep
+      their content exactly as 23.5 arranged it, but each card's own title is
+      now also its accordion toggle — the same self-contained
+      title-doubles-as-toggle pattern `View.Guide` already used, factored out
+      as `View.Helpers.accordionHeader` / `accordionHeaderWith` (the `With`
+      variant adds a trailing element, for Moves' "n of 4 left" once-per-
+      session-abilities-remaining count, visible whether or not that section
+      is open). Open/closed state is `Model.openLeftSections`
+      (`LeftSections`), toggled by `ToggleLeftSection` (`LeftSection`);
+      Facilitator and Characters default open, Moves closed, since a player
+      checks their own sheet far more often than the Moves reminder card.
+- [x] **The left/right split is mouse-draggable, not a fixed `fillPortion`.**
+      `Model.leftPanelWidth` (a pixel width, defaulting to 420, clamped to
+      280–640) sizes the left panel directly; `Ui.dragHandle`, a slim
+      `cursor: col-resize` strip with a small grip mark, sits between the two
+      panels and fires `DividerDragStarted` on mousedown. While
+      `Model.draggingDivider` is true, `Main.subscriptions` adds
+      `Browser.Events.onMouseMove` (reading the browser's own `movementX` off
+      each event, so no element geometry needs measuring) and `onMouseUp`,
+      posting `DividerDragged <deltaX>` / `DividerDragEnded`. No JS port
+      needed — `Browser.Events` (already an `elm/browser` dependency) is
+      enough on its own.
+- [x] **Right panel: a three-tab strip over shared state, with the log pinned
+      below it rather than inside it.** `RightPanelTab` — NPCs & Locations
+      (`View.Entities Npc` + `View.Entities Location`); Session context
+      (`View.SessionAspects` + `View.Session`); How to play (`View.Guide`,
+      unchanged, including its own now slightly redundant expand/collapse —
+      left alone rather than reworking its internal state for this pass) —
+      switched by `SelectRightPanelTab`, defaulting to NPCs & Locations.
+      Beneath the strip, `View.Log` is always visible regardless of which tab
+      is selected, at roughly the mockup's 56/44 split (`fillPortion 5` for
+      the tab content, `4` for the log). A tab's content is a plain
+      `Ui.scrollArea` stack of the cards it combines — the non-`fillPortion`
+      half of what `Ui.scrollColumn` already did, factored out so a region
+      can scroll independently of the panel hosting it without pretending to
+      be one of the page's own top-level columns.
+- [x] **Composer moves off the log column onto the page.** With the log no
+      longer confined to one tab's worth of visibility, and the whole point
+      of pinning it beneath the strip being that it's never hidden, the
+      composer follows it out to page level anyway — sending a message
+      should not depend on which tab is showing above the log. `Ui.page`
+      gains a third region, `bottom`, rendered under the columns row with a
+      hairline top border (hidden entirely when empty, as during the
+      pre-game-state loading screen); the composer is its only occupant.
+- [x] Verified by rendering the real `View.view` against a hand-built fixture
+      in a throwaway Elm harness under headless Chrome (same verification
+      approach 23.5 used) — checked all three right-panel tabs with the log
+      pinned beneath, the accordion both open and closed (including Moves'
+      remaining-count summary), and both roles, with tab/accordion state
+      changed through the real `Main.update` rather than a hardcoded
+      snapshot. The drag interaction itself was not driven by a script (a
+      static screenshot can't show motion); its mouse-subscription gating
+      follows the same pattern already exercised elsewhere in `Main.update`.
 
 # Phase 3 — potential future plans
 
@@ -1547,6 +1617,63 @@ are unreachable from the current inert Moves card (23.4) regardless.
 
 - [ ] When Moves are re-wired, drop `SUGGEST_COMPEL_SUGGESTER_BOONS` and pay
       only the compelled character, to match the Complicate description.
+
+## P2.13 — Section 24 follow-ups (from code review)
+
+Findings from a post-merge review of section 24 (two-panel layout). None block
+the section as shipped; captured here as explicit cleanup.
+
+- [ ] **Moves' "n of 4 left" over-counts.** `allAbilities`
+      (`client/src/View/Moves.elm:30`) still includes `Kind.HelpOut`, but
+      `worker/src/GameTable.ts:904-910` unconditionally 400s every `help-out`
+      raise (23.1). `remainingSummary` (`Moves.elm:67-73`) can never actually
+      reach "4 of 4" — the real ceiling is 3. Either drop `HelpOut` from the
+      counted set or special-case it out of `remainingSummary` until it's
+      re-wired.
+- [ ] **Divider drag can stick outside the Discord iframe.** Dragging
+      `Ui.dragHandle` (`Ui.elm:524`) past the Activity iframe's edge and
+      releasing there means `Browser.Events.onMouseUp` (`Main.elm:280`) never
+      fires, since it only sees events inside the document — `draggingDivider`
+      stays `true` and further mouse movement keeps being read as a drag until
+      the pointer re-enters the iframe and clicks. Needs a fallback release
+      (e.g. clear `draggingDivider` on blur, or a pointer-capture-based
+      approach) that doesn't depend on the mouseup landing inside the iframe.
+- [ ] **Collapsed Facilitator panel hides pending proposals with no cue.**
+      `proposalsPanel` (`client/src/View/FacilitatorPanel.elm:38`) only renders
+      when the accordion section is open, and its header carries no count —
+      unlike Moves' `accordionHeaderWith`, which shows a trailing "n of 4 left"
+      for exactly this reason. A facilitator who collapses the panel gets no
+      signal that a player has a proposal waiting. Give the Facilitator header
+      a pending-proposal count the same way.
+- [ ] **`Ui.onlyWhen` reimplemented inline in three places.** `(if props.open
+      then [ ... ] else [])` in `client/src/View/Moves.elm:44`,
+      `View/FacilitatorPanel.elm:38-49`, and `View/Characters.elm:778-800` each
+      duplicate `Ui.onlyWhen : Bool -> List (Element msg) -> List (Element
+      msg)` (`Ui.elm:83`). Replace with `Ui.onlyWhen props.open [ ... ]` at all
+      three sites.
+- [ ] **`View.Guide`'s header still hand-rolled.** Section 24 factored the
+      title-doubles-as-toggle pattern out of `View.Guide` into
+      `View.Helpers.accordionHeader` / `accordionHeaderWith`, but
+      `View.Guide.header` (`Guide.elm:35-51`) never switched over to calling
+      it — it still builds its own `Input.button` + marker row. Point it at
+      `View.Helpers.accordionHeader` so the accordion look has one
+      implementation.
+- [ ] **No `Main.update` tests for section 24's five new `Msg` constructors.**
+      `SelectRightPanelTab`, `ToggleLeftSection`, `DividerDragStarted`,
+      `DividerDragged`, and `DividerDragEnded` (`Main.elm:295-313`) have none,
+      breaking the one-test-per-toggle convention every prior toggle `Msg` in
+      `client/tests/UpdateTest.elm` follows (e.g. `ToggleGuide`,
+      `ToggleSessionControls`, `ToggleAspectExamples` around line 270). Add
+      tests covering the drag clamp bounds and that the right section/tab
+      toggles.
+- [ ] **280px minimum left-panel width can starve the right panel.** 23.5's
+      narrow-viewport item was marked resolved by section 24 "by retiring the
+      three-column shell," but `minLeftPanelWidth = 280` (`Main.elm:219`) plus
+      the drag handle and row padding can still squeeze `rightPanel` (plain
+      `width fill`, no minimum) down to near-unusable widths on narrow
+      Activity embeds. Revisit whether the right panel also needs a minimum,
+      or whether the two-panel layout needs its own narrow-viewport fallback
+      after all.
 
 ---
 

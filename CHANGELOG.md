@@ -10,6 +10,16 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **Two-panel layout, replacing the three-column shell** (roadmap section 24).
+  The left panel's three cards (Facilitator panel, Characters, Moves) become
+  collapsible accordion sections at a mouse-draggable width; the right panel
+  splits into a three-tab strip (NPCs & Locations, Session context, How to
+  play) with the event log always pinned beneath it, regardless of which tab
+  is showing. The composer moves off the log column onto the page itself,
+  pinned under both panels, so sending a message doesn't depend on the log
+  being visible or which tab is selected. The top bar is unchanged. Closes
+  23.5's open narrow-viewport question by retiring the three-column row
+  rather than adding a breakpoint to it.
 - **Move vocabulary: Complicate and Alter.** The Guide glossary and the inert
   Moves card rename "Suggest Compel" to **Complicate** ("Suggest a way a
   character could do something dangerous, destructive, or derailing. That

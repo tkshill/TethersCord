@@ -10,6 +10,7 @@ inline in the view — the target here is the prose that expresses the game.
 
 The glossary `Term` list lives next door in `Copy.Terms`; `aspectExamples` here
 is the character-creation prompt list, a curated subset of `ASPECTS.md`.
+
 -}
 
 import Types exposing (Aspect(..))
@@ -59,7 +60,7 @@ loadingTable =
 
 appTitle : String
 appTitle =
-    "Shared Table"
+    "Tethers"
 
 
 reconnecting : String
@@ -165,7 +166,8 @@ floatingBoonUse =
     "Use"
 
 
-{-| Facilitator-only: remove a session context outright (23.2). -}
+{-| Facilitator-only: remove a session context outright (23.2).
+-}
 floatingBoonRemove : String
 floatingBoonRemove =
     "Remove"
@@ -337,6 +339,15 @@ usedSuffix =
     " (used)"
 
 
+{-| The Moves card's collapsed-accordion summary (roadmap section 24, the 1c
+layout variant): how many of the four once-per-session-or-fewer abilities
+(Alter, Add a Detail, Gain Insight, Complicate) are still unused.
+-}
+movesRemainingSummary : Int -> Int -> String
+movesRemainingSummary remaining total =
+    String.fromInt remaining ++ " of " ++ String.fromInt total ++ " left"
+
+
 pendingSuffix : String
 pendingSuffix =
     " (pending)"
@@ -480,6 +491,27 @@ entityUnnamed =
 logTitle : String
 logTitle =
     "Log"
+
+
+
+-- RIGHT PANEL TABS (View.elm) — roadmap section 24. `logTitle` above doubles
+-- as the Log tab's label; these two are new, standing for the cards each tab
+-- combines.
+
+
+npcsLocationsTabLabel : String
+npcsLocationsTabLabel =
+    "NPCs & Locations"
+
+
+sessionContextTabLabel : String
+sessionContextTabLabel =
+    "Session context"
+
+
+guideTabLabel : String
+guideTabLabel =
+    "How to play"
 
 
 noMessages : String
