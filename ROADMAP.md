@@ -1618,6 +1618,63 @@ are unreachable from the current inert Moves card (23.4) regardless.
 - [ ] When Moves are re-wired, drop `SUGGEST_COMPEL_SUGGESTER_BOONS` and pay
       only the compelled character, to match the Complicate description.
 
+## P2.13 — Section 24 follow-ups (from code review)
+
+Findings from a post-merge review of section 24 (two-panel layout). None block
+the section as shipped; captured here as explicit cleanup.
+
+- [ ] **Moves' "n of 4 left" over-counts.** `allAbilities`
+      (`client/src/View/Moves.elm:30`) still includes `Kind.HelpOut`, but
+      `worker/src/GameTable.ts:904-910` unconditionally 400s every `help-out`
+      raise (23.1). `remainingSummary` (`Moves.elm:67-73`) can never actually
+      reach "4 of 4" — the real ceiling is 3. Either drop `HelpOut` from the
+      counted set or special-case it out of `remainingSummary` until it's
+      re-wired.
+- [ ] **Divider drag can stick outside the Discord iframe.** Dragging
+      `Ui.dragHandle` (`Ui.elm:524`) past the Activity iframe's edge and
+      releasing there means `Browser.Events.onMouseUp` (`Main.elm:280`) never
+      fires, since it only sees events inside the document — `draggingDivider`
+      stays `true` and further mouse movement keeps being read as a drag until
+      the pointer re-enters the iframe and clicks. Needs a fallback release
+      (e.g. clear `draggingDivider` on blur, or a pointer-capture-based
+      approach) that doesn't depend on the mouseup landing inside the iframe.
+- [ ] **Collapsed Facilitator panel hides pending proposals with no cue.**
+      `proposalsPanel` (`client/src/View/FacilitatorPanel.elm:38`) only renders
+      when the accordion section is open, and its header carries no count —
+      unlike Moves' `accordionHeaderWith`, which shows a trailing "n of 4 left"
+      for exactly this reason. A facilitator who collapses the panel gets no
+      signal that a player has a proposal waiting. Give the Facilitator header
+      a pending-proposal count the same way.
+- [ ] **`Ui.onlyWhen` reimplemented inline in three places.** `(if props.open
+      then [ ... ] else [])` in `client/src/View/Moves.elm:44`,
+      `View/FacilitatorPanel.elm:38-49`, and `View/Characters.elm:778-800` each
+      duplicate `Ui.onlyWhen : Bool -> List (Element msg) -> List (Element
+      msg)` (`Ui.elm:83`). Replace with `Ui.onlyWhen props.open [ ... ]` at all
+      three sites.
+- [ ] **`View.Guide`'s header still hand-rolled.** Section 24 factored the
+      title-doubles-as-toggle pattern out of `View.Guide` into
+      `View.Helpers.accordionHeader` / `accordionHeaderWith`, but
+      `View.Guide.header` (`Guide.elm:35-51`) never switched over to calling
+      it — it still builds its own `Input.button` + marker row. Point it at
+      `View.Helpers.accordionHeader` so the accordion look has one
+      implementation.
+- [ ] **No `Main.update` tests for section 24's five new `Msg` constructors.**
+      `SelectRightPanelTab`, `ToggleLeftSection`, `DividerDragStarted`,
+      `DividerDragged`, and `DividerDragEnded` (`Main.elm:295-313`) have none,
+      breaking the one-test-per-toggle convention every prior toggle `Msg` in
+      `client/tests/UpdateTest.elm` follows (e.g. `ToggleGuide`,
+      `ToggleSessionControls`, `ToggleAspectExamples` around line 270). Add
+      tests covering the drag clamp bounds and that the right section/tab
+      toggles.
+- [ ] **280px minimum left-panel width can starve the right panel.** 23.5's
+      narrow-viewport item was marked resolved by section 24 "by retiring the
+      three-column shell," but `minLeftPanelWidth = 280` (`Main.elm:219`) plus
+      the drag handle and row padding can still squeeze `rightPanel` (plain
+      `width fill`, no minimum) down to near-unusable widths on narrow
+      Activity embeds. Revisit whether the right panel also needs a minimum,
+      or whether the two-panel layout needs its own narrow-viewport fallback
+      after all.
+
 ---
 
 ## Flushing test messages before the campaign
