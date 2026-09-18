@@ -28,6 +28,7 @@ module Ui exposing
     , press
     , primaryButton
     , sans
+    , scrollArea
     , scrollColumn
     , sectionTitle
     , shrinkable
@@ -240,15 +241,18 @@ mono =
 -- LAYOUT
 
 
-{-| The outer frame (roadmap section 23.5): `top` is a slim, non-scrolling
+{-| The outer frame (roadmap sections 23.5 / 24): `top` is a slim, non-scrolling
 strip (header, connection/status notes, the top bar) sized to its content;
 `columns` fills the rest of the viewport as a fixed-height row, each entry
-expected to be one `scrollColumn` (or, for a column with a pinned footer like
-the log's composer, an `Element.column [ height fill, width (fillPortion n) ]`
-built by the caller). `html` / `body` need `height: 100%` themselves
-(`client/index.html`) for `height fill` to have a viewport to fill against.
+expected to be one `scrollColumn` (or, for a panel that manages its own
+scrolling region internally, an `Element.column [ height fill, width
+(fillPortion n) ]` built by the caller); `bottom` is a second slim,
+non-scrolling strip pinned under the row — the composer, since 24 moved it off
+the log column onto the page (any tab can send a message, not just the Log
+one). `html` / `body` need `height: 100%` themselves (`client/index.html`) for
+`height fill` to have a viewport to fill against.
 -}
-page : { top : List (Element msg), columns : List (Element msg) } -> Html msg
+page : { top : List (Element msg), columns : List (Element msg), bottom : List (Element msg) } -> Html msg
 page sections =
     Element.layout
         [ Background.color paper
@@ -267,6 +271,18 @@ page sections =
                 , shrinkable
                 ]
                 sections.columns
+            , if List.isEmpty sections.bottom then
+                Element.none
+
+              else
+                Element.column
+                    [ spacing lg
+                    , padding lg
+                    , width fill
+                    , Border.widthEach { top = 1, right = 0, bottom = 0, left = 0 }
+                    , Border.color line
+                    ]
+                    sections.bottom
             ]
         )
 
@@ -286,15 +302,32 @@ shrinkable =
     Element.htmlAttribute (Html.Attributes.style "min-height" "0")
 
 
-{-| One of the three independently-scrolling columns: a vertical stack of
-cards, `fillPortion`-wide, that scrolls on its own once its content overflows
-the viewport.
+{-| One of the page's top-level independently-scrolling columns: a vertical
+stack of cards, `fillPortion`-wide, that scrolls on its own once its content
+overflows the viewport.
 -}
 scrollColumn : Int -> List (Element msg) -> Element msg
 scrollColumn portion children =
     Element.column
         [ height fill
         , width (Element.fillPortion portion)
+        , spacing lg
+        , Element.scrollbarY
+        , shrinkable
+        ]
+        children
+
+
+{-| As `scrollColumn`, but `width fill` instead of a `fillPortion` of the page
+row — for a scrolling stack of cards nested inside a panel that already owns
+its width itself, such as one tab's content in the right panel (roadmap
+section 24).
+-}
+scrollArea : List (Element msg) -> Element msg
+scrollArea children =
+    Element.column
+        [ height fill
+        , width fill
         , spacing lg
         , Element.scrollbarY
         , shrinkable

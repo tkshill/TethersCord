@@ -23,6 +23,7 @@ import Types
         , Flags
         , GameState
         , Model
+        , RightPanelTab(..)
         , Role(..)
         )
 
@@ -119,6 +120,7 @@ model =
     , connection = Connected
     , gameStateAttempts = 0
     , timeZone = Time.utc
+    , rightPanelTab = LogTab
     }
 
 

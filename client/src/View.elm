@@ -1,11 +1,14 @@
 module View exposing (logDomId, view)
 
 {-| The Activity view: the page shell (header, connection note, status banner,
-the top bar) over three independently-scrolling columns (roadmap section
-23.5) — left (facilitator panel, character sheets, moves), centre (NPCs,
-locations, session aspects, session history), right (the event log and the
-composer, pinned beneath it) — each card living in its own `View.*` module and
-handed a `ViewContext` computed once here.
+the top bar) over two independently-scrolling panels (roadmap section 24,
+replacing 23.5's three-column shell) — left (facilitator panel, character
+sheets, moves, unchanged from 23.5) and right, a single tabbed column
+switching between the event log, NPCs & locations, session context (session
+aspects and session history), and the guide — with the composer pinned under
+the panels row instead of under any one column, since sending a message no
+longer needs the log tab open. Each card still lives in its own `View.*`
+module and is handed a `ViewContext` computed once here.
 -}
 
 import Copy
@@ -67,13 +70,17 @@ view model =
     in
     case model.gameState of
         Nothing ->
-            Ui.page { top = top, columns = [ Ui.scrollColumn 1 [ placeholder Copy.loadingTable ] ] }
+            Ui.page
+                { top = top
+                , columns = [ Ui.scrollColumn 1 [ placeholder Copy.loadingTable ] ]
+                , bottom = []
+                }
 
         Just gs ->
             Ui.page
                 { top = top
                 , columns =
-                    [ Ui.scrollColumn 3
+                    [ Ui.scrollColumn 5
                         [ View.FacilitatorPanel.view ctx
                             { inflight = model.inflight
                             , drafts = model.proposalDrafts
@@ -86,29 +93,74 @@ view model =
                             gs
                         , View.Moves.view ctx gs
                         ]
-                    , Ui.scrollColumn 3
-                        [ View.Entities.view ctx Npc gs
-                        , View.Entities.view ctx Location gs
-                        , View.SessionAspects.view ctx
-                            { inflight = model.inflight
-                            , floatingBoonDraft = model.newFloatingBoonNote
-                            , floatingBoonKind = model.newFloatingBoonKind
-                            }
-                            gs
-                        , View.Session.view ctx gs
-                        , View.Guide.view ctx { expanded = model.guideExpanded }
-                        ]
-                    , Element.column [ Element.height fill, width (Element.fillPortion 4), spacing Ui.md ]
-                        [ View.Log.view ctx
-                            { confirming = model.confirming
-                            , loadingHistory = model.loadingHistory
-                            , noMoreHistory = model.noMoreHistory
-                            }
-                            gs
-                        , composer model
-                        ]
+                    , rightPanel ctx model gs
                     ]
+                , bottom = [ composer model ]
                 }
+
+
+{-| The right panel (roadmap section 24): a tab strip over a single scrolling
+content area, in place of the old centre and right columns. `fillPortion 7`
+against the left panel's `5` mirrors the mockup's 5/7 split.
+-}
+rightPanel : ViewContext -> Model -> GameState -> Element Msg
+rightPanel ctx model gs =
+    Element.column
+        [ Element.height fill
+        , width (Element.fillPortion 7)
+        , spacing Ui.md
+        , Ui.shrinkable
+        ]
+        [ rightPanelTabStrip model.rightPanelTab
+        , rightPanelContent ctx model gs
+        ]
+
+
+rightPanelTabStrip : RightPanelTab -> Element Msg
+rightPanelTabStrip selected =
+    Element.wrappedRow [ spacing Ui.xs, width fill ]
+        [ Ui.tab (selected == LogTab) Copy.logTitle (SelectRightPanelTab LogTab)
+        , Ui.tab (selected == NpcsLocationsTab) Copy.npcsLocationsTabLabel (SelectRightPanelTab NpcsLocationsTab)
+        , Ui.tab (selected == SessionTab) Copy.sessionContextTabLabel (SelectRightPanelTab SessionTab)
+        , Ui.tab (selected == GuideTab) Copy.guideTabLabel (SelectRightPanelTab GuideTab)
+        ]
+
+
+{-| The selected tab's content. The Log tab keeps its own `cardFill` (it
+already owns the scrolling region and DOM id the pin-to-bottom behaviour
+needs); every other tab is a plain `Ui.scrollArea` stack of the cards that tab
+combines.
+-}
+rightPanelContent : ViewContext -> Model -> GameState -> Element Msg
+rightPanelContent ctx model gs =
+    case model.rightPanelTab of
+        LogTab ->
+            View.Log.view ctx
+                { confirming = model.confirming
+                , loadingHistory = model.loadingHistory
+                , noMoreHistory = model.noMoreHistory
+                }
+                gs
+
+        NpcsLocationsTab ->
+            Ui.scrollArea
+                [ View.Entities.view ctx Npc gs
+                , View.Entities.view ctx Location gs
+                ]
+
+        SessionTab ->
+            Ui.scrollArea
+                [ View.SessionAspects.view ctx
+                    { inflight = model.inflight
+                    , floatingBoonDraft = model.newFloatingBoonNote
+                    , floatingBoonKind = model.newFloatingBoonKind
+                    }
+                    gs
+                , View.Session.view ctx gs
+                ]
+
+        GuideTab ->
+            Ui.scrollArea [ View.Guide.view ctx { expanded = model.guideExpanded } ]
 
 
 connectionNote : Connection -> Element msg

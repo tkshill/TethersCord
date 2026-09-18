@@ -16,6 +16,7 @@ module Types exposing
     , Msg(..)
     , MutationOutcome
     , Proposal
+    , RightPanelTab(..)
     , Role(..)
     , Session
     , SessionSummary
@@ -485,6 +486,11 @@ type alias Model =
     -- Viewer's local time zone, used to render message timestamps. Starts at
     -- UTC and is replaced once Time.here resolves.
     , timeZone : Time.Zone
+
+    -- Which tab the right panel is showing (roadmap section 24). Purely local
+    -- view state, toggled by `SelectRightPanelTab`; defaults to the log so the
+    -- table lands where the old right column always showed it.
+    , rightPanelTab : RightPanelTab
     }
 
 
@@ -495,6 +501,18 @@ type Connection
     | Reconnecting
     | Offline
     | Rejected
+
+
+{-| The right panel's four tabs (roadmap section 24): the event log; the
+facilitator's reference state (NPCs and locations); the table's session
+context (floating boons and session history); and the glossary. One at a
+time, in place of the three always-visible columns 23.5 built.
+-}
+type RightPanelTab
+    = LogTab
+    | NpcsLocationsTab
+    | SessionTab
+    | GuideTab
 
 
 
@@ -549,6 +567,7 @@ type Msg
     | DismissError
     | ToggleGuide
     | ToggleSessionControls
+    | SelectRightPanelTab RightPanelTab
     | ToggleAspectExamples Int Aspect
     | WsStatusChanged String
     | RetryGetGameState

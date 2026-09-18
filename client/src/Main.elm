@@ -129,6 +129,7 @@ init flags =
       , connection = Connected
       , gameStateAttempts = 0
       , timeZone = Time.utc
+      , rightPanelTab = LogTab
       }
     , Effect.Batch [ Effect.Authorize, Effect.GetTimeZone ]
     )
@@ -526,6 +527,9 @@ update msg model =
 
         ToggleSessionControls ->
             ( { model | sessionControlsExpanded = not model.sessionControlsExpanded }, Effect.None )
+
+        SelectRightPanelTab tab ->
+            ( { model | rightPanelTab = tab }, Effect.None )
 
         ToggleAspectExamples slot aspect ->
             let

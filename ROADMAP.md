@@ -1242,11 +1242,10 @@ the viewport:
       fills its column's height instead of shrinking to content) rather than
       one card among several with its own internal `maximum 360` cap.
 - [x] **Composer** stays pinned under the log column, not the whole page.
-- [ ] **Narrow-viewport fallback — still an open question.** Not attempted
-      here — the strict three-column row does not survive phone width, and
-      this pass only verified the layout at Activity-embed widths. Left for
-      whenever it's actually checked against a narrow Activity window, per
-      the roadmap's own "good enough, not pixel-true" bar above.
+- [x] **Narrow-viewport fallback — resolved by section 24**, not by adding a
+      breakpoint to the three-column row: the row itself is retired in favour
+      of a two-panel layout, sidestepping the question this bullet asked
+      rather than answering it.
 
 ### 23.6 Top bar: session text and the pool — done
 
@@ -1358,8 +1357,56 @@ order, each its own branch off `main`:
 - [ ] Does aspect-Bane tracking freeze as read-only history, become a manual
       facilitator field, or drop off the sheet display while nothing writes
       it?
-- [ ] The narrow-viewport fallback for the three-column shell (23.5's last
-      item).
+- [x] The narrow-viewport fallback for the three-column shell (23.5's last
+      item) — resolved by section 24, which retires the three-column shell
+      rather than adding a fallback to it.
+
+## 24. Two-panel layout, replacing the three-column shell — done
+
+Where section 23 rebuilt the view as three viewport-sized columns, this
+retires that shell in favour of two: a left panel unchanged from 23.5
+(Facilitator panel, Characters, Moves) and a right panel that trades the old
+centre and right columns — five always-visible cards — for one tabbed column
+showing one of them at a time. Chosen from three directions sketched in a
+design canvas (a steady scroll-stack left panel with a flat tab strip on the
+right; both panels tabbed, player-sheet-first; an accordion left panel with a
+draggable divider) — the scroll-stack-plus-tab-strip direction, for the
+closest fit to the existing card modules and because it needed no new
+interaction primitives (no per-section accordion state, no drag-resize port).
+
+- [x] **Left panel unchanged.** `View.FacilitatorPanel`, `View.Characters`,
+      `View.Moves` stay exactly as 23.5 arranged them, now at `fillPortion 5`
+      of a two-way split (`Ui.scrollColumn 5`) instead of `3` of a three-way
+      one.
+- [x] **Right panel: one tabbed column.** Four tabs — Log; NPCs & Locations
+      (`View.Entities Npc` + `View.Entities Location`, previously two
+      separate cards); Session context (`View.SessionAspects` +
+      `View.Session`, previously two separate cards); How to play
+      (`View.Guide`, unchanged, including its own now slightly redundant
+      expand/collapse — left alone rather than reworking its internal state
+      for this pass) — one visible at a time at `fillPortion 7`. Which tab is
+      showing is `Model.rightPanelTab` (`RightPanelTab`), switched by the new
+      `SelectRightPanelTab` message; purely local view state, the same
+      pattern as `guideExpanded` / `ToggleGuide`, defaulting to the Log tab so
+      the table lands where the old right column always showed it. The Log
+      tab keeps `View.Log`'s own `cardFill` (it already owns the scrolling
+      DOM id the pin-to-bottom behaviour needs); the other three tabs are a
+      plain `Ui.scrollArea` stack of the cards they combine — the
+      non-`fillPortion` half of what `Ui.scrollColumn` already did, factored
+      out so a tab's content can scroll independently of the panel hosting it
+      without pretending to be one of the page's own top-level columns.
+- [x] **Composer moves off the log column onto the page.** With the log now
+      one tab among four rather than its own whole column, pinning the
+      composer beneath just the log stopped making sense — sending a message
+      should not require switching off whatever tab you're reading. `Ui.page`
+      gains a third region, `bottom`, rendered under the columns row with a
+      hairline top border (hidden entirely when empty, as during the
+      pre-game-state loading screen); the composer is its only occupant.
+- [x] Verified by rendering the real `View.view` against a hand-built fixture
+      in a throwaway Elm harness under headless Chrome (same verification
+      approach 23.5 used) — checked all four right-panel tabs, both roles,
+      and that switching tabs is a real `Msg` round-trip through `Main.update`
+      rather than a hardcoded snapshot.
 
 # Phase 3 — potential future plans
 
