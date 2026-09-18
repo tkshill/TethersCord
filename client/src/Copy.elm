@@ -250,7 +250,7 @@ proposalPledgeWithdraw =
 
 proposalHelpOut : String
 proposalHelpOut =
-    "Help Out — reroll the overcome"
+    "Alter — pay two boons to resolve the fork with an alternate action"
 
 
 proposalAddDetail : String
@@ -265,7 +265,7 @@ proposalGainInsight =
 
 proposalSuggestCompelOn : String -> String
 proposalSuggestCompelOn who =
-    "Suggest Compel on " ++ who ++ " (+1 / +2 boons)"
+    "Complicate " ++ who ++ " (+1 / +2 boons)"
 
 
 proposalSuggestCompelFallback : String
@@ -314,7 +314,7 @@ oncePerSession =
 
 helpOut : String
 helpOut =
-    "Help Out"
+    "Alter"
 
 
 addDetail : String
@@ -329,7 +329,7 @@ gainInsight =
 
 suggestCompel : String
 suggestCompel =
-    "Suggest Compel"
+    "Complicate"
 
 
 usedSuffix : String

@@ -1,7 +1,7 @@
 module View.Moves exposing (view)
 
 {-| The Moves card, shown once the viewer holds a sheet: the once-per-session
-abilities (Help Out / Add a Detail / Gain Insight), Suggest Compel against
+abilities (Alter / Add a Detail / Gain Insight), Complicate against
 another claimed sheet, and the any-time Accept Compel.
 
 -- OFF while testing simplified interface (roadmap section 23.4): every entry
@@ -75,7 +75,7 @@ abilityRow gs ch =
             ]
 
 
-{-| Suggest Compel: a once-per-session ability that names another player's
+{-| Complicate: a once-per-session ability that names another player's
 character. One label per other claimed sheet; "(used)" once raised.
 -}
 suggestCompelRow : GameState -> CharacterSheet -> Element Msg
@@ -100,7 +100,7 @@ suggestCompelRow gs ch =
                     ""
         in
         Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
-            (tip "Suggest Compel"
+            (tip "Complicate"
                 (el [ Font.size 11, Font.color Ui.inkSoft ] (text (Copy.suggestCompel ++ suffix)))
                 :: (if used then
                         []

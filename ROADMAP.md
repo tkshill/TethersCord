@@ -1534,6 +1534,20 @@ built bundle is correct; this is a limitation of the mechanism, not a bug.
 - [ ] Verify it actually appears inside the Discord Activity, not just a desktop
       browser tab.
 
+## P2.12 — Complicate drops the suggester's own payout (from the Alter/Complicate copy pass)
+
+The Moves card and Guide now describe the former Suggest Compel move under a
+new name, **Complicate**: "Suggest a way a character could do something
+dangerous, destructive, or derailing. That character's player gains two
+boons." That description no longer mentions a payout to the suggester — only
+the copy changed here; `GameTable.ts`'s `SUGGEST_COMPEL_SUGGESTER_BOONS` (1)
+and `SUGGEST_COMPEL_TARGET_BOONS` (2), and `Copy.proposalSuggestCompelOn`'s
+"(+1 / +2 boons)" facilitator-queue text, still pay the suggester too — both
+are unreachable from the current inert Moves card (23.4) regardless.
+
+- [ ] When Moves are re-wired, drop `SUGGEST_COMPEL_SUGGESTER_BOONS` and pay
+      only the compelled character, to match the Complicate description.
+
 ---
 
 ## Flushing test messages before the campaign

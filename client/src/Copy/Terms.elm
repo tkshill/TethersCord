@@ -31,7 +31,7 @@ groupedTerms =
       , [ aspect, archetype, desire, quest, condition ]
       )
     , ( "Moves & compels"
-      , [ compel, acceptCompel, suggestCompel, floatingBoon, helpOut, addDetail, gainInsight ]
+      , [ compel, acceptCompel, complicate, floatingBoon, alter, addDetail, gainInsight ]
       )
     ]
 
@@ -159,18 +159,18 @@ roll =
 overcome : Term
 overcome =
     { term = "Overcome"
-    , short = "A framed risky attempt by one character. Draw two stones from the bag."
+    , short = "The facilitator declares a split point where the plot could diverge."
     , long =
-        "The facilitator names the character attempting something hard; that player, or the facilitator, rolls. The result routes as any roll does. Accepting it closes the overcome, and the verdict is played out in the fiction."
+        "The facilitator declares a split point in the narrative where the plot could diverge. That fork is what an Alter can later pay to resolve down an alternate path."
     }
 
 
 highlight : Term
 highlight =
     { term = "Highlight"
-    , short = "Spend a boon to add a favourable stone to your next roll, because an aspect is true now."
+    , short = "Spend a boon to note how an aspect will shape the outcome, adding a boon to the pool."
     , long =
-        "Point at one of your aspects and spend boons from your sheet; each adds a Boon to the bag for the next roll. The boons are deducted when the roll is accepted. A reroll keeps them in."
+        "Spend one boon to note how an aspect of the scene will influence the outcome, and add one boon to the pool."
     }
 
 
@@ -263,12 +263,12 @@ acceptCompel =
     }
 
 
-suggestCompel : Term
-suggestCompel =
-    { term = "Suggest Compel"
-    , short = "Once per session, suggest a compel for another character."
+complicate : Term
+complicate =
+    { term = "Complicate"
+    , short = "Once per session, suggest a dangerous, destructive, or derailing action for another character."
     , long =
-        "Name another player's character as a good target for a compel. If the facilitator runs with it, you take one boon and the compelled character takes two. Their consent is handled at the table."
+        "Suggest a way a character could do something dangerous, destructive, or derailing. That character's player gains two boons. Their consent is handled at the table."
     }
 
 
@@ -281,12 +281,12 @@ floatingBoon =
     }
 
 
-helpOut : Term
-helpOut =
-    { term = "Help Out"
-    , short = "Once per session, help someone with an overcome."
+alter : Term
+alter =
+    { term = "Alter"
+    , short = "Pay two boons to suggest an alternate action at a fork, triggering a re-roll."
     , long =
-        "Available only while an overcome roll is on the table. On approval the roll is redrawn with no Press Fate cost. The helping character does not spend any resources. Both players share the consequences of the roll."
+        "Pay two boons to suggest an alternate action to resolve a fork. Triggers a re-roll."
     }
 
 

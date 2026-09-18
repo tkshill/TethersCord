@@ -10,6 +10,14 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **Move vocabulary: Complicate and Alter.** The Guide glossary and the inert
+  Moves card rename "Suggest Compel" to **Complicate** ("Suggest a way a
+  character could do something dangerous, destructive, or derailing. That
+  character's player gains two boons") and "Help Out" to **Alter** ("Pay two
+  boons to suggest an alternate action to resolve a fork. Triggers a
+  re-roll"), and refresh the Highlight and Overcome descriptions to match.
+  Copy only — the underlying `Kind`/route identifiers, wire strings, and
+  boon payouts are unchanged (see roadmap P2.12).
 - **The overcome roll collapses to one stateless click** (roadmap section
   23.1, Phase 2 — facilitator-run resources). `POST /api/table/:id/stones/draw`
   (facilitator-only) replaces the whole roll/reroll/accept lifecycle: it reads
