@@ -58,13 +58,15 @@ fieldSaveDelay =
     1000
 
 
-{-| The left tool panel's width in pixels (roadmap section 27, mockup 2a's
-320), and the range the draggable divider clamps it to so neither panel can be
-dragged away to nothing.
+{-| The left tool panel's width in pixels, and the range the draggable divider
+clamps it to so neither panel can be dragged away to nothing. Mockup 2a's 320
+read as too narrow next to the log; 480 splits the two panels roughly evenly at
+a typical window width instead (there is no tracked viewport width to split
+exactly).
 -}
 defaultLeftPanelWidth : Float
 defaultLeftPanelWidth =
-    320
+    480
 
 
 minLeftPanelWidth : Float
@@ -74,7 +76,7 @@ minLeftPanelWidth =
 
 maxLeftPanelWidth : Float
 maxLeftPanelWidth =
-    640
+    720
 
 
 connectionFromString : String -> Connection

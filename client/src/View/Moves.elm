@@ -9,6 +9,11 @@ A move a player cannot afford is disabled here rather than refused after the
 fact: the Worker checks the cost when the proposal is raised and again when it is
 accepted, but the button says so first. Overcome is not one of these — it needs
 no approval and lives on the status strip in `View.TopBar`.
+
+The facilitator has no sheet of their own, so they get a read-only look at
+whichever character's slot is selected on the Sheet tab (`props.selectedSlot`)
+instead — every button here is inert for them, so they can see the same moves a
+player sees without being able to raise one on a player's behalf.
 -}
 
 import Action exposing (Action(..))
@@ -29,12 +34,14 @@ import View.Helpers
         , inputAttrs
         , latestProposalId
         , pendingHint
+        , placeholder
         , tip
         )
 
 
 type alias Props =
     { addDetailDraft : String
+    , selectedSlot : Int
     }
 
 
@@ -57,12 +64,20 @@ alterCost =
 
 view : ViewContext -> Props -> GameState -> Element Msg
 view ctx props gs =
-    case myOwnedSheet ctx.myId gs of
-        Nothing ->
-            -- The facilitator has no sheet and no use for the tool; a player who
-            -- has not claimed one is told why it is empty.
+    let
+        target =
             if ctx.facilitator then
-                none
+                selectedCharacter props.selectedSlot gs
+
+            else
+                myOwnedSheet ctx.myId gs
+    in
+    case target of
+        Nothing ->
+            -- The facilitator sees this only when no sheets exist at all; a
+            -- player who has not claimed one is told why it is empty.
+            if ctx.facilitator then
+                placeholder Copy.noCharacterSheets
 
             else
                 el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.claimASheetForMoves)
@@ -82,6 +97,20 @@ myOwnedSheet myId gs =
     gs.characters
         |> List.filter (\c -> c.ownerId /= Nothing && c.ownerId == myId)
         |> List.head
+
+
+{-| The facilitator's read-only stand-in for "my sheet": whichever character is
+selected on the Sheet tab, falling back to the first one (same rule as
+`View.Characters`, so flipping the Sheet tab's slot tabs also flips this view).
+-}
+selectedCharacter : Int -> GameState -> Maybe CharacterSheet
+selectedCharacter slot gs =
+    case List.filter (\c -> c.slot == slot) gs.characters of
+        first :: _ ->
+            Just first
+
+        [] ->
+            List.head gs.characters
 
 
 {-| A move's block: its name (with the glossary tooltip) and a one-line blurb,
@@ -104,10 +133,22 @@ moveBlock name blurb controls =
         )
 
 
+{-| `Just msg` unless a control has a reason it is off (`whyNot`) or the viewer
+is the facilitator previewing someone else's Moves tool, read-only.
+-}
+movePress : ViewContext -> Action -> Msg -> Maybe Msg
+movePress ctx action msg =
+    if ctx.facilitator then
+        Nothing
+
+    else
+        Ui.press ctx.inflight action msg
+
+
 {-| A button that names why it is off, beneath it, when it is.
 -}
-moveButton : List Action -> Action -> Msg -> String -> Maybe String -> Element Msg
-moveButton inflight action msg label whyNot =
+moveButton : ViewContext -> Action -> Msg -> String -> Maybe String -> Element Msg
+moveButton ctx action msg label whyNot =
     Element.column [ spacing Ui.xs ]
         [ Ui.ghostButton
             { onPress =
@@ -116,7 +157,7 @@ moveButton inflight action msg label whyNot =
                         Nothing
 
                     Nothing ->
-                        Ui.press inflight action msg
+                        movePress ctx action msg
             , label = label
             }
         , case whyNot of
@@ -138,7 +179,7 @@ highlightRow ctx gs ch =
     moveBlock "Highlight"
         Copy.highlightBlurb
         [ Element.row [ spacing Ui.sm, Element.centerY ]
-            (moveButton ctx.inflight
+            (moveButton ctx
                 (RaisingMove Kind.Highlight)
                 ProposeHighlight
                 Copy.highlightButton
@@ -172,7 +213,7 @@ complicateRow ctx gs ch =
                 (List.map
                     (\c ->
                         Ui.ghostButton
-                            { onPress = Ui.press ctx.inflight (RaisingMove Kind.Complicate) (ProposeComplicate c.slot)
+                            { onPress = movePress ctx (RaisingMove Kind.Complicate) (ProposeComplicate c.slot)
                             , label = characterLabel c
                             }
                     )
@@ -194,7 +235,7 @@ addDetailRow ctx props gs ch =
             , label = Input.labelHidden "Suggested detail"
             }
         , Element.row [ spacing Ui.sm, Element.centerY ]
-            (moveButton ctx.inflight
+            (moveButton ctx
                 (RaisingMove Kind.AddDetail)
                 ProposeAddDetail
                 Copy.addDetailButton
@@ -237,7 +278,7 @@ alterRow ctx gs ch =
             moveBlock "Alter Fate"
                 Copy.alterBlurb
                 [ Element.row [ spacing Ui.sm, Element.centerY ]
-                    (moveButton ctx.inflight
+                    (moveButton ctx
                         (RaisingMove Kind.Alter)
                         ProposeAlter
                         Copy.alterButton
@@ -267,7 +308,7 @@ useSessionBoonRow ctx gs =
                     (\a ->
                         Element.row [ spacing Ui.sm, Element.centerY, width fill ]
                             [ Ui.ghostButton
-                                { onPress = Ui.press ctx.inflight (RaisingMove Kind.UseSessionBoon) (ProposeUseSessionBoon a.id)
+                                { onPress = movePress ctx (RaisingMove Kind.UseSessionBoon) (ProposeUseSessionBoon a.id)
                                 , label = Copy.useButton
                                 }
                             , Element.paragraph [ Font.size 12 ] [ text a.text ]
