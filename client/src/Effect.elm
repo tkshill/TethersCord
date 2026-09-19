@@ -37,7 +37,7 @@ type Effect
     | RetryGetGameStateIn Float
     | DismissErrorIn Float
     | DebounceFieldSave Int Float
-    | DebouncePledge Int Float
+    | DebounceHighlight Int Float
       -- Reads
     | GetGameState Auth
     | GetMessageHistory Auth Int
@@ -45,7 +45,7 @@ type Effect
     | PostMessage Auth String
     | PostClearMessages Auth
     | PostStones Auth String
-    | PostCommitBoon Auth Int
+    | PostHighlight Auth Int
     | PostFate Auth Int Int
     | PostCharacterUpdate Auth Int CharacterSheet
     | PostClaimSlot Auth Int
@@ -53,13 +53,13 @@ type Effect
     | PostProposalDecision Auth String String (Maybe String)
     | PostWithdrawProposal Auth String
     | PostUseAbility Auth AbilityKind
-    | PostSuggestCompel Auth Int
+    | PostComplicate Auth Int
     | PostAcceptCompelMove Auth
-    | PostUseFloatingBoon Auth String
+    | PostUseSessionBoon Auth String
     | PostAddStone Auth Stone
     | PostRemoveStone Auth Stone
-    | PostAddFloatingBoon Auth Stone String
-    | PostDeleteFloatingBoon Auth String
+    | PostAddSessionAspect Auth Stone String
+    | PostDeleteSessionAspect Auth String
     | PostStartSession Auth String
     | PostSessionGoal Auth String
     | PostEndSession Auth
@@ -98,8 +98,8 @@ perform flags effect =
         DebounceFieldSave seq ms ->
             Process.sleep ms |> Task.perform (\_ -> FieldSaveDue seq)
 
-        DebouncePledge seq ms ->
-            Process.sleep ms |> Task.perform (\_ -> PledgeDue seq)
+        DebounceHighlight seq ms ->
+            Process.sleep ms |> Task.perform (\_ -> HighlightDue seq)
 
         GetGameState auth ->
             Api.getGameState flags auth GotGameState
@@ -116,8 +116,8 @@ perform flags effect =
         PostStones auth path ->
             Api.postStones flags auth path stonesUpdated
 
-        PostCommitBoon auth delta ->
-            Api.postCommitBoon flags auth delta stonesUpdated
+        PostHighlight auth delta ->
+            Api.postHighlight flags auth delta stonesUpdated
 
         PostFate auth slot delta ->
             Api.postFate flags auth slot delta characterUpdated
@@ -140,14 +140,14 @@ perform flags effect =
         PostUseAbility auth kind ->
             Api.postUseAbility flags auth (Kind.abilityToString kind) moveRaised
 
-        PostSuggestCompel auth targetSlot ->
-            Api.postSuggestCompel flags auth targetSlot moveRaised
+        PostComplicate auth targetSlot ->
+            Api.postComplicate flags auth targetSlot moveRaised
 
         PostAcceptCompelMove auth ->
             Api.postAcceptCompelMove flags auth moveRaised
 
-        PostUseFloatingBoon auth floatingId ->
-            Api.postUseFloatingBoon flags auth floatingId moveRaised
+        PostUseSessionBoon auth sessionAspectId ->
+            Api.postUseSessionBoon flags auth sessionAspectId moveRaised
 
         PostAddStone auth stone ->
             Api.postAddStone flags auth stone stonesUpdated
@@ -155,11 +155,11 @@ perform flags effect =
         PostRemoveStone auth stone ->
             Api.postRemoveStone flags auth stone stonesUpdated
 
-        PostAddFloatingBoon auth kind text ->
-            Api.postAddFloatingBoon flags auth kind text stonesUpdated
+        PostAddSessionAspect auth kind text ->
+            Api.postAddSessionAspect flags auth kind text stonesUpdated
 
-        PostDeleteFloatingBoon auth floatingId ->
-            Api.postDeleteFloatingBoon flags auth floatingId stonesUpdated
+        PostDeleteSessionAspect auth sessionAspectId ->
+            Api.postDeleteSessionAspect flags auth sessionAspectId stonesUpdated
 
         PostStartSession auth goal ->
             Api.postStartSession flags auth goal sessionUpdated

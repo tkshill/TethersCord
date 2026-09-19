@@ -36,7 +36,7 @@ view ctx props gs =
             [ goalSummary ctx.facilitator props.expanded gs.session
             , Element.row [ spacing Ui.xs, Element.centerY ]
                 (List.map stoneChip gs.stonePool
-                    ++ List.repeat committed (Ui.pledgedStoneChip Ui.boonFill Copy.pledgedChip)
+                    ++ List.repeat committed (Ui.highlightedStoneChip Ui.boonFill Copy.highlightedChip)
                     ++ [ el [ Font.size 11, Font.color Ui.inkSoft ]
                             (text (Copy.bagOf (List.length gs.stonePool + committed)))
                        ]

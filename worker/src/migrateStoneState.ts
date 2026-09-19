@@ -1,16 +1,18 @@
 // worker/src/migrateStoneState.ts
 //
 // The DO owns one blob of state D1 does not — the stone pool, proposal queue,
-// session, floating boons, used-ability flags — under `KEY_STONES`. This
+// session, session aspects, used-ability flags — under `KEY_STONES`. This
 // module keeps the load-time compatibility handling (colour-named stones,
 // missing fields added by later features, retired fields folded forward) out
 // of the main flow, so it is easy to delete once no old blob can still be on
 // disk.
 
 import type {
+  AbilityKind,
   CommittedBoon,
-  FloatingBoon,
   Proposal,
+  ProposalKind,
+  SessionAspect,
   SessionState,
   StoneKind,
   UsedAbilities,
@@ -20,7 +22,7 @@ import type {
 export type StoneState = {
   stonePool: StoneKind[];
   committedBoons: CommittedBoon[];
-  floatingBoons: FloatingBoon[];
+  sessionAspects: SessionAspect[];
   usedAbilities: UsedAbilities[];
   proposals: Proposal[];
   session: SessionState | null;
@@ -30,10 +32,37 @@ export type StoneState = {
  * roll bag were merged into one pool, and before untethering was retired. */
 export type LegacyStoneKind = StoneKind | "WhiteStone" | "BlackStone";
 
-/** A `FloatingBoon` as stored before 23.3 widened it with `kind` — every one
- * on disk from before that point is implicitly a Boon. */
-export type LegacyFloatingBoon = Omit<FloatingBoon, "kind"> & {
+/** A session aspect as stored under its pre-26.1 name (`floatingBoons`), and
+ * before 23.3 widened it with `kind` — every one on disk from before that point
+ * is implicitly a Boon. */
+export type LegacyFloatingBoon = Omit<SessionAspect, "kind"> & {
   kind?: StoneKind;
+};
+
+/** Proposal kinds and ability kinds as stored before 26.1 renamed the moves
+ * (Pledge → Highlight, Suggest Compel → Complicate, Help Out → Alter). */
+const LEGACY_MOVE_NAMES: Record<string, string> = {
+  pledge: "highlight",
+  "suggest-compel": "complicate",
+  "help-out": "alter",
+  "use-floating": "use-session-boon",
+};
+
+function migrateMoveName<T extends string>(kind: string): T {
+  return (LEGACY_MOVE_NAMES[kind] ?? kind) as T;
+}
+
+/** A `Proposal` as stored before 26.1: legacy `kind` strings, and the
+ * session-aspect reference under its old `floatingId` name (absent entirely
+ * before the moves work). */
+export type LegacyProposal = Omit<
+  Proposal,
+  "kind" | "sessionAspectId" | "targetSlot"
+> & {
+  kind: string;
+  floatingId?: string | null;
+  sessionAspectId?: string | null;
+  targetSlot?: number | null;
 };
 
 export type LegacyStoneState = {
@@ -49,9 +78,11 @@ export type LegacyStoneState = {
    * target, so there is nothing left to be "open". */
   overcome?: { targetSlot: number } | null;
   committedBoons?: CommittedBoon[];
+  /** The pre-26.1 name for `sessionAspects`. */
   floatingBoons?: LegacyFloatingBoon[];
-  usedAbilities?: UsedAbilities[];
-  proposals?: Proposal[];
+  sessionAspects?: LegacyFloatingBoon[];
+  usedAbilities?: { slot: number; kinds: string[] }[];
+  proposals?: LegacyProposal[];
   session?:
     | (Pick<SessionState, "id" | "goal"> & {
         pool?: LegacyStoneKind[];
@@ -86,7 +117,7 @@ export function migrateStoneState(
     return {
       stonePool: [...initialPool],
       committedBoons: [],
-      floatingBoons: [],
+      sessionAspects: [],
       usedAbilities: [],
       proposals: [],
       session: null,
@@ -105,19 +136,30 @@ export function migrateStoneState(
       ...legacyCarriedBanes,
     ],
     committedBoons: stored.committedBoons ?? [],
-    // Floating boons from before 23.3 carry no `kind` — every one on disk
-    // that old is implicitly a Boon.
-    floatingBoons: (stored.floatingBoons ?? []).map((f) => ({
-      ...f,
-      kind: f.kind ?? "Boon",
+    // Session aspects from before 23.3 carry no `kind` — every one on disk
+    // that old is implicitly a Boon. Before 26.1 they were stored as
+    // `floatingBoons`.
+    sessionAspects: (stored.sessionAspects ?? stored.floatingBoons ?? []).map(
+      (f) => ({
+        ...f,
+        kind: f.kind ?? "Boon",
+      }),
+    ),
+    usedAbilities: (stored.usedAbilities ?? []).map((u) => ({
+      slot: u.slot,
+      kinds: u.kinds.map((k) => migrateMoveName<AbilityKind>(k)),
     })),
-    usedAbilities: stored.usedAbilities ?? [],
-    // Proposals from before the moves work carry no `floatingId` / `targetSlot`.
-    proposals: (stored.proposals ?? []).map((p) => ({
-      ...p,
-      floatingId: p.floatingId ?? null,
-      targetSlot: p.targetSlot ?? null,
-    })),
+    // Proposals from before the moves work carry no `sessionAspectId` /
+    // `targetSlot`; from before 26.1 they carry legacy `kind` strings and
+    // call the session-aspect reference `floatingId`.
+    proposals: (stored.proposals ?? []).map(
+      ({ floatingId, sessionAspectId, kind, ...p }) => ({
+        ...p,
+        kind: migrateMoveName<ProposalKind>(kind),
+        sessionAspectId: sessionAspectId ?? floatingId ?? null,
+        targetSlot: p.targetSlot ?? null,
+      }),
+    ),
     session: stored.session
       ? { id: stored.session.id, goal: stored.session.goal }
       : null,

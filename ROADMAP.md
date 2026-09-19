@@ -1630,7 +1630,8 @@ are recorded so the reasoning survives.
   target-paid reroll do not (Alter Fate replaces both).
 - **§23.4's inert Moves card** and the pledge / add-boon / use-floating
   disconnections recorded in §23's open questions. The player-initiated
-  `add-boon` proposal stays cut; the facilitator's direct add stays.
+  `add-boon` proposal and the redundant `/stones/add-boon` route are deleted; the
+  facilitator adds a Boon with `/stones/add`.
 - **P2.12** (Complicate's suggester payout) — resolved: only the target is paid.
 - **P2.13's Moves count item** ("n of 4 left") — moot with once-per-session gone.
   Its collapsed-Facilitator-header proposal count is folded into 26.3.
@@ -1638,38 +1639,53 @@ are recorded so the reasoning survives.
   clear anything. **25.7** (proposal discriminated union) gets cheaper because
   the kinds are being reshaped here anyway.
 
-### 26.1 Vocabulary rename and `RULES.md` — no behaviour change
+### 26.1 Vocabulary rename and `RULES.md` — done
 
-One branch, mechanical, so it is easy to review; the existing test suites must
-pass unchanged apart from renamed identifiers.
+One branch, mechanical, so it is easy to review; the existing test suites pass
+unchanged apart from renamed identifiers, plus one new migration test.
 
-- [ ] **`RULES.md`** at the repo root (drafted with this section); a
-      `CLAUDE.md` convention that any rules change updates it and that
-      `Copy/Terms.elm` follows.
-- [ ] **Rename through types, `Kind`, `Msg`, `Effect`, `Api`, route paths, and
-      stored proposal `kind` strings.** Proposed mapping (finalise on the
-      branch; the client and Worker deploy together, so a wire rename is safe):
+- [x] **`RULES.md`** at the repo root, and a `CLAUDE.md` convention that any
+      rules change updates it and that `Copy/Terms.elm` follows (landed with the
+      section 26 docs branch).
+- [x] **Renamed through types, `Kind`, `Msg`, `Effect`, `Api`, route paths, the
+      stored proposal `kind` strings, copy, and tests:**
 
-      | Now | Becomes |
+      | Was | Now |
       | --- | --- |
-      | `Pledge`, `CommitBoon*`, `/stones/commit`, `PledgeDue` | `Highlight`, `/moves/highlight` |
-      | `SuggestCompel` (`suggest-compel`), `targetSlot` | `Complicate` (`complicate`) |
-      | `HelpOut` (`help-out`) | `Alter` (`alter`); copy says "Alter Fate" |
-      | `AddDetail` (`add-detail`) | `AddDetail`, `/moves/add-detail` |
-      | `FloatingBoon`, `floatingBoons`, `UseFloating`, `/stones/floating-boons` | `SessionAspect`, `sessionAspects`, `UseSessionBoon`, `/session-aspects` |
-      | `/stones/draw` | `/overcome/roll` |
+      | `Pledge`, `CommitBoon*`, `/stones/commit`, `PledgeDue`, `applyPledge` | `Highlight`, `Highlight*`, `/moves/highlight`, `HighlightDue`, `applyHighlight` |
+      | `SuggestCompel` / `suggest-compel`, `SUGGEST_COMPEL_*` | `Complicate` / `complicate`, `COMPLICATE_*` |
+      | `HelpOut` / `help-out` | `Alter` / `alter` (copy: "Alter Fate") |
+      | `UseFloating` / `use-floating`, `/stones/use-floating` | `UseSessionBoon` / `use-session-boon`, `/moves/use-session-boon` |
+      | `FloatingBoon`, `floatingBoons`, `floatingId`, `/stones/floating-boons` | `SessionAspect`, `sessionAspects`, `sessionAspectId`, `/session-aspects` |
+      | `/stones/draw` | `/overcome/roll` (still the stateless facilitator draw until 26.2) |
+      | "Add a Detail" | "Add Detail" |
 
-- [ ] **`migrateStoneState.ts` reads the old shapes**: old proposal `kind`
-      strings map to the new ones, old floating boons become session aspects with
-      `consumed: false` (and `kind` defaulting to `"Boon"`, as today). Old message
-      rows are not rewritten.
-- [ ] **Copy rename only**: `Copy.elm` / `Copy/Terms.elm` use the five names and
-      drop "pledge" and "compel"; the card title becomes "Session boons & banes"
-      (veto welcome). The *mechanics* copy is rewritten in 26.4, once they exist.
-- [ ] Check that `/stones/add-boon` (the facilitator's direct action) is not
-      redundant with `/stones/add`; keep it if it is not, note the reason here if
-      it is dropped.
-- [ ] Update the `CLAUDE.md` route lists and naming as part of the rename.
+- [x] **`migrateStoneState.ts` reads the old shapes**: legacy proposal `kind`
+      strings and `usedAbilities` kinds map to the new names, `floatingBoons`
+      and `floatingId` are read under their new names, and a test covers a blob
+      written by a pre-26.1 build. Old message rows are not rewritten.
+- [x] **Copy**: `Copy.elm` / `Copy/Terms.elm` use the five names; the Pledge
+      glossary term is gone (folded into Highlight); the card title is "Session
+      boons & banes"; the "Moves & compels" heading is "Moves"; user-visible worker
+      strings and log lines for the surviving moves use the new names ("Complicate
+      — …", "Session boon used — …"). The *mechanics* copy is rewritten in 26.4.
+- [x] `CLAUDE.md` route lists and naming updated.
+
+**Deliberately left for 26.2**, because 26.2 deletes or reshapes them and
+renaming first would be churn: `GainInsight`, `AcceptCompel` and
+`/moves/accept-compel`, the glossary's Compel / Accept Compel / Gain Insight
+entries, `committedBoons` (the odds-bump mechanism under Highlight),
+`usedAbilities`, `AbilityKind` and the `/abilities/use` route (26.2 splits it
+into one route per move), and the `draw` / `DrawStones` identifiers. In-flight
+keys (`"stones:…"`) keep their prefix; §25.4 replaces them with typed keys.
+
+**Decided:** the facilitator's direct `POST /stones/add-boon` is redundant with
+`POST /stones/add { kind: "Boon" }` (both add a Boon to the pool, silently), and
+its player-facing proposal half is unreachable. No duplicated routes: 26.2
+deletes `/stones/add-boon`, the `add-boon` proposal kind and everything hanging
+off it (`AddBoon` in `Kind`, `Msg` and `Effect`, `proposeAddBoon`,
+`applyAddBoon`, `Copy` and glossary text). The facilitator adds a Boon with
+`/stones/add`.
 
 ### 26.2 Worker: the rules — test-first
 
@@ -1708,7 +1724,8 @@ Section 25.1 will later restructure the handlers; these tests are what protect i
 - [ ] **Session aspects**: `consumed: boolean`. Facilitator routes: create, edit
       text, delete, `use` (direct: marks consumed, adds its kind to the pool, no
       approval), and `unconsume`. Both create and use write log lines.
-- [ ] **Delete** what no longer has a reason to exist: `usedAbilities` and its
+- [ ] **Delete** what no longer has a reason to exist: `/stones/add-boon` and
+      the `add-boon` proposal kind (redundant with `/stones/add`), `usedAbilities` and its
       `KEY_STONES` field, `committedBoons` and `drawFromBag`'s odds bump,
       `GainInsight`, `AcceptCompel` and `/moves/accept-compel`,
       `SUGGEST_COMPEL_SUGGESTER_BOONS`, the `help-out` always-400 branch, and the

@@ -55,7 +55,7 @@ const ASPECT_BANE_COLUMNS: Record<AspectName, string> = {
 };
 
 /** Set a sheet's boon count outright. `/characters/:slot/fate` and the
- * suggest / accept compel payouts each resolve their new total and call
+ * Complicate / Accept Compel payouts each resolve their new total and call
  * this. */
 export async function setFate(
   db: D1Database,

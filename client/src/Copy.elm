@@ -30,14 +30,14 @@ baneStone =
     "Bane"
 
 
-pledgedChip : String
-pledgedChip =
-    "Pledged"
+highlightedChip : String
+highlightedChip =
+    "Highlighted"
 
 
-floatingChip : String
-floatingChip =
-    "Floating"
+sessionAspectChip : String
+sessionAspectChip =
+    "Session"
 
 
 
@@ -146,43 +146,43 @@ sessionHistoryTitle =
 
 
 
--- SESSION ASPECTS CARD (View/SessionAspects.elm) — the floating-boons list,
+-- SESSION ASPECTS CARD (View/SessionAspects.elm) — the session boons and banes list,
 -- renamed and moved to the centre column by roadmap section 23.5, as 23.3
 -- anticipated.
 
 
 sessionAspectsTitle : String
 sessionAspectsTitle =
-    "Session aspects"
+    "Session boons & banes"
 
 
-floatingBoonRequested : String
-floatingBoonRequested =
+sessionAspectRequested : String
+sessionAspectRequested =
     "(requested)"
 
 
-floatingBoonUse : String
-floatingBoonUse =
+sessionAspectUse : String
+sessionAspectUse =
     "Use"
 
 
 {-| Facilitator-only: remove a session context outright (23.2).
 -}
-floatingBoonRemove : String
-floatingBoonRemove =
+sessionAspectRemove : String
+sessionAspectRemove =
     "Remove"
 
 
 {-| Facilitator-only: the field and button that plant a session context
-directly (23.2), below the existing floating boons.
+directly (23.2), below the existing session aspects.
 -}
-addFloatingBoonPlaceholder : String
-addFloatingBoonPlaceholder =
-    "Add a floating boon…"
+addSessionAspectPlaceholder : String
+addSessionAspectPlaceholder =
+    "Add a session boon or bane…"
 
 
-addFloatingBoon : String
-addFloatingBoon =
+addSessionAspect : String
+addSessionAspect =
     "Add"
 
 
@@ -221,8 +221,8 @@ proposalsTitle =
     "Proposals"
 
 
-floatingBoonContextPlaceholder : String
-floatingBoonContextPlaceholder =
+sessionAspectContextPlaceholder : String
+sessionAspectContextPlaceholder =
     "Context this boon represents…"
 
 
@@ -240,38 +240,38 @@ proposalAddBoon =
     "add a boon to the pool"
 
 
-proposalPledge : String
-proposalPledge =
-    "highlight an aspect (pledge a boon)"
+proposalHighlight : String
+proposalHighlight =
+    "highlight an aspect (adds a boon to the pool)"
 
 
-proposalPledgeWithdraw : String
-proposalPledgeWithdraw =
+proposalHighlightWithdraw : String
+proposalHighlightWithdraw =
     "withdraw a highlighted boon"
 
 
-proposalHelpOut : String
-proposalHelpOut =
-    "Alter — pay two boons to resolve the fork with an alternate action"
+proposalAlter : String
+proposalAlter =
+    "Alter Fate — pay two boons to resolve the fork with an alternate action"
 
 
 proposalAddDetail : String
 proposalAddDetail =
-    "Add a Detail — a floating boon"
+    "Add Detail — a session boon"
 
 
 proposalGainInsight : String
 proposalGainInsight =
-    "Gain Insight — a floating boon"
+    "Gain Insight — a session boon"
 
 
-proposalSuggestCompelOn : String -> String
-proposalSuggestCompelOn who =
+proposalComplicateOn : String -> String
+proposalComplicateOn who =
     "Complicate " ++ who ++ " (+1 / +2 boons)"
 
 
-proposalSuggestCompelFallback : String
-proposalSuggestCompelFallback =
+proposalComplicateFallback : String
+proposalComplicateFallback =
     "another character"
 
 
@@ -280,9 +280,9 @@ proposalAcceptCompel =
     "Accept Compel — take a complication for 2 boons"
 
 
-proposalUseFloating : String
-proposalUseFloating =
-    "spend a floating boon on the roll"
+proposalUseSessionBoon : String
+proposalUseSessionBoon =
+    "spend a session boon on the roll"
 
 
 
@@ -314,14 +314,14 @@ oncePerSession =
     "Once per session"
 
 
-helpOut : String
-helpOut =
-    "Alter"
+alter : String
+alter =
+    "Alter Fate"
 
 
 addDetail : String
 addDetail =
-    "Add a Detail"
+    "Add Detail"
 
 
 gainInsight : String
@@ -329,8 +329,8 @@ gainInsight =
     "Gain Insight"
 
 
-suggestCompel : String
-suggestCompel =
+complicate : String
+complicate =
     "Complicate"
 
 
@@ -341,7 +341,7 @@ usedSuffix =
 
 {-| The Moves card's collapsed-accordion summary (roadmap section 24, the 1c
 layout variant): how many of the four once-per-session-or-fewer abilities
-(Alter, Add a Detail, Gain Insight, Complicate) are still unused.
+(Alter, Add Detail, Gain Insight, Complicate) are still unused.
 -}
 movesRemainingSummary : Int -> Int -> String
 movesRemainingSummary remaining total =

@@ -3,15 +3,15 @@ module Api exposing
     , getGameState
     , getMessageHistory
     , postAcceptCompelMove
-    , postAddFloatingBoon
+    , postAddSessionAspect
     , postAddStone
     , postCharacterUpdate
     , postClaimSlot
     , postClearMessages
-    , postCommitBoon
+    , postHighlight
     , postCreateEntity
     , postDeleteEntity
-    , postDeleteFloatingBoon
+    , postDeleteSessionAspect
     , postEndSession
     , postFate
     , postMessage
@@ -21,10 +21,10 @@ module Api exposing
     , postSessionGoal
     , postStartSession
     , postStones
-    , postSuggestCompel
+    , postComplicate
     , postUpdateEntity
     , postUseAbility
-    , postUseFloatingBoon
+    , postUseSessionBoon
     , postWithdrawProposal
     )
 
@@ -43,7 +43,7 @@ import Json.Encode as Encode
 import Kind
 import Roll exposing (Stone(..), stoneLabel)
 import Time
-import Types exposing (Auth, CharacterSheet, CommittedBoon, EntityKind, FloatingBoon, Flags, GameState, Proposal, Session, SessionSummary, TableEntity, UsedAbility, decodeRole, entityKindPath)
+import Types exposing (Auth, CharacterSheet, CommittedBoon, EntityKind, SessionAspect, Flags, GameState, Proposal, Session, SessionSummary, TableEntity, UsedAbility, decodeRole, entityKindPath)
 
 
 
@@ -180,13 +180,13 @@ postFate flags auth slot delta toMsg =
         toMsg
 
 
-{-| Pledge (positive `delta`) or withdraw (negative) boons from the next roll.
+{-| Highlight (positive `delta`) or withdraw (negative) boons from the next roll.
 The slot is the caller's own claimed sheet, resolved server-side; the Worker
-clamps the pledge to what that character holds.
+clamps the highlight to what that character holds.
 -}
-postCommitBoon : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
-postCommitBoon flags auth delta toMsg =
-    postJson flags auth "/stones/commit" (Encode.object [ ( "delta", Encode.int delta ) ]) toMsg
+postHighlight : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
+postHighlight flags auth delta toMsg =
+    postJson flags auth "/moves/highlight" (Encode.object [ ( "delta", Encode.int delta ) ]) toMsg
 
 
 {-| Claim a character sheet for the calling user, or release one. Releasing is
@@ -208,7 +208,7 @@ slotAction flags auth slot action toMsg =
 
 
 {-| Facilitator-only: `decision` is `"accept"` or `"reject"` for the proposal.
-`context` carries the facilitator's note when accepting an Add a Detail /
+`context` carries the facilitator's note when accepting an Add Detail /
 Gain Insight; it is ignored for every other kind and for a reject.
 -}
 postProposalDecision : Flags -> Auth -> String -> String -> Maybe String -> (Result Http.Error () -> msg) -> Cmd msg
@@ -233,7 +233,7 @@ postWithdrawProposal flags auth proposalId toMsg =
     postEmpty flags auth ("/proposals/" ++ proposalId ++ "/withdraw") toMsg
 
 
-{-| Raise a once-per-session ability: `kind` is `"help-out"`, `"add-detail"`, or
+{-| Raise a once-per-session ability: `kind` is `"alter"`, `"add-detail"`, or
 `"gain-insight"`. Queued for the facilitator like any other proposal.
 -}
 postUseAbility : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
@@ -249,29 +249,29 @@ postAcceptCompelMove flags auth toMsg =
     postEmpty flags auth "/moves/accept-compel" toMsg
 
 
-{-| Raise the Suggest Compel ability against the character in `targetSlot` — a
+{-| Raise the Complicate ability against the character in `targetSlot` — a
 once-per-session ability, queued like the others. Approved → 1 boon to the
-suggester, 2 to the compelled character.
+suggester, 2 to the target character.
 -}
-postSuggestCompel : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
-postSuggestCompel flags auth targetSlot toMsg =
+postComplicate : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
+postComplicate flags auth targetSlot toMsg =
     postJson flags
         auth
         "/abilities/use"
         (Encode.object
-            [ ( "kind", Encode.string "suggest-compel" )
+            [ ( "kind", Encode.string "complicate" )
             , ( "targetSlot", Encode.int targetSlot )
             ]
         )
         toMsg
 
 
-{-| Ask to spend a floating boon on the roll; the facilitator approves it like a
+{-| Ask to spend a session boon on the roll; the facilitator approves it like a
 Highlight.
 -}
-postUseFloatingBoon : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
-postUseFloatingBoon flags auth floatingId toMsg =
-    postJson flags auth "/stones/use-floating" (Encode.object [ ( "floatingId", Encode.string floatingId ) ]) toMsg
+postUseSessionBoon : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postUseSessionBoon flags auth sessionAspectId toMsg =
+    postJson flags auth "/moves/use-session-boon" (Encode.object [ ( "sessionAspectId", Encode.string sessionAspectId ) ]) toMsg
 
 
 {-| Facilitator-only (23.2): add one stone directly to the shared pool,
@@ -291,14 +291,14 @@ postRemoveStone flags auth stone toMsg =
 
 
 {-| Facilitator-only (23.2, widened 23.3): plant a session context directly —
-Boon or Bane — without routing through an Add a Detail / Gain Insight
+Boon or Bane — without routing through an Add Detail / Gain Insight
 proposal (which always produces a Boon).
 -}
-postAddFloatingBoon : Flags -> Auth -> Stone -> String -> (Result Http.Error () -> msg) -> Cmd msg
-postAddFloatingBoon flags auth kind text toMsg =
+postAddSessionAspect : Flags -> Auth -> Stone -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postAddSessionAspect flags auth kind text toMsg =
     postJson flags
         auth
-        "/stones/floating-boons"
+        "/session-aspects"
         (Encode.object
             [ ( "kind", Encode.string (stoneLabel kind) )
             , ( "text", Encode.string text )
@@ -309,9 +309,9 @@ postAddFloatingBoon flags auth kind text toMsg =
 
 {-| Facilitator-only (23.2): remove a session context outright.
 -}
-postDeleteFloatingBoon : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
-postDeleteFloatingBoon flags auth floatingId toMsg =
-    postEmpty flags auth ("/stones/floating-boons/" ++ floatingId ++ "/delete") toMsg
+postDeleteSessionAspect : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postDeleteSessionAspect flags auth sessionAspectId toMsg =
+    postEmpty flags auth ("/session-aspects/" ++ sessionAspectId ++ "/delete") toMsg
 
 
 {-| Facilitator-only: open a session with a goal.
@@ -414,13 +414,13 @@ decodeProposal =
         (Decode.field "proposerName" Decode.string)
         (Decode.field "slot" (Decode.nullable Decode.int))
         (Decode.field "delta" Decode.int)
-        (Decode.field "floatingId" (Decode.nullable Decode.string))
+        (Decode.field "sessionAspectId" (Decode.nullable Decode.string))
         (Decode.field "targetSlot" (Decode.nullable Decode.int))
 
 
-decodeFloatingBoon : Decode.Decoder FloatingBoon
-decodeFloatingBoon =
-    Decode.map4 FloatingBoon
+decodeSessionAspect : Decode.Decoder SessionAspect
+decodeSessionAspect =
+    Decode.map4 SessionAspect
         (Decode.field "id" Decode.string)
         (Decode.field "kind" decodeStone)
         (Decode.field "text" Decode.string)
@@ -522,7 +522,7 @@ decodeGameState =
         (Decode.field "session" (Decode.nullable decodeSession))
         (Decode.field "characters" (Decode.list decodeCharacterSheet))
         (Decode.field "sessionHistory" (Decode.list decodeSessionSummary))
-        |> andMap (Decode.field "floatingBoons" (Decode.list decodeFloatingBoon))
+        |> andMap (Decode.field "sessionAspects" (Decode.list decodeSessionAspect))
         |> andMap (Decode.field "usedAbilities" (Decode.list decodeUsedAbility))
         |> andMap (Decode.field "npcs" (Decode.list decodeTableEntity))
         |> andMap (Decode.field "locations" (Decode.list decodeTableEntity))

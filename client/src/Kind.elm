@@ -11,7 +11,7 @@ module Kind exposing
 strings: the kind of a queued `Proposal` and the once-per-session `AbilityKind`.
 
 Kept in their own module (rather than in `Types` beside `Msg`) because several
-constructor names — `SuggestCompel`, `AddBoon` — already exist as `Msg`
+constructor names — `Complicate`, `AddBoon` — already exist as `Msg`
 variants, and Elm's constructors must be unique within a module.
 
 Bringing the client to parity with the Worker's `ProposalKind` / `AbilityKind`
@@ -29,10 +29,10 @@ facilitator approval. A subset of `ProposalKind`, reached through
 `AbilityProposal`.
 -}
 type AbilityKind
-    = HelpOut
+    = Alter
     | AddDetail
     | GainInsight
-    | SuggestCompel
+    | Complicate
 
 
 {-| What a queued proposal asks for. `AbilityProposal` wraps the ability kinds;
@@ -40,17 +40,17 @@ the rest are proposal-only.
 -}
 type ProposalKind
     = AddBoon
-    | Pledge
+    | Highlight
     | AbilityProposal AbilityKind
     | AcceptCompel
-    | UseFloating
+    | UseSessionBoon
 
 
 abilityToString : AbilityKind -> String
 abilityToString kind =
     case kind of
-        HelpOut ->
-            "help-out"
+        Alter ->
+            "alter"
 
         AddDetail ->
             "add-detail"
@@ -58,8 +58,8 @@ abilityToString kind =
         GainInsight ->
             "gain-insight"
 
-        SuggestCompel ->
-            "suggest-compel"
+        Complicate ->
+            "complicate"
 
 
 proposalKindToString : ProposalKind -> String
@@ -68,8 +68,8 @@ proposalKindToString kind =
         AddBoon ->
             "add-boon"
 
-        Pledge ->
-            "pledge"
+        Highlight ->
+            "highlight"
 
         AbilityProposal ability ->
             abilityToString ability
@@ -77,15 +77,15 @@ proposalKindToString kind =
         AcceptCompel ->
             "accept-compel"
 
-        UseFloating ->
-            "use-floating"
+        UseSessionBoon ->
+            "use-session-boon"
 
 
 abilityFromString : String -> Maybe AbilityKind
 abilityFromString s =
     case s of
-        "help-out" ->
-            Just HelpOut
+        "alter" ->
+            Just Alter
 
         "add-detail" ->
             Just AddDetail
@@ -93,8 +93,8 @@ abilityFromString s =
         "gain-insight" ->
             Just GainInsight
 
-        "suggest-compel" ->
-            Just SuggestCompel
+        "complicate" ->
+            Just Complicate
 
         _ ->
             Nothing
@@ -106,14 +106,14 @@ proposalKindFromString s =
         "add-boon" ->
             Just AddBoon
 
-        "pledge" ->
-            Just Pledge
+        "highlight" ->
+            Just Highlight
 
         "accept-compel" ->
             Just AcceptCompel
 
-        "use-floating" ->
-            Just UseFloating
+        "use-session-boon" ->
+            Just UseSessionBoon
 
         _ ->
             Maybe.map AbilityProposal (abilityFromString s)

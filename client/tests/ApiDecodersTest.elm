@@ -2,7 +2,7 @@ module ApiDecodersTest exposing (suite)
 
 {-| The `Api.decodeGameState` decoder against a full captured wire payload. One
 snapshot exercises every sub-decoder, including the shapes that are easy to get
-wrong: floating boons, used abilities, and a proposal of each `kind`.
+wrong: session aspects, used abilities, and a proposal of each `kind`.
 -}
 
 import Api
@@ -46,33 +46,33 @@ suite =
                 decoded
                     |> Result.map .committedBoons
                     |> Expect.equal (Ok [ { slot = 1, count = 2 } ])
-        , test "reads every proposal kind, with nullable slot/floatingId/targetSlot" <|
+        , test "reads every proposal kind, with nullable slot/sessionAspectId/targetSlot" <|
             \_ ->
                 decoded
                     |> Result.map (.proposals >> List.map (\p -> ( p.kind, p.slot, p.targetSlot )))
                     |> Expect.equal
                         (Ok
                             [ ( Kind.AddBoon, Nothing, Nothing )
-                            , ( Kind.Pledge, Just 1, Nothing )
-                            , ( Kind.AbilityProposal Kind.SuggestCompel, Just 1, Just 2 )
-                            , ( Kind.UseFloating, Just 1, Nothing )
+                            , ( Kind.Highlight, Just 1, Nothing )
+                            , ( Kind.AbilityProposal Kind.Complicate, Just 1, Just 2 )
+                            , ( Kind.UseSessionBoon, Just 1, Nothing )
                             ]
                         )
-        , test "carries the use-floating proposal's floatingId" <|
+        , test "carries the use-session-boon proposal's sessionAspectId" <|
             \_ ->
                 decoded
-                    |> Result.map (.proposals >> List.filterMap .floatingId)
+                    |> Result.map (.proposals >> List.filterMap .sessionAspectId)
                     |> Expect.equal (Ok [ "f1" ])
-        , test "reads floating boons, their kind, and their context note" <|
+        , test "reads session aspects, their kind, and their context note" <|
             \_ ->
                 decoded
-                    |> Result.map (.floatingBoons >> List.map (\b -> ( b.id, b.kind, b.text )))
+                    |> Result.map (.sessionAspects >> List.map (\b -> ( b.id, b.kind, b.text )))
                     |> Expect.equal (Ok [ ( "f1", Bane, "the rope still holds" ) ])
         , test "reads used abilities per slot" <|
             \_ ->
                 decoded
                     |> Result.map .usedAbilities
-                    |> Expect.equal (Ok [ { slot = 1, kinds = [ Kind.HelpOut, Kind.AddDetail ] } ])
+                    |> Expect.equal (Ok [ { slot = 1, kinds = [ Kind.Alter, Kind.AddDetail ] } ])
         , test "reads the running session's goal" <|
             \_ ->
                 decoded

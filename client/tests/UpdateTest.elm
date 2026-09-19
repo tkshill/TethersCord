@@ -128,7 +128,7 @@ suite =
                 \_ ->
                     Main.update DrawStones ready
                         |> Tuple.second
-                        |> Expect.equal (Effect.PostStones Fixtures.playerAuth "/stones/draw")
+                        |> Expect.equal (Effect.PostStones Fixtures.playerAuth "/overcome/roll")
             , test "a second DrawStones while the first is in flight is dropped" <|
                 \_ ->
                     let
@@ -148,7 +148,7 @@ suite =
                     in
                     Main.update DrawStones settled
                         |> Tuple.second
-                        |> Expect.equal (Effect.PostStones Fixtures.playerAuth "/stones/draw")
+                        |> Expect.equal (Effect.PostStones Fixtures.playerAuth "/overcome/roll")
             , test "AddStone posts the stone's kind" <|
                 \_ ->
                     Main.update (AddStone Bane) ready
@@ -159,33 +159,33 @@ suite =
                     Main.update (RemoveStone Boon) ready
                         |> Tuple.second
                         |> Expect.equal (Effect.PostRemoveStone Fixtures.playerAuth Boon)
-            , test "FloatingBoonKindChanged sets the pending kind" <|
+            , test "SessionAspectKindChanged sets the pending kind" <|
                 \_ ->
-                    Main.update (FloatingBoonKindChanged Bane) ready
-                        |> Expect.equal ( { ready | newFloatingBoonKind = Bane }, Effect.None )
-            , test "AddFloatingBoon does nothing on a blank draft" <|
+                    Main.update (SessionAspectKindChanged Bane) ready
+                        |> Expect.equal ( { ready | newSessionAspectKind = Bane }, Effect.None )
+            , test "AddSessionAspect does nothing on a blank draft" <|
                 \_ ->
-                    Main.update AddFloatingBoon { ready | newFloatingBoonNote = "   " }
-                        |> Expect.equal ( { ready | newFloatingBoonNote = "   " }, Effect.None )
-            , test "AddFloatingBoon posts the draft as typed (worker trims it) and clears the field" <|
+                    Main.update AddSessionAspect { ready | newSessionAspectNote = "   " }
+                        |> Expect.equal ( { ready | newSessionAspectNote = "   " }, Effect.None )
+            , test "AddSessionAspect posts the draft as typed (worker trims it) and clears the field" <|
                 \_ ->
                     let
                         ( next, effect ) =
-                            Main.update AddFloatingBoon { ready | newFloatingBoonNote = "  a detail  " }
+                            Main.update AddSessionAspect { ready | newSessionAspectNote = "  a detail  " }
                     in
-                    ( next.newFloatingBoonNote, effect )
-                        |> Expect.equal ( "", Effect.PostAddFloatingBoon Fixtures.playerAuth Boon "  a detail  " )
-            , test "AddFloatingBoon posts the picked kind" <|
+                    ( next.newSessionAspectNote, effect )
+                        |> Expect.equal ( "", Effect.PostAddSessionAspect Fixtures.playerAuth Boon "  a detail  " )
+            , test "AddSessionAspect posts the picked kind" <|
                 \_ ->
-                    Main.update AddFloatingBoon
-                        { ready | newFloatingBoonNote = "a complication", newFloatingBoonKind = Bane }
+                    Main.update AddSessionAspect
+                        { ready | newSessionAspectNote = "a complication", newSessionAspectKind = Bane }
                         |> Tuple.second
-                        |> Expect.equal (Effect.PostAddFloatingBoon Fixtures.playerAuth Bane "a complication")
-            , test "DeleteFloatingBoon posts to the delete route with auth" <|
+                        |> Expect.equal (Effect.PostAddSessionAspect Fixtures.playerAuth Bane "a complication")
+            , test "DeleteSessionAspect posts to the delete route with auth" <|
                 \_ ->
-                    Main.update (DeleteFloatingBoon "f1") ready
+                    Main.update (DeleteSessionAspect "f1") ready
                         |> Tuple.second
-                        |> Expect.equal (Effect.PostDeleteFloatingBoon Fixtures.playerAuth "f1")
+                        |> Expect.equal (Effect.PostDeleteSessionAspect Fixtures.playerAuth "f1")
             , test "AcceptProposal carries that row's trimmed draft note as context" <|
                 \_ ->
                     Main.update (AcceptProposal "p1")
@@ -348,37 +348,37 @@ suite =
                            )
                         |> Expect.equal ( 1, "Bea", True )
             ]
-        , describe "Highlight pledge coalescing"
+        , describe "Highlight highlight coalescing"
             [ test "the +/- taps only arm a debounce, they do not each POST" <|
                 \_ ->
                     let
                         ( afterTaps, _ ) =
-                            Main.update CommitBoonIncrement ready
+                            Main.update HighlightIncrement ready
                                 |> Tuple.first
-                                |> Main.update CommitBoonIncrement
+                                |> Main.update HighlightIncrement
                                 |> Tuple.first
-                                |> Main.update CommitBoonDecrement
+                                |> Main.update HighlightDecrement
                     in
-                    afterTaps.pendingPledgeDelta |> Expect.equal 1
-            , test "PledgeDue sends the accumulated net delta as one commit" <|
+                    afterTaps.pendingHighlightDelta |> Expect.equal 1
+            , test "HighlightDue sends the accumulated net delta as one commit" <|
                 \_ ->
                     let
                         armed =
-                            Main.update CommitBoonIncrement ready
+                            Main.update HighlightIncrement ready
                                 |> Tuple.first
-                                |> Main.update CommitBoonIncrement
+                                |> Main.update HighlightIncrement
                                 |> Tuple.first
                     in
-                    Main.update (PledgeDue armed.pledgeSeq) armed
-                        |> (\( next, eff ) -> ( eff, next.pendingPledgeDelta ))
-                        |> Expect.equal ( Effect.PostCommitBoon Fixtures.playerAuth 2, 0 )
-            , test "a stale PledgeDue token is ignored" <|
+                    Main.update (HighlightDue armed.highlightSeq) armed
+                        |> (\( next, eff ) -> ( eff, next.pendingHighlightDelta ))
+                        |> Expect.equal ( Effect.PostHighlight Fixtures.playerAuth 2, 0 )
+            , test "a stale HighlightDue token is ignored" <|
                 \_ ->
                     let
                         armed =
-                            Main.update CommitBoonIncrement ready |> Tuple.first
+                            Main.update HighlightIncrement ready |> Tuple.first
                     in
-                    Main.update (PledgeDue (armed.pledgeSeq - 1)) armed
+                    Main.update (HighlightDue (armed.highlightSeq - 1)) armed
                         |> Expect.equal ( armed, Effect.None )
             ]
         , describe "NPCs and locations"

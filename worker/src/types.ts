@@ -26,7 +26,7 @@ export type StoneKind = "Boon" | "Bane";
 
 /**
  * The result of one draw from the pool: `chosen` is what a facilitator's
- * `/stones/draw` shows, `rest` the remainder — the pool itself is never
+ * `/overcome/roll` shows, `rest` the remainder — the pool itself is never
  * written by a draw, so `rest` is only ever read, never persisted.
  */
 export type PendingRoll = {
@@ -35,11 +35,11 @@ export type PendingRoll = {
 };
 
 /**
- * Boon stones a character has pledged into the next draw's odds
+ * Boon stones a character has highlighted into the next draw's odds
  * (`drawFromBag` adds one extra Boon per committed boon to the bag). One
- * entry per character with a non-zero pledge, keyed by slot. 23.1 retired the
+ * entry per character with a non-zero highlight, keyed by slot. 23.1 retired the
  * roll/reroll/accept lifecycle that used to spend these from `fate` on
- * accept — what a pledge costs, if anything, going forward is an open
+ * accept — what a highlight costs, if anything, going forward is an open
  * question (see ROADMAP.md 23).
  */
 export type CommittedBoon = {
@@ -51,33 +51,33 @@ export type CommittedBoon = {
  * Every player-initiated request the facilitator resolves through the one
  * accept / reject queue:
  * - `add-boon` — add a Boon to the shared pool.
- * - `pledge` — Highlight an Aspect: pledge (`delta` +1) or withdraw (-1) one of
+ * - `highlight` — Highlight an Aspect: highlight (`delta` +1) or withdraw (-1) one of
  *   the proposer's own boons on the next roll.
- * - `help-out`, `add-detail`, `gain-insight`, `suggest-compel` — the
+ * - `alter`, `add-detail`, `gain-insight`, `complicate` — the
  *   once-per-session abilities.
  * - `accept-compel` — the move: take on a complication for 2 boons.
- * - `use-floating` — spend a floating boon (named by `floatingId`) on the roll.
+ * - `use-session-boon` — spend a session aspect (named by `sessionAspectId`) on the roll.
  *
- * `add-boon`, `pledge`, and (23.3) `use-floating` are disconnected from the
+ * `add-boon`, `highlight`, and (23.3) `use-session-boon` are disconnected from the
  * current client — the facilitator hand-edits the pool and session contexts
  * directly instead — but stay fully functional server-side, unreachable only
  * from the UI.
  */
 export type ProposalKind =
   | "add-boon"
-  | "pledge"
-  | "help-out"
+  | "highlight"
+  | "alter"
   | "add-detail"
   | "gain-insight"
-  | "suggest-compel"
+  | "complicate"
   | "accept-compel"
-  | "use-floating";
+  | "use-session-boon";
 
 /**
  * A player-initiated change to shared state, waiting on the facilitator. One per
- * click. `delta` is +1 / -1 for a pledge. `slot` is the proposer's claimed sheet
- * (null only for `add-boon`). `floatingId` names the boon for `use-floating`;
- * `targetSlot` names the compelled character for `suggest-compel`.
+ * click. `delta` is +1 / -1 for a highlight. `slot` is the proposer's claimed sheet
+ * (null only for `add-boon`). `sessionAspectId` names the boon for `use-session-boon`;
+ * `targetSlot` names the target character for `complicate`.
  */
 export type Proposal = {
   id: string;
@@ -86,27 +86,27 @@ export type Proposal = {
   proposerName: string;
   slot: number | null;
   delta: number;
-  floatingId: string | null;
+  sessionAspectId: string | null;
   targetSlot: number | null;
   createdAt: number;
 };
 
 /** Once-per-session abilities a player calls on, each gated by facilitator approval. */
 export type AbilityKind =
-  | "help-out"
+  | "alter"
   | "add-detail"
   | "gain-insight"
-  | "suggest-compel";
+  | "complicate";
 
 /**
  * A session context owned by no character — a Boon or (23.3) a Bane, with a
  * note of the context it stands for. The facilitator creates one directly
- * (`POST /stones/floating-boons`), or approves an Add a Detail / Gain Insight
- * ability, which always produces a Boon. It waits in `gameState.floatingBoons`
+ * (`POST /session-aspects`), or approves an Add Detail / Gain Insight
+ * ability, which always produces a Boon. It waits in `gameState.sessionAspects`
  * until the facilitator deletes it — its only other lifecycle state — and is
  * discarded when the session ends.
  */
-export type FloatingBoon = {
+export type SessionAspect = {
   id: string;
   kind: StoneKind;
   text: string;
@@ -193,7 +193,7 @@ export type GameState = {
   messages: Message[];
   stonePool: StoneKind[];
   committedBoons: CommittedBoon[];
-  floatingBoons: FloatingBoon[];
+  sessionAspects: SessionAspect[];
   usedAbilities: UsedAbilities[];
   proposals: Proposal[];
   session: SessionState | null;
@@ -213,7 +213,7 @@ export type UpdateFateInput = {
   delta: number;
 };
 
-export type CommitBoonInput = {
+export type HighlightInput = {
   delta: number;
 };
 
@@ -227,12 +227,12 @@ export type UpdateSessionGoalInput = {
 
 export type UseAbilityInput = {
   kind: AbilityKind;
-  /** Required for `suggest-compel`: the slot of the character being compelled. */
+  /** Required for `complicate`: the slot of the target character. */
   targetSlot?: number;
 };
 
-export type UseFloatingBoonInput = {
-  floatingId: string;
+export type UseSessionBoonInput = {
+  sessionAspectId: string;
 };
 
 /** `POST /stones/{add,remove}` (23.2): a facilitator hand-edit of the shared
@@ -241,10 +241,10 @@ export type AddOrRemoveStoneInput = {
   kind: StoneKind;
 };
 
-/** `POST /stones/floating-boons` (23.2, widened 23.3): the facilitator plants
- * a session context directly, picking its `kind` — an accepted Add a Detail /
+/** `POST /session-aspects` (23.2, widened 23.3): the facilitator plants
+ * a session context directly, picking its `kind` — an accepted Add Detail /
  * Gain Insight still only ever produces a Boon. */
-export type AddFloatingBoonInput = {
+export type AddSessionAspectInput = {
   kind: StoneKind;
   text: string;
 };
@@ -256,7 +256,7 @@ export type EntityInput = {
 };
 
 export type ProposalDecisionInput = {
-  /** The facilitator's context note, when accepting an Add a Detail / Gain Insight. */
+  /** The facilitator's context note, when accepting an Add Detail / Gain Insight. */
   text?: string;
 };
 

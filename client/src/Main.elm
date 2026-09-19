@@ -57,11 +57,11 @@ fieldSaveDelay =
     1000
 
 
-{-| Idle time after the last Highlight +/- tap before the coalesced net pledge is
+{-| Idle time after the last Highlight +/- tap before the coalesced net highlight is
 sent as a single proposal.
 -}
-pledgeDelay : Float
-pledgeDelay =
+highlightDelay : Float
+highlightDelay =
     700
 
 
@@ -148,16 +148,16 @@ init flags =
       , dirtySlots = Set.empty
       , dirtyEntities = Set.empty
       , fieldSaveSeq = 0
-      , pendingPledgeDelta = 0
-      , pledgeSeq = 0
+      , pendingHighlightDelta = 0
+      , highlightSeq = 0
       , selectedSlot = 0
       , logAtBottom = True
       , newSessionGoal = ""
       , goalEdit = ""
       , sessionControlsExpanded = False
       , proposalDrafts = Dict.empty
-      , newFloatingBoonNote = ""
-      , newFloatingBoonKind = Boon
+      , newSessionAspectNote = ""
+      , newSessionAspectKind = Boon
       , loadingHistory = False
       , noMoreHistory = False
       , guideExpanded = False
@@ -245,17 +245,17 @@ armFieldSave model =
     ( { model | fieldSaveSeq = seq }, Effect.DebounceFieldSave seq fieldSaveDelay )
 
 
-{-| Accumulate a Highlight +/- tap into the pending net delta and arm the pledge
+{-| Accumulate a Highlight +/- tap into the pending net delta and arm the highlight
 debounce.
 -}
-armPledge : Int -> Model -> ( Model, Effect )
-armPledge step model =
+armHighlight : Int -> Model -> ( Model, Effect )
+armHighlight step model =
     let
         seq =
-            model.pledgeSeq + 1
+            model.highlightSeq + 1
     in
-    ( { model | pendingPledgeDelta = model.pendingPledgeDelta + step, pledgeSeq = seq }
-    , Effect.DebouncePledge seq pledgeDelay
+    ( { model | pendingHighlightDelta = model.pendingHighlightDelta + step, highlightSeq = seq }
+    , Effect.DebounceHighlight seq highlightDelay
     )
 
 
@@ -446,29 +446,29 @@ update msg model =
             guard "stones:add-boon" model (\auth -> Effect.PostStones auth "/stones/add-boon")
 
         -- The +/- taps only nudge a running total; one coalesced proposal is
-        -- sent once the taps stop (`PledgeDue`).
-        CommitBoonIncrement ->
-            armPledge 1 model
+        -- sent once the taps stop (`HighlightDue`).
+        HighlightIncrement ->
+            armHighlight 1 model
 
-        CommitBoonDecrement ->
-            armPledge -1 model
+        HighlightDecrement ->
+            armHighlight -1 model
 
-        PledgeDue seq ->
-            if seq /= model.pledgeSeq || model.pendingPledgeDelta == 0 then
+        HighlightDue seq ->
+            if seq /= model.highlightSeq || model.pendingHighlightDelta == 0 then
                 ( model, Effect.None )
 
             else
                 case model.auth of
                     Just auth ->
                         ( { model
-                            | pendingPledgeDelta = 0
-                            , inflight = Set.insert "stones:pledge" model.inflight
+                            | pendingHighlightDelta = 0
+                            , inflight = Set.insert "stones:highlight" model.inflight
                           }
-                        , Effect.PostCommitBoon auth model.pendingPledgeDelta
+                        , Effect.PostHighlight auth model.pendingHighlightDelta
                         )
 
                     Nothing ->
-                        ( { model | pendingPledgeDelta = 0 }, Effect.None )
+                        ( { model | pendingHighlightDelta = 0 }, Effect.None )
 
         SelectSlot slot ->
             -- Leaving a tab flushes any unsaved edits on the sheet behind it.
@@ -524,14 +524,14 @@ update msg model =
         UseAbility kind ->
             guard ("move:" ++ Kind.abilityToString kind) model (\auth -> Effect.PostUseAbility auth kind)
 
-        SuggestCompel targetSlot ->
-            guard "move:suggest-compel" model (\auth -> Effect.PostSuggestCompel auth targetSlot)
+        Complicate targetSlot ->
+            guard "move:complicate" model (\auth -> Effect.PostComplicate auth targetSlot)
 
         AcceptCompelMove ->
             guard "move:accept-compel" model Effect.PostAcceptCompelMove
 
-        UseFloatingBoon floatingId ->
-            guard "move:use-floating" model (\auth -> Effect.PostUseFloatingBoon auth floatingId)
+        UseSessionBoon sessionAspectId ->
+            guard "move:use-session-boon" model (\auth -> Effect.PostUseSessionBoon auth sessionAspectId)
 
         SessionGoalChanged s ->
             ( { model | newSessionGoal = s }, Effect.None )
@@ -618,7 +618,7 @@ update msg model =
                     ( model, Effect.None )
 
         DrawStones ->
-            guard "stones:draw" model (\auth -> Effect.PostStones auth "/stones/draw")
+            guard "stones:draw" model (\auth -> Effect.PostStones auth "/overcome/roll")
 
         -- Facilitator-only hand-edits of the shared pool (23.2), independent
         -- of a draw and of each other.
@@ -628,25 +628,25 @@ update msg model =
         RemoveStone stone ->
             guard ("stones:remove-" ++ stoneLabel stone) model (\auth -> Effect.PostRemoveStone auth stone)
 
-        FloatingBoonDraftChanged s ->
-            ( { model | newFloatingBoonNote = s }, Effect.None )
+        SessionAspectDraftChanged s ->
+            ( { model | newSessionAspectNote = s }, Effect.None )
 
-        FloatingBoonKindChanged kind ->
-            ( { model | newFloatingBoonKind = kind }, Effect.None )
+        SessionAspectKindChanged kind ->
+            ( { model | newSessionAspectKind = kind }, Effect.None )
 
-        AddFloatingBoon ->
-            if String.trim model.newFloatingBoonNote == "" then
+        AddSessionAspect ->
+            if String.trim model.newSessionAspectNote == "" then
                 ( model, Effect.None )
 
             else
-                guard "stones:floating-add"
-                    { model | newFloatingBoonNote = "" }
-                    (\auth -> Effect.PostAddFloatingBoon auth model.newFloatingBoonKind model.newFloatingBoonNote)
+                guard "stones:session-aspect-add"
+                    { model | newSessionAspectNote = "" }
+                    (\auth -> Effect.PostAddSessionAspect auth model.newSessionAspectKind model.newSessionAspectNote)
 
-        DeleteFloatingBoon floatingId ->
-            guard ("stones:floating-delete:" ++ floatingId)
+        DeleteSessionAspect sessionAspectId ->
+            guard ("stones:session-aspect-delete:" ++ sessionAspectId)
                 model
-                (\auth -> Effect.PostDeleteFloatingBoon auth floatingId)
+                (\auth -> Effect.PostDeleteSessionAspect auth sessionAspectId)
 
         -- Field edits update the local sheet at once and mark the slot dirty; the
         -- write is deferred to a single debounced flush (`FieldSaveDue`).

@@ -172,8 +172,8 @@ rightPanelTabContent ctx model gs =
             Ui.scrollArea
                 [ View.SessionAspects.view ctx
                     { inflight = model.inflight
-                    , floatingBoonDraft = model.newFloatingBoonNote
-                    , floatingBoonKind = model.newFloatingBoonKind
+                    , sessionAspectDraft = model.newSessionAspectNote
+                    , sessionAspectKind = model.newSessionAspectKind
                     }
                     gs
                 , View.Session.view ctx gs

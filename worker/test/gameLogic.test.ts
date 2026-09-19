@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyPledge,
+  applyHighlight,
   characterLabel,
   clearSlotPendingState,
   describeStones,
@@ -40,7 +40,7 @@ function state(over: Partial<GameState> = {}): GameState {
     session: null,
     characters: [],
     sessionHistory: [],
-    floatingBoons: [],
+    sessionAspects: [],
     usedAbilities: [],
     npcs: [],
     locations: [],
@@ -48,13 +48,13 @@ function state(over: Partial<GameState> = {}): GameState {
   };
 }
 
-describe("applyPledge", () => {
-  it("clamps a pledge to the character's boons and keeps committedBoons sorted", () => {
+describe("applyHighlight", () => {
+  it("clamps a highlight to the character's boons and keeps committedBoons sorted", () => {
     const s = state({
       characters: [sheet({ slot: 1, fate: 3 }), sheet({ slot: 0, fate: 5 })],
       committedBoons: [{ slot: 1, count: 1 }],
     });
-    const after = applyPledge(applyPledge(s, 1, 10), 0, 2);
+    const after = applyHighlight(applyHighlight(s, 1, 10), 0, 2);
     expect(after.committedBoons).toEqual([
       { slot: 0, count: 2 },
       { slot: 1, count: 3 },
@@ -66,22 +66,22 @@ describe("applyPledge", () => {
       characters: [sheet({ slot: 0, fate: 2 })],
       committedBoons: [{ slot: 0, count: 1 }],
     });
-    expect(applyPledge(s, 0, -5).committedBoons).toEqual([]);
-    expect(applyPledge(s, 9, 1)).toBe(s);
+    expect(applyHighlight(s, 0, -5).committedBoons).toEqual([]);
+    expect(applyHighlight(s, 9, 1)).toBe(s);
   });
 });
 
 describe("clearSlotPendingState", () => {
-  it("drops the slot's pledges and any proposal pointing at it as slot or targetSlot", () => {
+  it("drops the slot's highlights and any proposal pointing at it as slot or targetSlot", () => {
     const s = state({
       committedBoons: [
         { slot: 0, count: 2 },
         { slot: 1, count: 1 },
       ],
       proposals: [
-        { id: "a", kind: "pledge", proposerId: "u", proposerName: "U", slot: 0, delta: 1, floatingId: null, targetSlot: null, createdAt: 1 },
-        { id: "b", kind: "suggest-compel", proposerId: "u", proposerName: "U", slot: 2, delta: 0, floatingId: null, targetSlot: 0, createdAt: 2 },
-        { id: "c", kind: "add-boon", proposerId: "u", proposerName: "U", slot: 1, delta: 0, floatingId: null, targetSlot: null, createdAt: 3 },
+        { id: "a", kind: "highlight", proposerId: "u", proposerName: "U", slot: 0, delta: 1, sessionAspectId: null, targetSlot: null, createdAt: 1 },
+        { id: "b", kind: "complicate", proposerId: "u", proposerName: "U", slot: 2, delta: 0, sessionAspectId: null, targetSlot: 0, createdAt: 2 },
+        { id: "c", kind: "add-boon", proposerId: "u", proposerName: "U", slot: 1, delta: 0, sessionAspectId: null, targetSlot: null, createdAt: 3 },
       ],
     });
     const after = clearSlotPendingState(s, 0);
@@ -92,11 +92,11 @@ describe("clearSlotPendingState", () => {
 
 describe("markAbilityUsed", () => {
   it("adds a row, adds a kind to an existing row, and is idempotent", () => {
-    let used = markAbilityUsed([], 0, "help-out");
-    expect(used).toEqual([{ slot: 0, kinds: ["help-out"] }]);
+    let used = markAbilityUsed([], 0, "alter");
+    expect(used).toEqual([{ slot: 0, kinds: ["alter"] }]);
     used = markAbilityUsed(used, 0, "add-detail");
-    expect(used).toEqual([{ slot: 0, kinds: ["help-out", "add-detail"] }]);
-    expect(markAbilityUsed(used, 0, "help-out")).toBe(used);
+    expect(used).toEqual([{ slot: 0, kinds: ["alter", "add-detail"] }]);
+    expect(markAbilityUsed(used, 0, "alter")).toBe(used);
   });
 });
 
@@ -156,10 +156,10 @@ describe("migrateStoneState", () => {
         pendingRoll: { chosen: ["WhiteStone"], rest: ["BlackStone"] },
         overcome: { targetSlot: 1 },
         proposals: [
-          // biome-ignore lint: legacy proposal shape has no floatingId / targetSlot
+          // biome-ignore lint: legacy proposal shape has no sessionAspectId / targetSlot
           { id: "p", kind: "add-boon", proposerId: "u", proposerName: "U", slot: null, delta: 0, createdAt: 1 } as never,
         ],
-        // biome-ignore lint: a pre-23.3 floating boon has no kind
+        // biome-ignore lint: a pre-23.3 session aspect has no kind
         floatingBoons: [
           { id: "f", text: "a note", createdByName: "Gm", createdAt: 1 } as never,
         ],
@@ -170,10 +170,41 @@ describe("migrateStoneState", () => {
     expect(s.stonePool).toEqual(["Boon", "Bane"]);
     expect(s).not.toHaveProperty("pendingRoll");
     expect(s).not.toHaveProperty("overcome");
-    expect(s.proposals[0]).toMatchObject({ floatingId: null, targetSlot: null });
-    // Every floating boon on disk before 23.3 is implicitly a Boon.
-    expect(s.floatingBoons[0]).toMatchObject({ kind: "Boon", text: "a note" });
+    expect(s.proposals[0]).toMatchObject({ sessionAspectId: null, targetSlot: null });
+    // Every session aspect on disk before 23.3 is implicitly a Boon.
+    expect(s.sessionAspects[0]).toMatchObject({ kind: "Boon", text: "a note" });
     expect(s.session).toEqual({ id: "s", goal: "g" });
+  });
+
+  it("reads the pre-26.1 move names and floating-boon fields under their new names", () => {
+    const s = migrateStoneState(
+      {
+        stonePool: ["Boon", "Bane"],
+        floatingBoons: [{ id: "f", kind: "Bane", text: "n", createdByName: "Gm" } as never],
+        usedAbilities: [{ slot: 1, kinds: ["help-out", "suggest-compel", "add-detail"] }],
+        proposals: [
+          { id: "a", kind: "pledge", proposerId: "u", proposerName: "U", slot: 1, delta: 1, createdAt: 1 },
+          { id: "b", kind: "suggest-compel", proposerId: "u", proposerName: "U", slot: 1, delta: 0, targetSlot: 2, createdAt: 1 },
+          { id: "c", kind: "help-out", proposerId: "u", proposerName: "U", slot: 1, delta: 0, createdAt: 1 },
+          { id: "d", kind: "use-floating", proposerId: "u", proposerName: "U", slot: 1, delta: 0, floatingId: "f", createdAt: 1 },
+        ] as never,
+      },
+      ["Boon", "Bane"],
+    );
+    expect(s.proposals.map((p) => p.kind)).toEqual([
+      "highlight",
+      "complicate",
+      "alter",
+      "use-session-boon",
+    ]);
+    expect(s.proposals[3]).toMatchObject({ sessionAspectId: "f" });
+    expect(s.proposals[3]).not.toHaveProperty("floatingId");
+    expect(s.sessionAspects).toEqual([
+      { id: "f", kind: "Bane", text: "n", createdByName: "Gm" },
+    ]);
+    expect(s.usedAbilities).toEqual([
+      { slot: 1, kinds: ["alter", "complicate", "add-detail"] },
+    ]);
   });
 
   it("folds a retired per-session pool and carried-Bane count into the shared pool", () => {

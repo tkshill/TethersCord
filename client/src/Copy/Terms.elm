@@ -25,13 +25,13 @@ groupedTerms =
     [ ( "Roles", [ table, facilitator, player ] )
     , ( "The session", [ session, goal ] )
     , ( "Stones & rolling"
-      , [ stone, boon, bane, theBag, roll, overcome, highlight, pledge, proposal ]
+      , [ stone, boon, bane, theBag, roll, overcome, highlight, proposal ]
       )
     , ( "Aspects & growth"
       , [ aspect, archetype, desire, quest, condition ]
       )
-    , ( "Moves & compels"
-      , [ compel, acceptCompel, complicate, floatingBoon, alter, addDetail, gainInsight ]
+    , ( "Moves"
+      , [ compel, acceptCompel, complicate, sessionAspect, alter, addDetail, gainInsight ]
       )
     ]
 
@@ -72,7 +72,7 @@ facilitator =
     { term = "Facilitator"
     , short = "Frames scenes, plays the world, and rules on proposals."
     , long =
-        "An asymmetric role, not a leader. The facilitator presents situations, plays everyone who is not a player character, offers compels, and accepts or rejects the proposals players raise. They roll and grant boons directly; players go through proposals."
+        "An asymmetric role, not a leader. The facilitator presents situations, plays everyone who is not a player character, and accepts or rejects the proposals players raise. They roll and grant boons directly; players go through proposals."
     }
 
 
@@ -125,7 +125,7 @@ boon =
     { term = "Boon"
     , short = "A favourable stone, and the currency a character banks and spends."
     , long =
-        "As an outcome, the good result of a draw. As a resource, the boons on a character's sheet — earned from compels and moves, spent to Highlight an aspect and tilt a roll."
+        "As an outcome, the good result of a draw. As a resource, the boons on a character's sheet — earned from Complicate and other moves, spent to Highlight an aspect and tilt a roll."
     }
 
 
@@ -141,9 +141,9 @@ bane =
 theBag : Term
 theBag =
     { term = "The bag"
-    , short = "The one shared pool every roll draws from, plus any boons pledged into this roll."
+    , short = "The one shared pool every roll draws from, plus any boons added to it for this roll."
     , long =
-        "Nothing resets it — a fresh table starts with two Boon and two Bane, and from there it only changes through rolls and moves. Ending a session tops it back up to that floor if it has run short. Highlighting an aspect pledges boons into it for the next roll, each adding a Boon and tilting the odds; those pledged boons are spent when the roll is accepted."
+        "Nothing resets it — a fresh table starts with two Boon and two Bane, and from there it only changes through rolls and moves. Ending a session tops it back up to that floor if it has run short. Highlighting an aspect adds a Boon to it for the next roll, tilting the odds; those boons are spent when the roll is accepted."
     }
 
 
@@ -171,15 +171,6 @@ highlight =
     , short = "Spend a boon to note how an aspect will shape the outcome, adding a boon to the pool."
     , long =
         "Spend one boon to note how an aspect of the scene will influence the outcome, and add one boon to the pool."
-    }
-
-
-pledge : Term
-pledge =
-    { term = "Pledge"
-    , short = "Boons committed to the next roll — the mechanic under Highlight."
-    , long =
-        "Pledged boons sit in the bag as marked stones and come off the character's sheet once the roll is accepted. Until then the proposer can withdraw them."
     }
 
 
@@ -242,7 +233,7 @@ condition =
 
 
 
--- MOVES & COMPELS
+-- MOVES
 
 
 compel : Term
@@ -272,18 +263,18 @@ complicate =
     }
 
 
-floatingBoon : Term
-floatingBoon =
-    { term = "Session aspect"
+sessionAspect : Term
+sessionAspect =
+    { term = "Session boon"
     , short = "A Boon or a Bane owned by nobody, planted by the facilitator."
     , long =
-        "A session context — a Boon or a Bane, with a note of what it stands for — the facilitator plants directly, or approves from a player's Add a Detail or Gain Insight (always a Boon). It stays until the facilitator removes it, or the session ends."
+        "A session context — a Boon or a Bane, with a note of what it stands for — the facilitator plants directly, or approves from a player's Add Detail or Gain Insight (always a Boon). It stays until the facilitator removes it, or the session ends."
     }
 
 
 alter : Term
 alter =
-    { term = "Alter"
+    { term = "Alter Fate"
     , short = "Pay two boons to suggest an alternate action at a fork, triggering a re-roll."
     , long =
         "Pay two boons to suggest an alternate action to resolve a fork. Triggers a re-roll."
@@ -292,17 +283,17 @@ alter =
 
 addDetail : Term
 addDetail =
-    { term = "Add a Detail"
-    , short = "Once per session, establish something true about the scene — it becomes a floating boon."
+    { term = "Add Detail"
+    , short = "Once per session, establish something true about the scene — it becomes a session boon."
     , long =
-        "Propose a fact or additional detail to the scene about the situation. The facilitator types the context and approves, and a floating boon enters the session for anyone to spend."
+        "Propose a fact or additional detail to the scene about the situation. The facilitator types the context and approves, and a session boon enters the session for anyone to spend."
     }
 
 
 gainInsight : Term
 gainInsight =
     { term = "Gain Insight"
-    , short = "Once per session, learn something from the facilitator — it becomes a floating boon."
+    , short = "Once per session, learn something from the facilitator — it becomes a session boon."
     , long =
-        "Ask the facilitator a question or for clarification about the scene. They'll answer to the best of their ability. Once approved, a floating boon is created for anyone to spend if they can make it related to their action."
+        "Ask the facilitator a question or for clarification about the scene. They'll answer to the best of their ability. Once approved, a session boon is created for anyone to spend if they can make it related to their action."
     }
