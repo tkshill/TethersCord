@@ -86,10 +86,15 @@ describe("route auth", () => {
   });
 
   describe("/overcome/roll", () => {
-    it("403s a player drawing", async () => {
+    it("204s a player rolling — Overcome is open to any player", async () => {
       await seedAuth("player-draw");
       const res = await call("t-draw", "/overcome/roll", { token: "player-draw" });
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(204);
+    });
+
+    it("401s an unauthenticated roll", async () => {
+      const res = await call("t-nodraw", "/overcome/roll");
+      expect(res.status).toBe(401);
     });
 
     it("204s a facilitator drawing", async () => {

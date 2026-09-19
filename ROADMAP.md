@@ -1687,58 +1687,47 @@ off it (`AddBoon` in `Kind`, `Msg` and `Effect`, `proposeAddBoon`,
 `applyAddBoon`, `Copy` and glossary text). The facilitator adds a Boon with
 `/stones/add`.
 
-### 26.2 Worker: the rules — test-first
+### 26.2 Worker: the rules — done
 
-The interesting branch. Build each rule as pure functions in `gameLogic.ts` first
-(with plain unit tests that need no `workerd`), then wire them into `GameTable`.
-Section 25.1 will later restructure the handlers; these tests are what protect it.
+Built test-first, one failing route test then the minimum code per slice
+(`worker/test/overcome.test.ts` drives the loop through the routes; the pool is
+shaped with `/stones/{add,remove}` so a draw is forced — `[Boon, Boon]` can only
+draw a pair — with no RNG injection). `pairKind` and `moveName` are the only
+new pure helpers; the migration has its own tests.
 
-- [ ] **Pending roll** in `KEY_STONES` next to the proposals:
-      `{ stones, rolledBy, rerolls } | null`, broadcast in `GameState`.
-      `POST /overcome/roll` (any authenticated player): 409 if one is pending;
-      draws two stones from the pool without touching it; logs the roll.
-- [ ] **`POST /overcome/reroll`** (`facilitatorOnly`, needs a pending roll):
-      free, immediate, logs.
-- [ ] **`POST /overcome/accept`** (`facilitatorOnly`): resets the pool to
-      `INITIAL_STONE_POOL`; a Boon+Boon draw creates a session boon, a Bane+Bane
-      draw a session bane (default text, `createdByName` = the roller); clears the
-      pending roll and the per-overcome Alter flags; withdraws any queued Alter
-      proposals; logs the final result. **`POST /overcome/reject`**: discards the
-      pending roll, clears the flags, withdraws queued Alter proposals, changes
-      nothing else, logs.
-- [ ] **`Proposal` kinds**: `Highlight`, `Complicate`, `AddDetail`, `Alter`,
-      `UseSessionBoon`, one route each under `/moves/`. Each requires a claimed
-      sheet, checks its cost at proposal time (400), and again at accept (409).
-      Cost is deducted on approval only.
-      - `Highlight`: proposer's `fate` −1, pool +1 Boon.
-      - `Complicate` (`{ targetSlot }`): target's `fate` +2; the suggester is
-        not paid; `SUGGEST_COMPEL_SUGGESTER_BOONS` is deleted.
-      - `AddDetail` (`{ text? }`, blank allowed): `fate` −1; creates a session
-        boon; the facilitator's accept may carry edited text.
-      - `Alter`: requires a pending roll, no other pending `Alter`, and the
-        proposer not already in this Overcome's used set; `fate` −2; rerolls;
-        marks the proposer used. A rejection changes nothing and does not mark
-        them used.
-      - `UseSessionBoon` (`{ id }`): 409 if already consumed or gone; marks
-        consumed; pool +1 Boon.
-- [ ] **Session aspects**: `consumed: boolean`. Facilitator routes: create, edit
-      text, delete, `use` (direct: marks consumed, adds its kind to the pool, no
-      approval), and `unconsume`. Both create and use write log lines.
-- [ ] **Delete** what no longer has a reason to exist: `/stones/add-boon` and
-      the `add-boon` proposal kind (redundant with `/stones/add`), `usedAbilities` and its
-      `KEY_STONES` field, `committedBoons` and `drawFromBag`'s odds bump,
-      `GainInsight`, `AcceptCompel` and `/moves/accept-compel`,
-      `SUGGEST_COMPEL_SUGGESTER_BOONS`, the `help-out` always-400 branch, and the
-      old stateless `/stones/draw`. Session start/end stops clearing pending
-      state and stops topping up the pool.
-- [ ] **Tests** (`worker/test/`): the full loop end to end — prepare, roll, Alter
-      accepted, Alter rejected (not counted), second Alter by the same player
-      refused, facilitator reroll, accept (pool reset, session aspect created for
-      a pair, none for a mixed draw), reject (pool untouched) — plus every cost
-      boundary (exactly enough, one short), the 409 re-check at accept, and
-      `migrateStoneState` over an old blob.
-- [ ] Update `CLAUDE.md`'s "Realtime" section and the facilitator-only route
-      list for the new routes and the retired ones; add a `CHANGELOG.md` bullet.
+- [x] **Pending roll** (`GameState.overcome`) in `KEY_STONES`, broadcast.
+      `POST /overcome/roll` is open to any player and 409s if one is pending;
+      `/overcome/reroll` (`facilitatorOnly`, free).
+- [x] **`/overcome/accept`** resets the pool, creates a session boon or bane from
+      a pair, clears the roll and the queued Alter Fate proposals, and logs the
+      final result; **`/overcome/reject`** discards the roll and changes nothing
+      else.
+- [x] **Five moves**, one route each under `/moves/`, each needing a claimed
+      sheet, with the cost checked at proposal time (400) and again at accept
+      (409) and paid on approval only: `highlight` (1), `complicate` (free,
+      target +2, suggester nothing), `add-detail` (1, optional player text the
+      facilitator can edit), `alter` (2; pending Overcome only, one proposal at a
+      time, one accepted per player per Overcome, a rejection does not count),
+      `use-session-boon` (free; session boons only). Every move logs its
+      proposal and its resolution.
+- [x] **Session aspects** carry `consumed`. Facilitator routes `use`, `unconsume`,
+      `update` and `delete`; a consumed one cannot be used again.
+- [x] **Sessions do nothing special**: start and end touch only the goal and the
+      history.
+- [x] **Deleted**: `/stones/add-boon` and the `add-boon` proposal (redundant with
+      `/stones/add`), `/abilities/use`, `/moves/accept-compel`, `gain-insight`,
+      `usedAbilities`, `committedBoons` and the odds bump, `applyHighlight`,
+      `markAbilityUsed`, `Proposal.delta`, the pool top-up and the
+      `COMPLICATE_SUGGESTER_BOONS` payout.
+- [x] `migrateStoneState` reads pre-26.2 blobs: `overcome` defaults to `null`,
+      `consumed` to `false`, `text` to `null`; `usedAbilities`, `committedBoons`
+      and proposals of the retired kinds are dropped.
+- [x] `CLAUDE.md` and `RULES.md` updated; `CHANGELOG.md` bullet added.
+
+**Not done, and left for 26.3:** the client still decodes and posts the pre-26.2
+wire shape, so `main` cannot be deployed until 26.3 lands. `Alter`'s
+proposal-time check counts only the proposer's current boons, not their other
+pending proposals (see Open questions).
 
 ### 26.3 Client: moves, Overcome, and the facilitator queue
 

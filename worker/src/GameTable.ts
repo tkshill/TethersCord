@@ -5,19 +5,15 @@ import type {
   DurableObjectState,
 } from "@cloudflare/workers-types";
 import type {
-  AbilityKind,
   AddSessionAspectInput,
   AddOrRemoveStoneInput,
   AspectName,
-  HighlightInput,
-  CommittedBoon,
   EntityInput,
   EntityKind,
   Env,
   SessionAspect,
   GameState,
   Message,
-  PendingRoll,
   PostMessageInput,
   Proposal,
   ProposalDecisionInput,
@@ -31,19 +27,16 @@ import type {
   UpdateCharacterInput,
   UpdateFateInput,
   UpdateSessionGoalInput,
-  UsedAbilities,
-  UseAbilityInput,
   UseSessionBoonInput,
 } from "./types";
 import {
-  applyHighlight,
   characterLabel,
   clearSlotPendingState,
   describeStones,
-  markAbilityUsed,
+  moveName,
+  pairKind,
   pickTwoRandom,
   removeStones,
-  totalCommittedBoons,
 } from "./gameLogic";
 import {
   type LegacyStoneState,
@@ -58,41 +51,28 @@ import {
   updateFields,
 } from "./characters";
 
-// The pool every draw reads two stones from, and the pool `/session/end` tops
-// up. There is only one pool — a draw only ever reads it (23.1), so the
-// facilitator's direct edits and the once-per-session top-up are the only
-// writes; nothing ever resets it back to this base, it is only ever the
-// starting shape for a brand-new table.
+// The shape the shared pool starts in, and returns to whenever an Overcome is
+// accepted. Between accepts the pool only changes through moves and the
+// facilitator's direct edits; a roll only ever reads it.
 const INITIAL_STONE_POOL: readonly StoneKind[] = ["Boon", "Bane", "Boon", "Bane"];
-
-/** `/session/end` tops the pool up to at least this many of each kind. */
-const MIN_POOL_BOONS = 2;
-const MIN_POOL_BANES = 2;
 
 const CHARACTER_SLOT_COUNT = 3;
 
-/** Boons the facilitator pays out for an approved Accept Compel move. */
-const ACCEPT_COMPEL_BOONS = 2;
+/** Boons a player pays for a Highlight, on approval. */
+const HIGHLIGHT_COST = 1;
 
-/** Boons an approved Complicate pays: the suggester, then the target character. */
-const COMPLICATE_SUGGESTER_BOONS = 1;
+/** Boons a player pays for an Add Detail, on approval. */
+const ADD_DETAIL_COST = 1;
+
+/** Boons a player pays for an Alter Fate, on approval. */
+const ALTER_COST = 2;
+
+/** Boons an approved Complicate pays the target character. The suggester gets none. */
 const COMPLICATE_TARGET_BOONS = 2;
-
-/** The once-per-session abilities, for validation of the `/abilities/use` route. */
-const ABILITY_KINDS: readonly AbilityKind[] = [
-  "alter",
-  "add-detail",
-  "gain-insight",
-  "complicate",
-];
 
 /** A crypto.randomUUID() shape, for the `/proposals/:id/…` and
  * `/{npcs,locations}/:id/…` route patterns. */
 const UUID = "[0-9a-fA-F-]{36}";
-
-/** Sanity bound on a single coalesced highlight delta; `applyHighlight` clamps the
- * real effect to what the character holds anyway. */
-const MAX_HIGHLIGHT_DELTA = 50;
 
 /**
  * How many of the most recent messages the Durable Object holds in memory and
@@ -257,16 +237,8 @@ export class GameTable implements DurableObject {
       );
     }
 
-    if (url.pathname === "/stones/add-boon" && request.method === "POST") {
-      return this.withLock(() =>
-        authInfo.role === "facilitator"
-          ? this.applyAddBoon()
-          : this.proposeAddBoon(authInfo),
-      );
-    }
-
     if (url.pathname === "/moves/highlight" && request.method === "POST") {
-      return this.withLock(() => this.handleHighlight(request, authInfo));
+      return this.withLock(() => this.handleHighlight(authInfo));
     }
 
     const proposalMatch = url.pathname.match(
@@ -294,12 +266,16 @@ export class GameTable implements DurableObject {
       );
     }
 
-    if (url.pathname === "/abilities/use" && request.method === "POST") {
-      return this.withLock(() => this.handleUseAbility(request, authInfo));
+    if (url.pathname === "/moves/alter" && request.method === "POST") {
+      return this.withLock(() => this.handleAlter(authInfo));
     }
 
-    if (url.pathname === "/moves/accept-compel" && request.method === "POST") {
-      return this.withLock(() => this.handleAcceptCompelMove(authInfo));
+    if (url.pathname === "/moves/add-detail" && request.method === "POST") {
+      return this.withLock(() => this.handleAddDetail(request, authInfo));
+    }
+
+    if (url.pathname === "/moves/complicate" && request.method === "POST") {
+      return this.withLock(() => this.handleComplicate(request, authInfo));
     }
 
     if (url.pathname === "/moves/use-session-boon" && request.method === "POST") {
@@ -307,9 +283,27 @@ export class GameTable implements DurableObject {
     }
 
     if (url.pathname === "/overcome/roll" && request.method === "POST") {
+      return this.withLock(() => this.handleOvercomeRoll(authInfo));
+    }
+
+    if (url.pathname === "/overcome/accept" && request.method === "POST") {
       return (
         facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleDraw(authInfo))
+        this.withLock(() => this.handleOvercomeAccept(authInfo))
+      );
+    }
+
+    if (url.pathname === "/overcome/reject" && request.method === "POST") {
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleOvercomeReject(authInfo))
+      );
+    }
+
+    if (url.pathname === "/overcome/reroll" && request.method === "POST") {
+      return (
+        facilitatorOnly(authInfo) ??
+        this.withLock(() => this.handleOvercomeReroll(authInfo))
       );
     }
 
@@ -335,13 +329,33 @@ export class GameTable implements DurableObject {
     }
 
     const sessionAspectMatch = url.pathname.match(
-      new RegExp(`^/session-aspects/(${UUID})/delete$`),
+      new RegExp(`^/session-aspects/(${UUID})/(update|delete|use|unconsume)$`),
     );
     if (sessionAspectMatch && request.method === "POST") {
-      const [, sessionAspectId] = sessionAspectMatch;
+      const [, sessionAspectId, action] = sessionAspectMatch;
       return (
         facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleDeleteSessionAspect(sessionAspectId, authInfo))
+        this.withLock(() => {
+          switch (action) {
+            case "update":
+              return this.handleUpdateSessionAspect(
+                request,
+                sessionAspectId,
+              );
+            case "use":
+              return this.handleUseSessionAspect(sessionAspectId, authInfo);
+            case "unconsume":
+              return this.handleUnconsumeSessionAspect(
+                sessionAspectId,
+                authInfo,
+              );
+            default:
+              return this.handleDeleteSessionAspect(
+                sessionAspectId,
+                authInfo,
+              );
+          }
+        })
       );
     }
 
@@ -568,9 +582,8 @@ export class GameTable implements DurableObject {
       sessionId,
       messages,
       stonePool: stones.stonePool,
-      committedBoons: stones.committedBoons,
+      overcome: stones.overcome,
       sessionAspects: stones.sessionAspects,
-      usedAbilities: stones.usedAbilities,
       proposals: stones.proposals,
       session: stones.session,
       sessionHistory,
@@ -615,9 +628,8 @@ export class GameTable implements DurableObject {
   private stoneSlice(state: GameState): StoneState {
     return {
       stonePool: state.stonePool,
-      committedBoons: state.committedBoons,
+      overcome: state.overcome,
       sessionAspects: state.sessionAspects,
-      usedAbilities: state.usedAbilities,
       proposals: state.proposals,
       session: state.session,
     };
@@ -801,181 +813,166 @@ export class GameTable implements DurableObject {
     return this.commit({ ...this.game, messages: [] });
   }
 
-  /** Add one Boon to the shared pool. Direct only for the facilitator. */
-  private async applyAddBoon(): Promise<Response> {
-    // Read `this.game` fresh rather than from a snapshot taken before an await,
-    // so concurrent requests cannot clobber each other's writes.
-    return this.commit({
-      ...this.game,
-      stonePool: [...this.game.stonePool, "Boon"],
-    });
-  }
-
-  /** A player asking to add a boon to the pool — queued for the facilitator. */
-  private async proposeAddBoon(authInfo: AuthInfo): Promise<Response> {
-    return this.addProposal({
-      kind: "add-boon",
-      proposerId: authInfo.discordUserId,
-      proposerName: authInfo.username,
-      slot: null,
-      delta: 1,
-    });
-  }
-
   /**
-   * Highlight (or withdraw) boons of the caller's own on the next roll. The slot is
-   * the sheet they have claimed. Queued as a proposal; the effect only lands
-   * when the facilitator accepts it. `delta` is the net change the client has
-   * coalesced from a run of +/- taps, not necessarily ±1; `applyHighlight` clamps
-   * it to `[0, fate]` on accept.
+   * Highlight: the caller proposes to move one of their own boons into the
+   * shared pool. It costs 1 boon, so it cannot be proposed without one; the
+   * cost is paid only when the facilitator accepts.
    */
-  private async handleHighlight(
-    request: Request,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    const input = (await readJson(request)) as HighlightInput | null;
-    const delta = input?.delta;
-    if (
-      typeof delta !== "number" ||
-      !Number.isInteger(delta) ||
-      delta === 0 ||
-      Math.abs(delta) > MAX_HIGHLIGHT_DELTA
-    ) {
-      return new Response("delta must be a non-zero integer", { status: 400 });
-    }
-
+  private async handleHighlight(authInfo: AuthInfo): Promise<Response> {
     const character = this.game.characters.find(
       (c) => c.ownerId === authInfo.discordUserId,
     );
     if (!character) {
       return new Response("Claim a character sheet first", { status: 400 });
     }
+    if (character.fate < HIGHLIGHT_COST) {
+      return new Response("You need a boon to Highlight", { status: 400 });
+    }
 
-    return this.addProposal({
-      kind: "highlight",
-      proposerId: authInfo.discordUserId,
-      proposerName: authInfo.username,
-      slot: character.slot,
-      delta,
-    });
+    return this.addProposal(
+      {
+        kind: "highlight",
+        proposerId: authInfo.discordUserId,
+        proposerName: authInfo.username,
+        slot: character.slot,
+      },
+      authInfo,
+      `${characterLabel(character)} proposes Highlight`,
+    );
   }
 
   /**
-   * Raise a once-per-session ability (`alter` / `add-detail` / `gain-insight`
-   * / `complicate`) for the caller's claimed sheet. The ability is only
-   * marked used when the facilitator accepts it; a rejection costs nothing.
-   * `complicate` carries a `targetSlot` — the character being target.
+   * Alter Fate: the caller proposes to pay boons to reroll the pending
+   * Overcome. Only possible while one is pending (after at least one roll),
+   * once per player per Overcome, and one proposal at a time. Costs
+   * `ALTER_COST` boons, paid on approval; a rejection costs nothing and does
+   * not use up the attempt.
    */
-  private async handleUseAbility(
-    request: Request,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    const input = (await readJson(request)) as UseAbilityInput | null;
-    const kind = input?.kind;
-    if (!kind || !ABILITY_KINDS.includes(kind)) {
-      return new Response("Unknown ability", { status: 400 });
-    }
-    if (!this.game.session) {
-      return new Response("Abilities need a running session", { status: 400 });
-    }
-
-    const character = this.game.characters.find(
-      (c) => c.ownerId === authInfo.discordUserId,
-    );
-    if (!character) {
-      return new Response("Claim a character sheet first", { status: 400 });
-    }
-
-    const used =
-      this.game.usedAbilities.find((u) => u.slot === character.slot)
-        ?.kinds ?? [];
-    if (used.includes(kind)) {
-      return new Response("Already used this ability this session", {
+  private async handleAlter(authInfo: AuthInfo): Promise<Response> {
+    const overcome = this.game.overcome;
+    if (!overcome) {
+      return new Response("Alter Fate needs a pending Overcome", {
         status: 409,
       });
     }
-    if (
-      this.game.proposals.some(
-        (p) => p.slot === character.slot && p.kind === kind,
-      )
-    ) {
-      return new Response("That ability is already proposed", { status: 409 });
+    const character = this.game.characters.find(
+      (c) => c.ownerId === authInfo.discordUserId,
+    );
+    if (!character) {
+      return new Response("Claim a character sheet first", { status: 400 });
     }
-    if (kind === "alter") {
-      // 23.1 retired the overcome/pending-roll lifecycle Alter Fate rerolled,
-      // so there is no roll left to help with — refuse rather than raise a
-      // proposal `handleProposalDecision` could never usefully accept.
-      return new Response("Alter Fate has no roll to alter", {
+    if (character.fate < ALTER_COST) {
+      return new Response("You need two boons to Alter Fate", { status: 400 });
+    }
+    if (overcome.alteredSlots.includes(character.slot)) {
+      return new Response("You have already altered fate this Overcome", {
+        status: 409,
+      });
+    }
+    if (this.game.proposals.some((p) => p.kind === "alter")) {
+      return new Response("An Alter Fate is already proposed", { status: 409 });
+    }
+
+    return this.addProposal(
+      {
+        kind: "alter",
+        proposerId: authInfo.discordUserId,
+        proposerName: authInfo.username,
+        slot: character.slot,
+      },
+      authInfo,
+      `${characterLabel(character)} proposes Alter Fate`,
+    );
+  }
+
+  /**
+   * Add Detail: the caller proposes to establish something true about the scene,
+   * either suggesting the wording or leaving it for the facilitator. It costs 1
+   * boon, paid on approval; an accepted one plants a session boon.
+   */
+  private async handleAddDetail(
+    request: Request,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    const input = (await readJson(request)) as { text?: unknown } | null;
+    const character = this.game.characters.find(
+      (c) => c.ownerId === authInfo.discordUserId,
+    );
+    if (!character) {
+      return new Response("Claim a character sheet first", { status: 400 });
+    }
+    if (character.fate < ADD_DETAIL_COST) {
+      return new Response("You need a boon to Add Detail", { status: 400 });
+    }
+    const text = boundedString(input?.text, MAX_GOAL_LENGTH).trim() || null;
+
+    return this.addProposal(
+      {
+        kind: "add-detail",
+        proposerId: authInfo.discordUserId,
+        proposerName: authInfo.username,
+        slot: character.slot,
+        text,
+      },
+      authInfo,
+      `${characterLabel(character)} proposes Add Detail`,
+    );
+  }
+
+  /**
+   * Complicate: the caller suggests a way another character could do something
+   * dangerous, destructive, or derailing. Free to propose; on approval the
+   * target character's player gains `COMPLICATE_TARGET_BOONS` boons and the
+   * suggester nothing.
+   */
+  private async handleComplicate(
+    request: Request,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    const input = (await readJson(request)) as { targetSlot?: unknown } | null;
+    const character = this.game.characters.find(
+      (c) => c.ownerId === authInfo.discordUserId,
+    );
+    if (!character) {
+      return new Response("Claim a character sheet first", { status: 400 });
+    }
+
+    const raw = input?.targetSlot;
+    if (
+      typeof raw !== "number" ||
+      !Number.isInteger(raw) ||
+      raw < 0 ||
+      raw >= CHARACTER_SLOT_COUNT
+    ) {
+      return new Response("A target character is required", { status: 400 });
+    }
+    if (raw === character.slot) {
+      return new Response("You cannot complicate your own character", {
         status: 400,
       });
     }
+    const target = this.game.characters.find((c) => c.slot === raw);
 
-    let targetSlot: number | null = null;
-    if (kind === "complicate") {
-      const raw = input?.targetSlot;
-      if (
-        typeof raw !== "number" ||
-        !Number.isInteger(raw) ||
-        raw < 0 ||
-        raw >= CHARACTER_SLOT_COUNT
-      ) {
-        return new Response("A target character is required", { status: 400 });
-      }
-      if (raw === character.slot) {
-        return new Response("You cannot complicate your own character", {
-          status: 400,
-        });
-      }
-      targetSlot = raw;
-    }
-
-    return this.addProposal({
-      kind,
-      proposerId: authInfo.discordUserId,
-      proposerName: authInfo.username,
-      slot: character.slot,
-      delta: 0,
-      targetSlot,
-    });
-  }
-
-  /**
-   * Raise the Accept Compel move — take on a complication for
-   * `ACCEPT_COMPEL_BOONS` boons once the facilitator approves. No per-session
-   * limit, unlike the abilities.
-   */
-  private async handleAcceptCompelMove(
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    const character = this.game.characters.find(
-      (c) => c.ownerId === authInfo.discordUserId,
+    return this.addProposal(
+      {
+        kind: "complicate",
+        proposerId: authInfo.discordUserId,
+        proposerName: authInfo.username,
+        slot: character.slot,
+        targetSlot: raw,
+      },
+      authInfo,
+      `${characterLabel(character)} proposes Complicate on ${
+        target ? characterLabel(target) : `Character ${raw + 1}`
+      }`,
     );
-    if (!character) {
-      return new Response("Claim a character sheet first", { status: 400 });
-    }
-    if (
-      this.game.proposals.some(
-        (p) => p.slot === character.slot && p.kind === "accept-compel",
-      )
-    ) {
-      return new Response("An Accept Compel is already proposed", {
-        status: 409,
-      });
-    }
-
-    return this.addProposal({
-      kind: "accept-compel",
-      proposerId: authInfo.discordUserId,
-      proposerName: authInfo.username,
-      slot: character.slot,
-      delta: ACCEPT_COMPEL_BOONS,
-    });
   }
 
   /**
-   * Raise a request to spend a session boon on the roll. Like a Highlight, it
-   * only lands when the facilitator accepts it; the boon then leaves the
-   * session aspects and a Boon enters the bag.
+   * Use Session Boon: the caller proposes to spend an unconsumed session boon.
+   * It costs nothing; on approval the boon is marked consumed and a Boon
+   * enters the pool. Session banes are the facilitator's to use directly, so a
+   * player cannot propose one.
    */
   private async handleUseSessionBoon(
     request: Request,
@@ -994,12 +991,26 @@ export class GameTable implements DurableObject {
     if (!character) {
       return new Response("Claim a character sheet first", { status: 400 });
     }
-    if (!this.game.sessionAspects.some((f) => f.id === sessionAspectId)) {
+    const aspect = this.game.sessionAspects.find(
+      (f) => f.id === sessionAspectId,
+    );
+    if (!aspect) {
       return new Response("No such session boon", { status: 404 });
+    }
+    if (aspect.kind !== "Boon") {
+      return new Response("Only the facilitator can use a session bane", {
+        status: 400,
+      });
+    }
+    if (aspect.consumed) {
+      return new Response("That session boon is already consumed", {
+        status: 409,
+      });
     }
     if (
       this.game.proposals.some(
-        (p) => p.kind === "use-session-boon" && p.sessionAspectId === sessionAspectId,
+        (p) =>
+          p.kind === "use-session-boon" && p.sessionAspectId === sessionAspectId,
       )
     ) {
       return new Response("That session boon is already proposed", {
@@ -1007,37 +1018,49 @@ export class GameTable implements DurableObject {
       });
     }
 
-    return this.addProposal({
-      kind: "use-session-boon",
-      proposerId: authInfo.discordUserId,
-      proposerName: authInfo.username,
-      slot: character.slot,
-      delta: 0,
-      sessionAspectId,
-    });
+    return this.addProposal(
+      {
+        kind: "use-session-boon",
+        proposerId: authInfo.discordUserId,
+        proposerName: authInfo.username,
+        slot: character.slot,
+        sessionAspectId,
+      },
+      authInfo,
+      `${characterLabel(character)} proposes Use Session Boon`,
+    );
   }
 
   private async addProposal(
     fields: Omit<
       Proposal,
-      "id" | "createdAt" | "sessionAspectId" | "targetSlot"
+      "id" | "createdAt" | "sessionAspectId" | "targetSlot" | "text"
     > & {
       sessionAspectId?: string | null;
       targetSlot?: number | null;
+      text?: string | null;
     },
+    authInfo?: AuthInfo,
+    logLine?: string,
   ): Promise<Response> {
-    const { sessionAspectId = null, targetSlot = null, ...rest } = fields;
+    const {
+      sessionAspectId = null,
+      targetSlot = null,
+      text = null,
+      ...rest
+    } = fields;
     const proposal: Proposal = {
       ...rest,
       sessionAspectId,
       targetSlot,
+      text,
       id: crypto.randomUUID(),
       createdAt: Date.now(),
     };
-    return this.commit({
-      ...this.game,
-      proposals: [...this.game.proposals, proposal],
-    });
+    return this.commit(
+      { ...this.game, proposals: [...this.game.proposals, proposal] },
+      authInfo && logLine ? authoredLine(authInfo, logLine) : undefined,
+    );
   }
 
   /**
@@ -1066,10 +1089,6 @@ export class GameTable implements DurableObject {
 
     if (decision === "accept") {
       switch (proposal.kind) {
-        case "add-boon":
-          state = { ...state, stonePool: [...state.stonePool, "Boon"] };
-          break;
-
         case "highlight": {
           const proposerSheet =
             proposal.slot === null
@@ -1078,48 +1097,98 @@ export class GameTable implements DurableObject {
           if (!proposerSheet) {
             return this.proposalTargetGone();
           }
-          state = applyHighlight(state, proposerSheet.slot, proposal.delta);
+          if (proposerSheet.fate < HIGHLIGHT_COST) {
+            return this.notEnoughBoons();
+          }
+          state = {
+            ...state,
+            characters: await this.bumpFate(
+              state.characters,
+              proposerSheet.slot,
+              -HIGHLIGHT_COST,
+            ),
+            stonePool: [...state.stonePool, "Boon"],
+          };
+          logLine = `Highlight accepted — ${characterLabel(
+            proposerSheet,
+          )} pays ${HIGHLIGHT_COST} boon, the pool gains a Boon`;
           break;
         }
 
-        case "alter":
-          // Unreachable: `handleUseAbility` refuses every alter raise
-          // outright now that 23.1 has retired the overcome/pending-roll
-          // lifecycle it rerolled, so no proposal of this kind ever reaches
-          // an accept. Kept only so this switch stays exhaustive over
-          // `ProposalKind`.
-          return new Response("Alter Fate has no roll to alter", {
-            status: 400,
-          });
-
-        case "add-detail":
-        case "gain-insight": {
-          const body = (await readJson(request)) as ProposalDecisionInput | null;
-          const text = boundedString(body?.text, MAX_GOAL_LENGTH).trim();
-          if (!text) {
-            return new Response("A context note is required", { status: 400 });
+        case "alter": {
+          const overcome = state.overcome;
+          if (!overcome) {
+            return new Response("No Overcome is pending", { status: 409 });
           }
+          const proposerSheet =
+            proposal.slot === null
+              ? undefined
+              : state.characters.find((c) => c.slot === proposal.slot);
+          if (!proposerSheet) {
+            return this.proposalTargetGone();
+          }
+          if (proposerSheet.fate < ALTER_COST) {
+            return this.notEnoughBoons();
+          }
+          const { chosen } = pickTwoRandom(state.stonePool);
+          state = {
+            ...state,
+            characters: await this.bumpFate(
+              state.characters,
+              proposerSheet.slot,
+              -ALTER_COST,
+            ),
+            overcome: {
+              ...overcome,
+              stones: chosen,
+              rerolls: overcome.rerolls + 1,
+              alteredSlots: [...overcome.alteredSlots, proposerSheet.slot],
+            },
+          };
+          logLine = `Alter Fate accepted — ${characterLabel(
+            proposerSheet,
+          )} pays ${ALTER_COST} boons, rerolled: ${describeStones(chosen)}`;
+          break;
+        }
+
+        case "add-detail": {
+          const proposerSheet =
+            proposal.slot === null
+              ? undefined
+              : state.characters.find((c) => c.slot === proposal.slot);
+          if (!proposerSheet) {
+            return this.proposalTargetGone();
+          }
+          if (proposerSheet.fate < ADD_DETAIL_COST) {
+            return this.notEnoughBoons();
+          }
+          // The facilitator's field arrives pre-filled with the player's
+          // suggestion and stays editable; blank falls back, then to a default.
+          const body = (await readJson(request)) as ProposalDecisionInput | null;
+          const text =
+            boundedString(body?.text, MAX_GOAL_LENGTH).trim() ||
+            proposal.text ||
+            `Detail from ${proposal.proposerName}`;
           const aspect: SessionAspect = {
             id: crypto.randomUUID(),
-            // An ability always produces a Boon; only the facilitator's
-            // direct create (`handleAddSessionAspect`) can pick Bane (23.3).
             kind: "Boon",
             text,
             createdByName: proposal.proposerName,
             createdAt: Date.now(),
+            consumed: false,
           };
           state = {
             ...state,
-            sessionAspects: [...state.sessionAspects, aspect],
-            usedAbilities: markAbilityUsed(
-              state.usedAbilities,
-              proposal.slot ?? -1,
-              proposal.kind,
+            characters: await this.bumpFate(
+              state.characters,
+              proposerSheet.slot,
+              -ADD_DETAIL_COST,
             ),
+            sessionAspects: [...state.sessionAspects, aspect],
           };
-          logLine = `${
-            proposal.kind === "add-detail" ? "Detail added" : "Insight gained"
-          } — ${text} (${proposal.proposerName})`;
+          logLine = `Add Detail accepted — ${characterLabel(
+            proposerSheet,
+          )} pays ${ADD_DETAIL_COST} boon: ${text}`;
           break;
         }
 
@@ -1135,53 +1204,19 @@ export class GameTable implements DurableObject {
           if (!suggester || !target) {
             return this.proposalTargetGone();
           }
-          let characters = state.characters;
-          characters = await this.bumpFate(
-            characters,
-            suggester.slot,
-            COMPLICATE_SUGGESTER_BOONS,
-          );
-          characters = await this.bumpFate(
-            characters,
-            target.slot,
-            COMPLICATE_TARGET_BOONS,
-          );
-          state = {
-            ...state,
-            characters,
-            usedAbilities: markAbilityUsed(
-              state.usedAbilities,
-              suggester.slot,
-              "complicate",
-            ),
-          };
-          logLine = `Complicate — ${characterLabel(
-            suggester,
-          )} +${COMPLICATE_SUGGESTER_BOONS}, ${characterLabel(
-            target,
-          )} +${COMPLICATE_TARGET_BOONS} boons`;
-          break;
-        }
-
-        case "accept-compel": {
-          const character =
-            proposal.slot === null
-              ? undefined
-              : state.characters.find((c) => c.slot === proposal.slot);
-          if (!character) {
-            return this.proposalTargetGone();
-          }
           state = {
             ...state,
             characters: await this.bumpFate(
               state.characters,
-              character.slot,
-              ACCEPT_COMPEL_BOONS,
+              target.slot,
+              COMPLICATE_TARGET_BOONS,
             ),
           };
-          logLine = `Compel accepted — ${characterLabel(
-            character,
-          )} +${ACCEPT_COMPEL_BOONS} boons`;
+          logLine = `Complicate accepted — ${characterLabel(
+            target,
+          )} gains ${COMPLICATE_TARGET_BOONS} boons (suggested by ${characterLabel(
+            suggester,
+          )})`;
           break;
         }
 
@@ -1189,33 +1224,51 @@ export class GameTable implements DurableObject {
           const aspect = state.sessionAspects.find(
             (f) => f.id === proposal.sessionAspectId,
           );
-          if (!aspect) {
+          const proposerSheet =
+            proposal.slot === null
+              ? undefined
+              : state.characters.find((c) => c.slot === proposal.slot);
+          if (!aspect || !proposerSheet) {
             return this.proposalTargetGone();
+          }
+          if (aspect.consumed) {
+            return new Response("That session boon is already consumed", {
+              status: 409,
+            });
           }
           state = {
             ...state,
-            sessionAspects: state.sessionAspects.filter(
-              (f) => f.id !== aspect.id,
-            ),
             stonePool: [...state.stonePool, "Boon"],
+            sessionAspects: state.sessionAspects.map((f) =>
+              f.id === aspect.id ? { ...f, consumed: true } : f,
+            ),
           };
-          logLine = `Session boon used — ${aspect.text} (${proposal.proposerName})`;
+          logLine = `Use Session Boon accepted — ${characterLabel(
+            proposerSheet,
+          )} spends ${aspect.text}; the pool gains a Boon`;
           break;
         }
       }
     }
 
-    return this.commit(
-      state,
-      logLine
-        ? {
-            authorId: authInfo.discordUserId,
-            authorName: authInfo.username,
-            role: authInfo.role,
-            content: logLine,
-          }
-        : undefined,
-    );
+    if (decision === "reject") {
+      const proposerSheet =
+        proposal.slot === null
+          ? undefined
+          : state.characters.find((c) => c.slot === proposal.slot);
+      logLine = `${moveName(proposal.kind)} rejected — ${
+        proposerSheet ? characterLabel(proposerSheet) : proposal.proposerName
+      }`;
+    }
+
+    return this.commit(state, logLine ? authoredLine(authInfo, logLine) : undefined);
+  }
+
+  /** An accepted proposal the proposer can no longer pay for. It stays queued. */
+  private notEnoughBoons(): Response {
+    return new Response("Not enough boons to pay for that move", {
+      status: 409,
+    });
   }
 
   /**
@@ -1256,15 +1309,6 @@ export class GameTable implements DurableObject {
     );
   }
 
-  private drawFromBag(): PendingRoll {
-    const committed = totalCommittedBoons(this.game.committedBoons);
-    const bag: StoneKind[] = [
-      ...this.game.stonePool,
-      ...Array<StoneKind>(committed).fill("Boon"),
-    ];
-    return pickTwoRandom(bag);
-  }
-
   /**
    * Add `amount` boons to one character's `fate` in D1, and return the character
    * list with that change folded in. `amount` may be negative; `fate` floors at
@@ -1284,24 +1328,130 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * The facilitator's one-click overcome/roll draw (23.1): a read of the
-   * current pool via `drawFromBag`, never a write to it — what the two drawn
-   * stones mean for the pool, a sheet, or a session context is a separate
-   * decision the facilitator expresses through the free-standing resource
-   * actions, not something this route tries to infer. `this.game` is passed
-   * through unchanged; the only effect is the log line.
+   * Overcome (26.2): any player presses it, no approval needed. Draws two
+   * stones from the pool without touching the pool, and leaves the result
+   * pending until the facilitator accepts or rejects it. One at a time.
    */
-  private async handleDraw(authInfo: AuthInfo): Promise<Response> {
-    const committed = totalCommittedBoons(this.game.committedBoons);
-    const { chosen } = this.drawFromBag();
-    const committedNote = committed > 0 ? ` — ${committed} boon committed` : "";
+  private async handleOvercomeRoll(authInfo: AuthInfo): Promise<Response> {
+    if (this.game.overcome) {
+      return new Response("An Overcome is already pending", { status: 409 });
+    }
 
-    return this.commit(this.game, {
-      authorId: authInfo.discordUserId,
-      authorName: authInfo.username,
-      role: authInfo.role,
-      content: `Drew: ${describeStones(chosen)}${committedNote}`,
-    });
+    const { chosen } = pickTwoRandom(this.game.stonePool);
+    return this.commit(
+      {
+        ...this.game,
+        overcome: {
+          rolledBy: authInfo.username,
+          stones: chosen,
+          rerolls: 0,
+          alteredSlots: [],
+        },
+      },
+      {
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: `Overcome — ${authInfo.username} rolled: ${describeStones(chosen)}`,
+      },
+    );
+  }
+
+  /**
+   * The facilitator accepts the pending Overcome. The pool returns to its
+   * starting shape whatever was added to it, and a matched pair plants a
+   * session boon (two Boons) or session bane (two Banes) for the facilitator to
+   * word later; a mixed draw plants nothing.
+   */
+  private async handleOvercomeAccept(authInfo: AuthInfo): Promise<Response> {
+    const overcome = this.game.overcome;
+    if (!overcome) {
+      return new Response("No Overcome is pending", { status: 409 });
+    }
+
+    const kind = pairKind(overcome.stones);
+    const sessionAspects = kind
+      ? [
+          ...this.game.sessionAspects,
+          {
+            id: crypto.randomUUID(),
+            kind,
+            text: `${kind} from ${overcome.rolledBy}'s Overcome`,
+            createdByName: overcome.rolledBy,
+            createdAt: Date.now(),
+            consumed: false,
+          },
+        ]
+      : this.game.sessionAspects;
+    const added = kind ? ` (session ${kind.toLowerCase()} added)` : "";
+
+    return this.commit(
+      {
+        ...this.game,
+        overcome: null,
+        // A queued Alter Fate is only meaningful during the Overcome it was
+        // raised for.
+        proposals: this.game.proposals.filter((p) => p.kind !== "alter"),
+        stonePool: [...INITIAL_STONE_POOL],
+        sessionAspects,
+      },
+      {
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: `Overcome accepted — ${describeStones(overcome.stones)}${added}`,
+      },
+    );
+  }
+
+  /**
+   * The facilitator rejects the pending Overcome: the roll is discarded and
+   * nothing else changes — the pool keeps whatever was added to it, and no
+   * session aspect is created — so the table can roll again.
+   */
+  private async handleOvercomeReject(authInfo: AuthInfo): Promise<Response> {
+    if (!this.game.overcome) {
+      return new Response("No Overcome is pending", { status: 409 });
+    }
+
+    return this.commit(
+      {
+        ...this.game,
+        overcome: null,
+        proposals: this.game.proposals.filter((p) => p.kind !== "alter"),
+      },
+      {
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: "Overcome rejected — the roll is discarded",
+      },
+    );
+  }
+
+  /**
+   * The facilitator's own reroll of the pending Overcome: free and immediate,
+   * with no proposal. Players reroll only through Alter Fate.
+   */
+  private async handleOvercomeReroll(authInfo: AuthInfo): Promise<Response> {
+    const overcome = this.game.overcome;
+    if (!overcome) {
+      return new Response("No Overcome is pending", { status: 409 });
+    }
+
+    const { chosen } = pickTwoRandom(this.game.stonePool);
+    return this.commit(
+      {
+        ...this.game,
+        overcome: { ...overcome, stones: chosen, rerolls: overcome.rerolls + 1 },
+      },
+      {
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: `Reroll — ${describeStones(chosen)}`,
+      },
+    );
   }
 
   /**
@@ -1373,6 +1523,7 @@ export class GameTable implements DurableObject {
       text,
       createdByName: authInfo.username,
       createdAt: Date.now(),
+      consumed: false,
     };
 
     return this.commit(
@@ -1382,6 +1533,98 @@ export class GameTable implements DurableObject {
         authorName: authInfo.username,
         role: authInfo.role,
         content: `Session note added (${kind}) — ${text}`,
+      },
+    );
+  }
+
+  /** Facilitator-only: rewrite one session aspect's text. Silent, like a typo fix. */
+  private async handleUpdateSessionAspect(
+    request: Request,
+    sessionAspectId: string,
+  ): Promise<Response> {
+    const aspect = this.game.sessionAspects.find((f) => f.id === sessionAspectId);
+    if (!aspect) {
+      return new Response("No such session boon", { status: 404 });
+    }
+    const input = (await readJson(request)) as { text?: unknown } | null;
+    const text = boundedString(input?.text, MAX_GOAL_LENGTH).trim();
+    if (!text) {
+      return new Response("text is required", { status: 400 });
+    }
+
+    return this.commit({
+      ...this.game,
+      sessionAspects: this.game.sessionAspects.map((f) =>
+        f.id === sessionAspectId ? { ...f, text } : f,
+      ),
+    });
+  }
+
+  /**
+   * Facilitator-only: spend a session aspect into the pool directly, no
+   * approval. The pool gains a stone of the aspect's kind and the aspect is
+   * marked consumed — kept, visibly, so it cannot be spent twice.
+   */
+  private async handleUseSessionAspect(
+    sessionAspectId: string,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    const aspect = this.game.sessionAspects.find((f) => f.id === sessionAspectId);
+    if (!aspect) {
+      return new Response("No such session boon", { status: 404 });
+    }
+    if (aspect.consumed) {
+      return new Response("That session boon is already consumed", {
+        status: 409,
+      });
+    }
+
+    return this.commit(
+      {
+        ...this.game,
+        stonePool: [...this.game.stonePool, aspect.kind],
+        sessionAspects: this.game.sessionAspects.map((f) =>
+          f.id === sessionAspectId ? { ...f, consumed: true } : f,
+        ),
+      },
+      {
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: `Session ${aspect.kind.toLowerCase()} used — ${aspect.text}`,
+      },
+    );
+  }
+
+  /**
+   * Facilitator-only: clear a consumed mark. A correction for a table
+   * miscommunication (a stone was spent that should not have been), not part of
+   * the game — so it does not touch the pool.
+   */
+  private async handleUnconsumeSessionAspect(
+    sessionAspectId: string,
+    authInfo: AuthInfo,
+  ): Promise<Response> {
+    const aspect = this.game.sessionAspects.find((f) => f.id === sessionAspectId);
+    if (!aspect) {
+      return new Response("No such session boon", { status: 404 });
+    }
+    if (!aspect.consumed) {
+      return new Response("That session boon is not consumed", { status: 409 });
+    }
+
+    return this.commit(
+      {
+        ...this.game,
+        sessionAspects: this.game.sessionAspects.map((f) =>
+          f.id === sessionAspectId ? { ...f, consumed: false } : f,
+        ),
+      },
+      {
+        authorId: authInfo.discordUserId,
+        authorName: authInfo.username,
+        role: authInfo.role,
+        content: `Session ${aspect.kind.toLowerCase()} unconsumed — ${aspect.text}`,
       },
     );
   }
@@ -1437,20 +1680,11 @@ export class GameTable implements DurableObject {
       .bind(id, this.game.sessionId, goal, Date.now())
       .run();
 
+    // Starting a session records the goal and nothing else: the pool,
+    // proposals, session boons and banes, and any pending Overcome all carry
+    // across (RULES.md, "Sessions and the goal").
     return this.commit(
-      {
-        ...this.game,
-        session: { id, goal },
-        // A new session starts from a clean slate. Nothing left open at the end
-        // of the previous session (or before this one began) carries in:
-        // abilities, session aspects, highlights, or a proposal queue. The stone
-        // pool is untouched — it is shared across sessions and only ever
-        // changed by moves and the facilitator's direct edits.
-        usedAbilities: [],
-        sessionAspects: [],
-        committedBoons: [],
-        proposals: [],
-      },
+      { ...this.game, session: { id, goal } },
       {
         authorId: authInfo.discordUserId,
         authorName: authInfo.username,
@@ -1466,54 +1700,24 @@ export class GameTable implements DurableObject {
       return new Response("No session is running", { status: 400 });
     }
 
-    // Ending a session no longer rolls for anything — the goal is just text.
-    // The only pool effect is a top-up: whatever is left in the shared pool
-    // stays exactly as it is, and enough fresh stones are added so it never
-    // runs dry of either kind.
-    const now = Date.now();
-    const boons = this.game.stonePool.filter((s) => s === "Boon").length;
-    const banes = this.game.stonePool.filter((s) => s === "Bane").length;
-    const addBoons = Math.max(0, MIN_POOL_BOONS - boons);
-    const addBanes = Math.max(0, MIN_POOL_BANES - banes);
-    const stonePool = [
-      ...this.game.stonePool,
-      ...Array<StoneKind>(addBoons).fill("Boon"),
-      ...Array<StoneKind>(addBanes).fill("Bane"),
-    ];
-    const topUpNote =
-      addBoons > 0 || addBanes > 0
-        ? ` (pool topped up: +${addBoons} Boon, +${addBanes} Bane)`
-        : "";
-
+    // Ending a session records it in the history and nothing else. The goal is
+    // just text: nothing is rolled, judged, topped up, or cleared.
     await this.env.DB.prepare(
       `UPDATE game_sessions SET ended_at = ? WHERE id = ?`,
     )
-      .bind(now, session.id)
+      .bind(Date.now(), session.id)
       .run();
 
     const sessionHistory = await this.loadSessionHistory(
       this.game.sessionId,
     );
     return this.commit(
-      {
-        ...this.game,
-        session: null,
-        sessionHistory,
-        stonePool,
-        // Ending a session discards everything left unresolved: unspent
-        // session aspects, once-per-session abilities, highlighted boons, and any
-        // proposal the facilitator never accepted or rejected. Nothing from a
-        // closed session carries in.
-        sessionAspects: [],
-        usedAbilities: [],
-        committedBoons: [],
-        proposals: [],
-      },
+      { ...this.game, session: null, sessionHistory },
       {
         authorId: authInfo.discordUserId,
         authorName: authInfo.username,
         role: authInfo.role,
-        content: `Session ended — ${session.goal}${topUpNote}`,
+        content: `Session ended — ${session.goal}`,
       },
     );
   }
@@ -1894,6 +2098,16 @@ type AuthInfo = {
  * Gate for routes only the facilitator may call. Returns a 403 to short-circuit
  * the route, or `undefined` to let it run: `facilitatorOnly(authInfo) ?? run()`.
  */
+/** A message-log entry authored by `authInfo`, for `commit`'s log line. */
+function authoredLine(authInfo: AuthInfo, content: string): AddMessageInput {
+  return {
+    authorId: authInfo.discordUserId,
+    authorName: authInfo.username,
+    role: authInfo.role,
+    content,
+  };
+}
+
 function facilitatorOnly(authInfo: AuthInfo): Response | undefined {
   if (authInfo.role !== "facilitator") {
     return new Response("Facilitator only", { status: 403 });

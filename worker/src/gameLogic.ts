@@ -6,14 +6,12 @@
 // value in, a value out.
 
 import type {
-  AbilityKind,
   AspectName,
   CharacterSheet,
-  CommittedBoon,
   GameState,
   PendingRoll,
+  ProposalKind,
   StoneKind,
-  UsedAbilities,
 } from "./types";
 
 export const ASPECT_NAMES: readonly AspectName[] = [
@@ -75,6 +73,31 @@ export function pickTwoRandom(pool: StoneKind[]): PendingRoll {
   return { chosen, rest };
 }
 
+/**
+ * The kind a drawn pair names, when both stones match: two Boons give a Boon,
+ * two Banes a Bane. A mixed draw names nothing. Decides which session aspect,
+ * if any, an accepted Overcome creates.
+ */
+export function pairKind(stones: StoneKind[]): StoneKind | null {
+  return stones.length === 2 && stones[0] === stones[1] ? stones[0] : null;
+}
+
+/** The player-facing name of a move, for the log. */
+export function moveName(kind: ProposalKind): string {
+  switch (kind) {
+    case "highlight":
+      return "Highlight";
+    case "complicate":
+      return "Complicate";
+    case "add-detail":
+      return "Add Detail";
+    case "alter":
+      return "Alter Fate";
+    case "use-session-boon":
+      return "Use Session Boon";
+  }
+}
+
 export function describeStones(stones: StoneKind[]): string {
   return stones.join(", ");
 }
@@ -85,40 +108,10 @@ export function characterLabel(character: CharacterSheet): string {
   return name || `Character ${character.slot + 1}`;
 }
 
-export function totalCommittedBoons(committed: CommittedBoon[]): number {
-  return committed.reduce((sum, c) => sum + c.count, 0);
-}
-
 /**
- * Highlight (`delta` +1) or withdraw (-1) one of a character's own boons on the
- * next roll, clamped to what they hold. Shared by the direct highlight route and
- * an accepted `highlight` proposal.
- */
-export function applyHighlight(
-  state: GameState,
-  slot: number,
-  delta: number,
-): GameState {
-  const character = state.characters.find((c) => c.slot === slot);
-  if (!character) return state;
-
-  const current =
-    state.committedBoons.find((c) => c.slot === slot)?.count ?? 0;
-  const next = Math.max(0, Math.min(character.fate, current + delta));
-
-  const committedBoons = state.committedBoons.filter((c) => c.slot !== slot);
-  if (next > 0) {
-    committedBoons.push({ slot, count: next });
-  }
-  committedBoons.sort((a, b) => a.slot - b.slot);
-  return { ...state, committedBoons };
-}
-
-/**
- * Drop a slot's highlighted boons and any proposal that points at it (as the
- * proposer's own slot or as a `complicate` target). Called when a sheet
- * changes hands, so an accepted roll or proposal cannot spend or target the
- * wrong character's boons.
+ * Drop any proposal that points at `slot` (as the proposer's own slot or as a
+ * `complicate` target). Called when a sheet changes hands, so an accepted
+ * proposal cannot spend or target the wrong character's boons.
  */
 export function clearSlotPendingState(
   state: GameState,
@@ -126,23 +119,8 @@ export function clearSlotPendingState(
 ): GameState {
   return {
     ...state,
-    committedBoons: state.committedBoons.filter((c) => c.slot !== slot),
     proposals: state.proposals.filter(
       (p) => p.slot !== slot && p.targetSlot !== slot,
     ),
   };
-}
-
-/** Record `kind` as spent for `slot` this session; idempotent. */
-export function markAbilityUsed(
-  used: UsedAbilities[],
-  slot: number,
-  kind: AbilityKind,
-): UsedAbilities[] {
-  const row = used.find((u) => u.slot === slot);
-  if (!row) return [...used, { slot, kinds: [kind] }];
-  if (row.kinds.includes(kind)) return used;
-  return used.map((u) =>
-    u.slot === slot ? { ...u, kinds: [...u.kinds, kind] } : u,
-  );
 }

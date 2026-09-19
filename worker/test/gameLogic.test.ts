@@ -1,13 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyHighlight,
   characterLabel,
   clearSlotPendingState,
   describeStones,
-  markAbilityUsed,
+  pairKind,
   pickTwoRandom,
   removeStones,
-  totalCommittedBoons,
 } from "../src/gameLogic";
 import { migrateStoneState } from "../src/migrateStoneState";
 import type { CharacterSheet, GameState } from "../src/types";
@@ -35,81 +33,33 @@ function state(over: Partial<GameState> = {}): GameState {
     sessionId: "t",
     messages: [],
     stonePool: [],
-    committedBoons: [],
     proposals: [],
     session: null,
     characters: [],
     sessionHistory: [],
     sessionAspects: [],
-    usedAbilities: [],
+    overcome: null,
     npcs: [],
     locations: [],
     ...over,
   };
 }
 
-describe("applyHighlight", () => {
-  it("clamps a highlight to the character's boons and keeps committedBoons sorted", () => {
-    const s = state({
-      characters: [sheet({ slot: 1, fate: 3 }), sheet({ slot: 0, fate: 5 })],
-      committedBoons: [{ slot: 1, count: 1 }],
-    });
-    const after = applyHighlight(applyHighlight(s, 1, 10), 0, 2);
-    expect(after.committedBoons).toEqual([
-      { slot: 0, count: 2 },
-      { slot: 1, count: 3 },
-    ]);
-  });
-
-  it("drops a slot's entry when a withdrawal takes it to zero, and no-ops an unknown slot", () => {
-    const s = state({
-      characters: [sheet({ slot: 0, fate: 2 })],
-      committedBoons: [{ slot: 0, count: 1 }],
-    });
-    expect(applyHighlight(s, 0, -5).committedBoons).toEqual([]);
-    expect(applyHighlight(s, 9, 1)).toBe(s);
-  });
-});
-
 describe("clearSlotPendingState", () => {
-  it("drops the slot's highlights and any proposal pointing at it as slot or targetSlot", () => {
+  it("drops any proposal pointing at the slot, as its proposer or as its target", () => {
+    const base = { proposerId: "u", proposerName: "U", sessionAspectId: null, text: null };
     const s = state({
-      committedBoons: [
-        { slot: 0, count: 2 },
-        { slot: 1, count: 1 },
-      ],
       proposals: [
-        { id: "a", kind: "highlight", proposerId: "u", proposerName: "U", slot: 0, delta: 1, sessionAspectId: null, targetSlot: null, createdAt: 1 },
-        { id: "b", kind: "complicate", proposerId: "u", proposerName: "U", slot: 2, delta: 0, sessionAspectId: null, targetSlot: 0, createdAt: 2 },
-        { id: "c", kind: "add-boon", proposerId: "u", proposerName: "U", slot: 1, delta: 0, sessionAspectId: null, targetSlot: null, createdAt: 3 },
+        { ...base, id: "a", kind: "highlight", slot: 0, targetSlot: null, createdAt: 1 },
+        { ...base, id: "b", kind: "complicate", slot: 2, targetSlot: 0, createdAt: 2 },
+        { ...base, id: "c", kind: "highlight", slot: 1, targetSlot: null, createdAt: 3 },
       ],
     });
-    const after = clearSlotPendingState(s, 0);
-    expect(after.committedBoons).toEqual([{ slot: 1, count: 1 }]);
-    expect(after.proposals.map((p) => p.id)).toEqual(["c"]);
-  });
-});
-
-describe("markAbilityUsed", () => {
-  it("adds a row, adds a kind to an existing row, and is idempotent", () => {
-    let used = markAbilityUsed([], 0, "alter");
-    expect(used).toEqual([{ slot: 0, kinds: ["alter"] }]);
-    used = markAbilityUsed(used, 0, "add-detail");
-    expect(used).toEqual([{ slot: 0, kinds: ["alter", "add-detail"] }]);
-    expect(markAbilityUsed(used, 0, "alter")).toBe(used);
+    expect(clearSlotPendingState(s, 0).proposals.map((p) => p.id)).toEqual(["c"]);
   });
 });
 
 describe("small helpers", () => {
-  it("totalCommittedBoons sums counts", () => {
-    expect(
-      totalCommittedBoons([
-        { slot: 0, count: 2 },
-        { slot: 1, count: 3 },
-      ]),
-    ).toBe(5);
-  });
-
   it("characterLabel falls back to a 1-based slot number", () => {
     expect(characterLabel(sheet({ slot: 2, name: "  " }))).toBe("Character 3");
     expect(characterLabel(sheet({ name: "Bea" }))).toBe("Bea");
@@ -140,6 +90,15 @@ describe("small helpers", () => {
   });
 });
 
+describe("pairKind", () => {
+  it("names the kind of a matched pair and nothing for a mixed draw", () => {
+    expect(pairKind(["Boon", "Boon"])).toBe("Boon");
+    expect(pairKind(["Bane", "Bane"])).toBe("Bane");
+    expect(pairKind(["Boon", "Bane"])).toBeNull();
+    expect(pairKind(["Bane", "Boon"])).toBeNull();
+  });
+});
+
 describe("migrateStoneState", () => {
   it("returns the base blob when nothing is stored", () => {
     const s = migrateStoneState(undefined, ["Boon", "Bane", "Boon", "Bane"]);
@@ -156,8 +115,8 @@ describe("migrateStoneState", () => {
         pendingRoll: { chosen: ["WhiteStone"], rest: ["BlackStone"] },
         overcome: { targetSlot: 1 },
         proposals: [
-          // biome-ignore lint: legacy proposal shape has no sessionAspectId / targetSlot
-          { id: "p", kind: "add-boon", proposerId: "u", proposerName: "U", slot: null, delta: 0, createdAt: 1 } as never,
+          // biome-ignore lint: legacy proposal shape has no sessionAspectId / targetSlot / text
+          { id: "p", kind: "highlight", proposerId: "u", proposerName: "U", slot: 0, createdAt: 1 } as never,
         ],
         // biome-ignore lint: a pre-23.3 session aspect has no kind
         floatingBoons: [
@@ -169,8 +128,9 @@ describe("migrateStoneState", () => {
     );
     expect(s.stonePool).toEqual(["Boon", "Bane"]);
     expect(s).not.toHaveProperty("pendingRoll");
-    expect(s).not.toHaveProperty("overcome");
-    expect(s.proposals[0]).toMatchObject({ sessionAspectId: null, targetSlot: null });
+    // The pre-23.1 `{ targetSlot }` overcome is not the current `Overcome`.
+    expect(s.overcome).toBeNull();
+    expect(s.proposals[0]).toMatchObject({ sessionAspectId: null, targetSlot: null, text: null });
     // Every session aspect on disk before 23.3 is implicitly a Boon.
     expect(s.sessionAspects[0]).toMatchObject({ kind: "Boon", text: "a note" });
     expect(s.session).toEqual({ id: "s", goal: "g" });
@@ -181,7 +141,6 @@ describe("migrateStoneState", () => {
       {
         stonePool: ["Boon", "Bane"],
         floatingBoons: [{ id: "f", kind: "Bane", text: "n", createdByName: "Gm" } as never],
-        usedAbilities: [{ slot: 1, kinds: ["help-out", "suggest-compel", "add-detail"] }],
         proposals: [
           { id: "a", kind: "pledge", proposerId: "u", proposerName: "U", slot: 1, delta: 1, createdAt: 1 },
           { id: "b", kind: "suggest-compel", proposerId: "u", proposerName: "U", slot: 1, delta: 0, targetSlot: 2, createdAt: 1 },
@@ -200,11 +159,45 @@ describe("migrateStoneState", () => {
     expect(s.proposals[3]).toMatchObject({ sessionAspectId: "f" });
     expect(s.proposals[3]).not.toHaveProperty("floatingId");
     expect(s.sessionAspects).toEqual([
-      { id: "f", kind: "Bane", text: "n", createdByName: "Gm" },
+      { id: "f", kind: "Bane", text: "n", createdByName: "Gm", consumed: false },
     ]);
-    expect(s.usedAbilities).toEqual([
-      { slot: 1, kinds: ["alter", "complicate", "add-detail"] },
-    ]);
+  });
+
+  it("drops state retired by 26.2: once-per-session flags, highlighted boons, and proposals of retired kinds", () => {
+    const s = migrateStoneState(
+      {
+        stonePool: ["Boon", "Bane"],
+        committedBoons: [{ slot: 0, count: 2 }],
+        usedAbilities: [{ slot: 0, kinds: ["add-detail"] }],
+        proposals: [
+          { id: "a", kind: "add-boon", proposerId: "u", proposerName: "U", slot: null, delta: 1, createdAt: 1 },
+          { id: "b", kind: "gain-insight", proposerId: "u", proposerName: "U", slot: 0, delta: 0, createdAt: 1 },
+          { id: "c", kind: "accept-compel", proposerId: "u", proposerName: "U", slot: 0, delta: 2, createdAt: 1 },
+          { id: "d", kind: "pledge", proposerId: "u", proposerName: "U", slot: 0, delta: 3, createdAt: 1 },
+          { id: "e", kind: "add-detail", proposerId: "u", proposerName: "U", slot: 0, delta: 0, createdAt: 1 },
+        ] as never,
+      },
+      ["Boon", "Bane"],
+    );
+    expect(s).not.toHaveProperty("committedBoons");
+    expect(s).not.toHaveProperty("usedAbilities");
+    expect(s.proposals.map((p) => p.kind)).toEqual(["highlight", "add-detail"]);
+    expect(s.proposals[0]).not.toHaveProperty("delta");
+    expect(s.proposals[1]).toMatchObject({ text: null });
+  });
+
+  it("keeps a current pending Overcome and reads a pre-26.2 blob's session aspects as unconsumed", () => {
+    const overcome = { rolledBy: "Ada", stones: ["Boon", "Bane"], rerolls: 1, alteredSlots: [0] };
+    const s = migrateStoneState(
+      {
+        stonePool: ["Boon"],
+        overcome: overcome as never,
+        sessionAspects: [{ id: "f", kind: "Boon", text: "n", createdByName: "Gm" } as never],
+      },
+      ["Boon"],
+    );
+    expect(s.overcome).toEqual(overcome);
+    expect(s.sessionAspects[0].consumed).toBe(false);
   });
 
   it("folds a retired per-session pool and carried-Bane count into the shared pool", () => {
