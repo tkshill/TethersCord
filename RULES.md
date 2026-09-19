@@ -8,13 +8,12 @@ game is shaped this way, `ROADMAP.md` says what is planned, and this file says
 **Keep this file current.** Any change to a game rule updates this file in the
 same branch, and `client/src/Copy/Terms.elm` (the in-app glossary) follows it.
 Where a section below describes a rule that has been decided but not yet built,
-it is marked **(Worker built in 26.2; client planned, 26.3)**.
+it is marked .
 
 > **Status.** Written 2026-09-18 from the section 26 design pass. The Worker
-> implements every rule below (roadmap 26.2, with tests). The client does not
-> expose them yet (26.3), so the running app still shows the facilitator-run
-> interface from roadmap section 23 and `main` is not deployable until 26.3
-> lands.
+> implements every rule below (roadmap 26.2, with tests) and the client exposes
+> them (26.3). The in-app glossary and copy still describe some retired mechanics
+> and are rewritten in 26.4.
 
 ## The table
 
@@ -42,7 +41,7 @@ it is marked **(Worker built in 26.2; client planned, 26.3)**.
   facilitator changes it directly: add or remove a Boon or a Bane, or use a
   session boon or bane (below).
 
-## The Overcome **(Worker built in 26.2; client planned, 26.3)**
+## The Overcome 
 
 An **Overcome** is a fork the facilitator declares at the table: a moment where
 the plot could go more than one way. The app does not model the declaring. It
@@ -72,7 +71,7 @@ models what follows.
 Every roll, reroll, and the final accept or reject is a line in the message log,
 so the log reads as: roll result, any reroll results, then the accepted result.
 
-## Moves **(Worker built in 26.2; client planned, 26.3)**
+## Moves 
 
 The five official move names are **Highlight**, **Overcome**, **Complicate**,
 **Add Detail**, and **Alter Fate**. Use these names in copy and in code.
@@ -129,7 +128,7 @@ approval, in case the player's boons changed while the proposal waited.
 | Undo a mistaken "consumed" mark | no | yes |
 | Start or end a session, edit the goal | no | yes |
 
-## Session boons and session banes **(Worker built in 26.2; client planned, 26.3)**
+## Session boons and session banes 
 
 A **session boon** or **session bane** is a note of something true in the
 fiction, owned by nobody, that can be spent into the pool.

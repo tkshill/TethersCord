@@ -133,8 +133,7 @@ countProposals myId kind proposals =
 
 {-| The id of the proposer's most recently queued proposal of `kind`, if any.
 This is what the "withdraw" link beside a "(pending)" hint pulls back — the
-latest matching one, since abilities and Add boon queue at most one and a highlight
-is applied as a net delta.
+latest matching one.
 -}
 latestProposalId : Maybe String -> Kind.ProposalKind -> List Proposal -> Maybe String
 latestProposalId myId kind proposals =

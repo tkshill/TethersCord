@@ -1,136 +1,73 @@
 module Kind exposing
-    ( AbilityKind(..)
-    , ProposalKind(..)
-    , abilityToString
-    , decodeAbilityKind
+    ( ProposalKind(..)
     , decodeProposalKind
     , proposalKindToString
     )
 
-{-| Typed names for the two enumerations the game passes over the wire as
-strings: the kind of a queued `Proposal` and the once-per-session `AbilityKind`.
+{-| The kind of a queued `Proposal`, at parity with the Worker's `ProposalKind`
+union (`worker/src/types.ts`): a typed name for what a player asked the
+facilitator to rule on. These are the five official move names except Overcome,
+which needs no approval and so is never a proposal (`RULES.md`).
 
-Kept in their own module (rather than in `Types` beside `Msg`) because several
-constructor names — `Complicate`, `AddBoon` — already exist as `Msg`
-variants, and Elm's constructors must be unique within a module.
-
-Bringing the client to parity with the Worker's `ProposalKind` / `AbilityKind`
-unions means adding a kind now produces a compile error at every `case` that
-must handle it, and `View.describeProposal` is a total match with no string
-fall-through.
+Kept in its own module (rather than in `Types` beside `Msg`) because several
+constructor names — `Highlight`, `Complicate`, `AddDetail`, `Alter` — are also
+the names of `Msg` variants, and Elm's constructors must be unique within a
+module. Adding a kind now produces a compile error at every `case` that must
+handle it, and `View.FacilitatorPanel.describeProposal` is a total match with no
+string fall-through.
 
 -}
 
 import Json.Decode as Decode exposing (Decoder)
 
 
-{-| The four abilities a player calls on once per session, each gated by
-facilitator approval. A subset of `ProposalKind`, reached through
-`AbilityProposal`.
--}
-type AbilityKind
-    = Alter
-    | AddDetail
-    | GainInsight
-    | Complicate
-
-
-{-| What a queued proposal asks for. `AbilityProposal` wraps the ability kinds;
-the rest are proposal-only.
--}
 type ProposalKind
-    = AddBoon
-    | Highlight
-    | AbilityProposal AbilityKind
-    | AcceptCompel
+    = Highlight
+    | Complicate
+    | AddDetail
+    | Alter
     | UseSessionBoon
-
-
-abilityToString : AbilityKind -> String
-abilityToString kind =
-    case kind of
-        Alter ->
-            "alter"
-
-        AddDetail ->
-            "add-detail"
-
-        GainInsight ->
-            "gain-insight"
-
-        Complicate ->
-            "complicate"
 
 
 proposalKindToString : ProposalKind -> String
 proposalKindToString kind =
     case kind of
-        AddBoon ->
-            "add-boon"
-
         Highlight ->
             "highlight"
 
-        AbilityProposal ability ->
-            abilityToString ability
+        Complicate ->
+            "complicate"
 
-        AcceptCompel ->
-            "accept-compel"
+        AddDetail ->
+            "add-detail"
+
+        Alter ->
+            "alter"
 
         UseSessionBoon ->
             "use-session-boon"
 
 
-abilityFromString : String -> Maybe AbilityKind
-abilityFromString s =
+proposalKindFromString : String -> Maybe ProposalKind
+proposalKindFromString s =
     case s of
-        "alter" ->
-            Just Alter
-
-        "add-detail" ->
-            Just AddDetail
-
-        "gain-insight" ->
-            Just GainInsight
+        "highlight" ->
+            Just Highlight
 
         "complicate" ->
             Just Complicate
 
-        _ ->
-            Nothing
+        "add-detail" ->
+            Just AddDetail
 
-
-proposalKindFromString : String -> Maybe ProposalKind
-proposalKindFromString s =
-    case s of
-        "add-boon" ->
-            Just AddBoon
-
-        "highlight" ->
-            Just Highlight
-
-        "accept-compel" ->
-            Just AcceptCompel
+        "alter" ->
+            Just Alter
 
         "use-session-boon" ->
             Just UseSessionBoon
 
         _ ->
-            Maybe.map AbilityProposal (abilityFromString s)
-
-
-decodeAbilityKind : Decoder AbilityKind
-decodeAbilityKind =
-    Decode.string
-        |> Decode.andThen
-            (\s ->
-                case abilityFromString s of
-                    Just kind ->
-                        Decode.succeed kind
-
-                    Nothing ->
-                        Decode.fail ("Unknown ability kind " ++ s)
-            )
+            Nothing
 
 
 decodeProposalKind : Decoder ProposalKind

@@ -1,38 +1,59 @@
 module View.Moves exposing (view)
 
-{-| The Moves card, shown once the viewer holds a sheet: the once-per-session
-abilities (Alter / Add Detail / Gain Insight), Complicate against
-another claimed sheet, and the any-time Accept Compel.
+{-| The Moves card, shown once the viewer holds a sheet (roadmap 26.3): a real
+button for each player move — Highlight, Complicate, Add Detail, Alter Fate and
+Use Session Boon. Each one queues a proposal for the facilitator; nothing lands
+until they accept it, and the cost of a move is paid only then (`RULES.md`).
 
--- OFF while testing simplified interface (roadmap section 23.4): every entry
-here used to be a button posting a proposal for the facilitator to accept or
-reject. The `Msg` constructors (`UseAbility`, `Complicate`,
-`AcceptCompelMove`), their `Effect`s, `Api` calls, and the worker's proposal
-routes are all still live and untouched — only this card's `onPress` hooks
-are gone, so it now reads as a reminder of what a player can say at the
-table, not a control that posts anything. Re-wiring is a search for this
-comment.
+A move a player cannot afford is disabled here rather than refused after the
+fact: the Worker checks the cost when the proposal is raised and again when it is
+accepted, but the button says so first. Overcome is not one of these — it needs
+no approval and lives on the stage in `View.TopBar`.
 -}
 
+import Action exposing (Action(..))
 import Copy
 import Element exposing (Element, el, fill, none, spacing, text, width)
 import Element.Font as Font
+import Element.Input as Input
 import Kind
+import Roll exposing (Stone(..))
 import Types exposing (..)
 import Ui
-import View.Helpers exposing (ViewContext, accordionHeaderWith, characterLabel, tip)
-
-
-{-| The four once-per-session (or fewer) abilities `remainingSummary` counts
-against — every `Kind.AbilityKind` constructor.
--}
-allAbilities : List Kind.AbilityKind
-allAbilities =
-    [ Kind.Alter, Kind.AddDetail, Kind.GainInsight, Kind.Complicate ]
+import View.Helpers
+    exposing
+        ( ViewContext
+        , accordionHeaderWith
+        , characterLabel
+        , countProposals
+        , inputAttrs
+        , latestProposalId
+        , pendingHint
+        , tip
+        )
 
 
 type alias Props =
-    { open : Bool }
+    { open : Bool
+    , addDetailDraft : String
+    }
+
+
+{-| What each move costs the proposer, in boons, on approval.
+-}
+highlightCost : Int
+highlightCost =
+    1
+
+
+addDetailCost : Int
+addDetailCost =
+    1
+
+
+alterCost : Int
+alterCost =
+    2
 
 
 view : ViewContext -> Props -> GameState -> Element Msg
@@ -43,34 +64,22 @@ view ctx props gs =
 
         Just ch ->
             Ui.card
-                (accordionHeaderWith props.open (Ui.sectionTitle Copy.movesTitle) (ToggleLeftSection MovesSection) (remainingSummary gs ch)
+                (accordionHeaderWith props.open
+                    (Ui.sectionTitle Copy.movesTitle)
+                    (ToggleLeftSection MovesSection)
+                    (el [ Font.size 11, Font.color Ui.inkSoft ] (text (Copy.movesBoons ch.fate)))
                     :: (if props.open then
-                            [ abilityRow gs ch
-                            , complicateRow gs ch
-                            , Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
-                                [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.anyTime)
-                                , tip "Accept Compel" (moveLabel Copy.acceptCompel)
-                                ]
+                            [ highlightRow ctx gs ch
+                            , complicateRow ctx gs ch
+                            , addDetailRow ctx props gs ch
+                            , alterRow ctx gs ch
+                            , useSessionBoonRow ctx gs
                             ]
 
                         else
                             []
                        )
                 )
-
-
-{-| "n of 4 left", shown beside the card title whether the accordion section is
-open or closed (roadmap section 24, the 1c layout variant) — the one thing
-about a character's Moves worth seeing at a glance without opening the card.
--}
-remainingSummary : GameState -> CharacterSheet -> Element msg
-remainingSummary gs ch =
-    let
-        remaining =
-            List.length (List.filter (\k -> not (abilityUsed ch.slot k gs.usedAbilities)) allAbilities)
-    in
-    el [ Font.size 11, Font.color Ui.inkSoft ]
-        (text (Copy.movesRemainingSummary remaining (List.length allAbilities)))
 
 
 myOwnedSheet : Maybe String -> GameState -> Maybe CharacterSheet
@@ -80,79 +89,190 @@ myOwnedSheet myId gs =
         |> List.head
 
 
-abilityRow : GameState -> CharacterSheet -> Element Msg
-abilityRow gs ch =
-    if gs.session == Nothing then
-        el [ Font.size 12, Font.color Ui.inkSoft ]
-            (text Copy.abilitiesNeedSession)
-
-    else
-        let
-            entry kind label =
-                let
-                    suffix =
-                        if abilityUsed ch.slot kind gs.usedAbilities then
-                            Copy.usedSuffix
-
-                        else
-                            ""
-                in
-                tip label (moveLabel (label ++ suffix))
-        in
-        Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
-            [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.oncePerSession)
-            , entry Kind.Alter Copy.alter
-            , entry Kind.AddDetail Copy.addDetail
-            , entry Kind.GainInsight Copy.gainInsight
-            ]
-
-
-{-| Complicate: a once-per-session ability that names another player's
-character. One label per other claimed sheet; "(used)" once raised.
+{-| A move's block: its name (with the glossary tooltip) and a one-line blurb,
+then whatever controls it has.
 -}
-complicateRow : GameState -> CharacterSheet -> Element Msg
-complicateRow gs ch =
-    if gs.session == Nothing then
-        none
+moveBlock : String -> String -> List (Element Msg) -> Element Msg
+moveBlock name blurb controls =
+    Element.column [ spacing Ui.xs, width fill ]
+        (Element.paragraph [ Font.size 12 ]
+            [ tip name (el [ Font.semiBold ] (text name))
+            , el [ Font.color Ui.inkSoft ] (text ("  " ++ blurb))
+            ]
+            :: controls
+        )
 
-    else
-        let
-            used =
-                abilityUsed ch.slot Kind.Complicate gs.usedAbilities
 
-            targets =
-                gs.characters
-                    |> List.filter (\c -> c.slot /= ch.slot && c.ownerId /= Nothing)
+{-| A button that names why it is off, beneath it, when it is.
+-}
+moveButton : List Action -> Action -> Msg -> String -> Maybe String -> Element Msg
+moveButton inflight action msg label whyNot =
+    Element.column [ spacing Ui.xs ]
+        [ Ui.ghostButton
+            { onPress =
+                case whyNot of
+                    Just _ ->
+                        Nothing
 
-            suffix =
-                if used then
-                    Copy.usedSuffix
+                    Nothing ->
+                        Ui.press inflight action msg
+            , label = label
+            }
+        , case whyNot of
+            Just reason ->
+                el [ Font.size 11, Font.color Ui.inkSoft ] (text reason)
 
-                else
-                    ""
-        in
-        Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
-            (tip "Complicate"
-                (el [ Font.size 11, Font.color Ui.inkSoft ] (text (Copy.complicate ++ suffix)))
-                :: (if used then
-                        []
+            Nothing ->
+                none
+        ]
 
-                    else if List.isEmpty targets then
-                        [ el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.noOtherPlayers) ]
+
+pendingFor : ViewContext -> GameState -> Kind.ProposalKind -> List (Element Msg)
+pendingFor ctx gs kind =
+    pendingHint (countProposals ctx.myId kind gs.proposals) (latestProposalId ctx.myId kind gs.proposals)
+
+
+highlightRow : ViewContext -> GameState -> CharacterSheet -> Element Msg
+highlightRow ctx gs ch =
+    moveBlock "Highlight"
+        Copy.highlightBlurb
+        [ Element.row [ spacing Ui.sm, Element.centerY ]
+            (moveButton ctx.inflight
+                (RaisingMove Kind.Highlight)
+                ProposeHighlight
+                Copy.highlightButton
+                (if ch.fate < highlightCost then
+                    Just Copy.needsABoon
+
+                 else
+                    Nothing
+                )
+                :: pendingFor ctx gs Kind.Highlight
+            )
+        ]
+
+
+{-| One button per other claimed sheet: naming a target is what proposes it.
+-}
+complicateRow : ViewContext -> GameState -> CharacterSheet -> Element Msg
+complicateRow ctx gs ch =
+    let
+        targets =
+            gs.characters
+                |> List.filter (\c -> c.slot /= ch.slot && c.ownerId /= Nothing)
+    in
+    moveBlock "Complicate"
+        Copy.complicateBlurb
+        [ if List.isEmpty targets then
+            el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.noOtherPlayers)
+
+          else
+            Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
+                (List.map
+                    (\c ->
+                        Ui.ghostButton
+                            { onPress = Ui.press ctx.inflight (RaisingMove Kind.Complicate) (ProposeComplicate c.slot)
+                            , label = characterLabel c
+                            }
+                    )
+                    targets
+                    ++ pendingFor ctx gs Kind.Complicate
+                )
+        ]
+
+
+addDetailRow : ViewContext -> Props -> GameState -> CharacterSheet -> Element Msg
+addDetailRow ctx props gs ch =
+    moveBlock "Add Detail"
+        Copy.addDetailBlurb
+        [ Input.text
+            (inputAttrs ++ [ width fill, Ui.onEnter ProposeAddDetail ])
+            { onChange = AddDetailDraftChanged
+            , text = props.addDetailDraft
+            , placeholder = Just (Input.placeholder [] (text Copy.addDetailPlaceholder))
+            , label = Input.labelHidden "Suggested detail"
+            }
+        , Element.row [ spacing Ui.sm, Element.centerY ]
+            (moveButton ctx.inflight
+                (RaisingMove Kind.AddDetail)
+                ProposeAddDetail
+                Copy.addDetailButton
+                (if ch.fate < addDetailCost then
+                    Just Copy.needsABoon
+
+                 else
+                    Nothing
+                )
+                :: pendingFor ctx gs Kind.AddDetail
+            )
+        ]
+
+
+{-| Alter Fate exists only while an Overcome is pending, so the block is absent
+otherwise. It is off for a player who cannot pay, who has already altered this
+Overcome, or while another Alter Fate is waiting (one at a time).
+-}
+alterRow : ViewContext -> GameState -> CharacterSheet -> Element Msg
+alterRow ctx gs ch =
+    case gs.overcome of
+        Nothing ->
+            none
+
+        Just overcome ->
+            let
+                whyNot =
+                    if List.member ch.slot overcome.alteredSlots then
+                        Just Copy.alterAlreadyUsed
+
+                    else if List.any (\p -> p.kind == Kind.Alter) gs.proposals then
+                        Just Copy.alterAlreadyProposed
+
+                    else if ch.fate < alterCost then
+                        Just Copy.alterNeedsBoons
 
                     else
-                        List.map (\c -> moveLabel (characterLabel c)) targets
-                   )
-            )
+                        Nothing
+            in
+            moveBlock "Alter Fate"
+                Copy.alterBlurb
+                [ Element.row [ spacing Ui.sm, Element.centerY ]
+                    (moveButton ctx.inflight
+                        (RaisingMove Kind.Alter)
+                        ProposeAlter
+                        Copy.alterButton
+                        whyNot
+                        :: pendingFor ctx gs Kind.Alter
+                    )
+                ]
 
 
-{-| What was `Ui.ghostButton` before 23.4 — same size and position in the
-row, but plain text: nothing here posts anymore.
+{-| Each unspent session *boon*. Session banes are the facilitator's to use.
 -}
-moveLabel : String -> Element Msg
-moveLabel label =
-    el
-        [ Font.size 13
-        , Font.color Ui.ink
+useSessionBoonRow : ViewContext -> GameState -> Element Msg
+useSessionBoonRow ctx gs =
+    let
+        spendable =
+            gs.sessionAspects
+                |> List.filter (\a -> a.kind == Boon && not a.consumed)
+    in
+    moveBlock "Session boon"
+        Copy.useSessionBoonBlurb
+        [ if List.isEmpty spendable then
+            el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.noSessionBoons)
+
+          else
+            Element.column [ spacing Ui.xs, width fill ]
+                (List.map
+                    (\a ->
+                        Element.row [ spacing Ui.sm, Element.centerY, width fill ]
+                            [ Ui.ghostButton
+                                { onPress = Ui.press ctx.inflight (RaisingMove Kind.UseSessionBoon) (ProposeUseSessionBoon a.id)
+                                , label = Copy.useButton
+                                }
+                            , Element.paragraph [ Font.size 12 ] [ text a.text ]
+                            ]
+                    )
+                    spendable
+                )
+        , Element.row [ spacing Ui.sm ] (pendingFor ctx gs Kind.UseSessionBoon)
         ]
-        (text label)

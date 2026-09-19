@@ -1724,35 +1724,56 @@ new pure helpers; the migration has its own tests.
       and proposals of the retired kinds are dropped.
 - [x] `CLAUDE.md` and `RULES.md` updated; `CHANGELOG.md` bullet added.
 
-**Not done, and left for 26.3:** the client still decodes and posts the pre-26.2
-wire shape, so `main` cannot be deployed until 26.3 lands. `Alter`'s
+**Not done in 26.2, done in 26.3:** the client still decoded and posted the
+pre-26.2 wire shape, so `main` could not be deployed until 26.3 landed. `Alter`'s
 proposal-time check counts only the proposer's current boons, not their other
 pending proposals (see Open questions).
 
-### 26.3 Client: moves, Overcome, and the facilitator queue
+### 26.3 Client: moves, Overcome, and the facilitator queue — done
 
-- [ ] **Prototype first** (`/prototype`, throwaway): the top bar carrying the
-      Overcome button and the pending roll beside the pool. Settle the layout
-      before wiring it.
-- [ ] **Do roadmap 25.4 first** (typed in-flight action keys), so the new buttons
-      get their greyed-while-in-flight state from the compiler rather than a
-      string prefix.
-- [ ] **Top bar**: Overcome button (any player), the pending roll's stones and
-      rerolls visible to everyone, and the facilitator's Accept / Reject / Reroll.
-- [ ] **Moves accordion**: real buttons for Highlight, Complicate (with a
-      target picker over the other claimed sheets), Add Detail (with a text
-      field), Alter Fate (visible only while a roll is pending), and a "Use" on
-      each unconsumed session boon. Each button is disabled when the player's
-      boons are too few, matching the worker's proposal check. No "n of 4 left".
-- [ ] **Facilitator accordion**: the proposal queue for the new kinds, with an
-      editable text field on Add Detail, and a **pending-count in the header** so
-      a collapsed panel still signals a waiting proposal (P2.13).
-- [ ] **Session boons & banes card**: kind-coloured chips with a visible
-      consumed state; facilitator-only Use / Unconsume / Delete / edit text and the
-      always-visible add row that already exists.
-- [ ] Tests: `Api.decodeGameState` over a snapshot with a pending roll and a
-      consumed session aspect; `Main.update` guards and the `Effect` each new `Msg`
-      yields.
+- [x] **Prototype first**, throwaway: three structurally different top bars on the
+      real `Ui.page` shell (a strip that expands inline; a "stage" showing the
+      pool as stones with the drawn pair lifted out; a strip plus a separate
+      banner). **Verdict: the stage (B).** Alter Fate stays in the proposal
+      queue rather than as a pill in the top bar; a player's Alter Fate button
+      lives in the Moves card. The prototype is kept on
+      `proto/section-26-3-topbar` as the primary source and is not on `main`.
+- [x] **25.4 first** (typed in-flight action keys) — the first commit of this
+      branch.
+- [x] **Top bar** (`View.TopBar`): the stage. The pool as stones; Overcome open to
+      any player; a pending roll's drawn stones lifted beside the pool with who
+      rolled and the reroll count, visible to everyone; the facilitator's Reroll /
+      Reject / Accept, and a "waiting" line for a player. `Roll.without` shows the
+      pool minus the drawn pair.
+- [x] **Moves accordion** (`View.Moves`): real buttons — Highlight, Complicate (one
+      button per other claimed sheet), Add Detail (with a suggestion field), Alter
+      Fate (only while a roll is pending), and a Use on each unspent session boon.
+      A button is disabled, with the reason shown, when the player cannot afford
+      the move (Alter Fate also when they have altered this Overcome or one is
+      already waiting). Pending proposals show a withdraw link. The old "n of 4
+      left" and the once-per-session copy are gone.
+- [x] **Facilitator accordion** (`View.FacilitatorPanel`): the queue handles the
+      five kinds, an Add Detail's field opens on the player's suggestion, and the
+      header carries "n waiting" so a collapsed panel still signals a proposal
+      (closes that P2.13 item). The Draw button is gone — the stage replaced it.
+- [x] **Session boons & banes card** (`View.SessionAspects`): consumed ones are
+      struck through, faded and tagged "used"; the facilitator edits the text in
+      place (saved on blur), and can Use, Unconsume and Remove; the add row is as
+      before. Players see it read-only and spend a boon from the Moves card.
+- [x] The client now decodes the 26.2 wire shape (`overcome`, `consumed`,
+      `Proposal.text`), and drops the highlight debounce, `committedBoons`,
+      `usedAbilities`, `AbilityKind`, and the Accept Compel / Gain Insight / Add
+      boon messages, effects and routes.
+- [x] Tests: the decoder over a snapshot with a pending Overcome, a proposal of
+      each kind and a consumed session aspect; `Main.update` and the `Effect` each
+      new `Msg` yields, including the in-flight guards; `Roll.without`.
+- [x] Checked by rendering the real `View.view` through the real `Main.update`
+      against a hand-built snapshot in headless Chrome (facilitator and player;
+      resting and mid-roll; the Moves card open; the session tab).
+
+**Left for 26.4:** the glossary (`Copy.Terms`) still describes Compel, Accept
+Compel, Gain Insight and the once-per-session limits, and the Guide and tooltips
+still reference them; the "Goal" label is missing its colon.
 
 ### 26.4 Copy, glossary, and a real playtest
 

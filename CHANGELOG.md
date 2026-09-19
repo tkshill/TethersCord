@@ -10,6 +10,21 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **Player moves and the Overcome stage in the client** (roadmap section 26.3),
+  completing 26.2. The top bar becomes a stage: the shared pool shown as stones,
+  an **Overcome** button open to any player, and — while a roll is pending — the
+  drawn pair lifted out beside the pool with who rolled and the reroll count. The
+  facilitator gets **Reroll**, **Reject** and **Accept** there. The Moves card
+  has real buttons for **Highlight**, **Complicate**, **Add Detail** (with a
+  suggestion field), **Alter Fate** (only while a roll is pending) and a **Use**
+  on each unspent session boon; a move the player cannot afford is disabled with
+  the reason shown. The facilitator's queue handles all five moves (an Add Detail's
+  field opens on the player's suggestion) and its header counts what is waiting.
+  Session boons and banes show a consumed mark and can be edited in place, used,
+  unconsumed and removed by the facilitator. In-flight requests are now a typed
+  `Action` rather than string keys (roadmap 25.4). Removed: the Draw button, the
+  highlight +/− debounce, and the Accept Compel, Gain Insight and Add boon
+  controls.
 - **The Overcome loop and player moves, in the Worker** (roadmap section 26.2;
   the client follows in 26.3, so this is not deployable on its own). Any player
   presses **Overcome** (`/overcome/roll`) to draw two stones from the pool; the

@@ -58,14 +58,6 @@ fieldSaveDelay =
     1000
 
 
-{-| Idle time after the last Highlight +/- tap before the coalesced net highlight is
-sent as a single proposal.
--}
-highlightDelay : Float
-highlightDelay =
-    700
-
-
 {-| The left panel's width in pixels (roadmap section 24, the 1c layout
 variant), and the range the draggable divider clamps it to so neither panel
 can be dragged away to nothing.
@@ -149,14 +141,14 @@ init flags =
       , dirtySlots = Set.empty
       , dirtyEntities = Set.empty
       , fieldSaveSeq = 0
-      , pendingHighlightDelta = 0
-      , highlightSeq = 0
       , selectedSlot = 0
       , logAtBottom = True
       , newSessionGoal = ""
       , goalEdit = ""
       , sessionControlsExpanded = False
       , proposalDrafts = Dict.empty
+      , addDetailDraft = ""
+      , sessionAspectEdits = Dict.empty
       , newSessionAspectNote = ""
       , newSessionAspectKind = Boon
       , loadingHistory = False
@@ -256,20 +248,6 @@ armFieldSave model =
             model.fieldSaveSeq + 1
     in
     ( { model | fieldSaveSeq = seq }, Effect.DebounceFieldSave seq fieldSaveDelay )
-
-
-{-| Accumulate a Highlight +/- tap into the pending net delta and arm the highlight
-debounce.
--}
-armHighlight : Int -> Model -> ( Model, Effect )
-armHighlight step model =
-    let
-        seq =
-            model.highlightSeq + 1
-    in
-    ( { model | pendingHighlightDelta = model.pendingHighlightDelta + step, highlightSeq = seq }
-    , Effect.DebounceHighlight seq highlightDelay
-    )
 
 
 {-| Find an NPC / location row by id anywhere in the game state, paired with the
@@ -455,34 +433,6 @@ update msg model =
         ClearLog ->
             guard ClearingLog { model | confirming = Nothing } Effect.PostClearMessages
 
-        AddBoon ->
-            guard AddingBoon model (\auth -> Effect.PostStones auth "/stones/add-boon")
-
-        -- The +/- taps only nudge a running total; one coalesced proposal is
-        -- sent once the taps stop (`HighlightDue`).
-        HighlightIncrement ->
-            armHighlight 1 model
-
-        HighlightDecrement ->
-            armHighlight -1 model
-
-        HighlightDue seq ->
-            if seq /= model.highlightSeq || model.pendingHighlightDelta == 0 then
-                ( model, Effect.None )
-
-            else
-                case model.auth of
-                    Just auth ->
-                        ( { model
-                            | pendingHighlightDelta = 0
-                            , inflight = Highlighting :: model.inflight
-                          }
-                        , Effect.PostHighlight auth model.pendingHighlightDelta
-                        )
-
-                    Nothing ->
-                        ( { model | pendingHighlightDelta = 0 }, Effect.None )
-
         SelectSlot slot ->
             -- Leaving a tab flushes any unsaved edits on the sheet behind it.
             flushFieldSaves { model | selectedSlot = slot }
@@ -534,17 +484,51 @@ update msg model =
         ProposalResolved _ (Err _) ->
             fail "Failed to resolve the proposal." (clearInflight ProposalFamily model)
 
-        UseAbility kind ->
-            guard (RaisingMove (Kind.AbilityProposal kind)) model (\auth -> Effect.PostUseAbility auth kind)
+        -- The Overcome loop (26.2). Anyone may roll; the rest are the
+        -- facilitator's, and the Worker enforces that.
+        PressOvercome ->
+            guard RollingOvercome model Effect.PostOvercomeRoll
 
-        Complicate targetSlot ->
-            guard (RaisingMove (Kind.AbilityProposal Kind.Complicate)) model (\auth -> Effect.PostComplicate auth targetSlot)
+        RerollOvercome ->
+            guard RerollingOvercome model Effect.PostOvercomeReroll
 
-        AcceptCompelMove ->
-            guard (RaisingMove Kind.AcceptCompel) model Effect.PostAcceptCompelMove
+        AcceptOvercome ->
+            guard AcceptingOvercome model Effect.PostOvercomeAccept
 
-        UseSessionBoon sessionAspectId ->
+        RejectOvercome ->
+            guard RejectingOvercome model Effect.PostOvercomeReject
+
+        -- Player moves: each is queued as a proposal for the facilitator. The
+        -- Moves card disables a button the player cannot afford; the Worker
+        -- checks the cost again.
+        ProposeHighlight ->
+            guard (RaisingMove Kind.Highlight) model Effect.PostHighlight
+
+        ProposeComplicate targetSlot ->
+            guard (RaisingMove Kind.Complicate) model (\auth -> Effect.PostComplicate auth targetSlot)
+
+        ProposeAddDetail ->
+            let
+                suggestion =
+                    case String.trim model.addDetailDraft of
+                        "" ->
+                            Nothing
+
+                        trimmed ->
+                            Just trimmed
+            in
+            guard (RaisingMove Kind.AddDetail)
+                { model | addDetailDraft = "" }
+                (\auth -> Effect.PostAddDetail auth suggestion)
+
+        ProposeAlter ->
+            guard (RaisingMove Kind.Alter) model Effect.PostAlter
+
+        ProposeUseSessionBoon sessionAspectId ->
             guard (RaisingMove Kind.UseSessionBoon) model (\auth -> Effect.PostUseSessionBoon auth sessionAspectId)
+
+        AddDetailDraftChanged s ->
+            ( { model | addDetailDraft = s }, Effect.None )
 
         SessionGoalChanged s ->
             ( { model | newSessionGoal = s }, Effect.None )
@@ -630,9 +614,6 @@ update msg model =
                 _ ->
                     ( model, Effect.None )
 
-        DrawStones ->
-            guard DrawingStones model (\auth -> Effect.PostStones auth "/overcome/roll")
-
         -- Facilitator-only hand-edits of the shared pool (23.2), independent
         -- of a draw and of each other.
         AddStone stone ->
@@ -655,6 +636,45 @@ update msg model =
                 guard AddingSessionAspect
                     { model | newSessionAspectNote = "" }
                     (\auth -> Effect.PostAddSessionAspect auth model.newSessionAspectKind model.newSessionAspectNote)
+
+        UseSessionAspect sessionAspectId ->
+            guard (UsingSessionAspect sessionAspectId)
+                model
+                (\auth -> Effect.PostUseSessionAspect auth sessionAspectId)
+
+        UnconsumeSessionAspect sessionAspectId ->
+            guard (UnconsumingSessionAspect sessionAspectId)
+                model
+                (\auth -> Effect.PostUnconsumeSessionAspect auth sessionAspectId)
+
+        SessionAspectTextChanged sessionAspectId s ->
+            ( { model | sessionAspectEdits = Dict.insert sessionAspectId s model.sessionAspectEdits }
+            , Effect.None
+            )
+
+        -- Saved when the field loses focus, and only if it actually changed.
+        SaveSessionAspectText sessionAspectId ->
+            case Dict.get sessionAspectId model.sessionAspectEdits of
+                Nothing ->
+                    ( model, Effect.None )
+
+                Just draft ->
+                    let
+                        released =
+                            { model | sessionAspectEdits = Dict.remove sessionAspectId model.sessionAspectEdits }
+
+                        current =
+                            model.gameState
+                                |> Maybe.andThen (\gs -> gs.sessionAspects |> List.filter (\a -> a.id == sessionAspectId) |> List.head)
+                                |> Maybe.map .text
+                    in
+                    if String.trim draft == "" || Just (String.trim draft) == current then
+                        ( released, Effect.None )
+
+                    else
+                        guard (EditingSessionAspect sessionAspectId)
+                            released
+                            (\auth -> Effect.PostUpdateSessionAspect auth sessionAspectId (String.trim draft))
 
         DeleteSessionAspect sessionAspectId ->
             guard (DeletingSessionAspect sessionAspectId)

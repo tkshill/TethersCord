@@ -33,13 +33,17 @@ type Action
     | ReleasingSlot
     | ResolvingProposal Decision String
     | RaisingMove ProposalKind
-    | Highlighting
-    | AddingBoon
-    | DrawingStones
+    | RollingOvercome
+    | RerollingOvercome
+    | AcceptingOvercome
+    | RejectingOvercome
     | AddingStone Stone
     | RemovingStone Stone
     | AddingSessionAspect
     | DeletingSessionAspect String
+    | UsingSessionAspect String
+    | UnconsumingSessionAspect String
+    | EditingSessionAspect String
     | GrantingFate Int
     | CreatingNpc
     | CreatingLocation
@@ -59,6 +63,7 @@ type Family
     | SlotFamily
     | ProposalFamily
     | MoveFamily
+    | OvercomeFamily
     | StonesFamily
     | FateFamily
     | EntityFamily
@@ -83,14 +88,17 @@ family action =
         RaisingMove _ ->
             MoveFamily
 
-        Highlighting ->
-            StonesFamily
+        RollingOvercome ->
+            OvercomeFamily
 
-        AddingBoon ->
-            StonesFamily
+        RerollingOvercome ->
+            OvercomeFamily
 
-        DrawingStones ->
-            StonesFamily
+        AcceptingOvercome ->
+            OvercomeFamily
+
+        RejectingOvercome ->
+            OvercomeFamily
 
         AddingStone _ ->
             StonesFamily
@@ -102,6 +110,15 @@ family action =
             StonesFamily
 
         DeletingSessionAspect _ ->
+            StonesFamily
+
+        UsingSessionAspect _ ->
+            StonesFamily
+
+        UnconsumingSessionAspect _ ->
+            StonesFamily
+
+        EditingSessionAspect _ ->
             StonesFamily
 
         GrantingFate _ ->

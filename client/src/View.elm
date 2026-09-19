@@ -115,7 +115,11 @@ leftPanel ctx model gs =
                 , open = model.openLeftSections.characters
                 }
                 gs
-            , View.Moves.view ctx { open = model.openLeftSections.moves } gs
+            , View.Moves.view ctx
+                { open = model.openLeftSections.moves
+                , addDetailDraft = model.addDetailDraft
+                }
+                gs
             ]
         )
 
@@ -173,6 +177,7 @@ rightPanelTabContent ctx model gs =
                 [ View.SessionAspects.view ctx
                     { sessionAspectDraft = model.newSessionAspectNote
                     , sessionAspectKind = model.newSessionAspectKind
+                    , edits = model.sessionAspectEdits
                     }
                     gs
                 , View.Session.view ctx gs
