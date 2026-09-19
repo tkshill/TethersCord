@@ -25,7 +25,7 @@ module Ui exposing
     , onScrolledToBottom
     , onlyWhen
     , page
-    , pledgedStoneChip
+    , highlightedStoneChip
     , press
     , primaryButton
     , sans
@@ -569,10 +569,10 @@ stoneChip swatch label =
 
 
 {-| As `stoneChip`, but marked with a centre dot — used to show a boon that has
-been pledged into the current roll sitting in the bag.
+been highlighted into the current roll sitting in the bag.
 -}
-pledgedStoneChip : Color -> String -> Element msg
-pledgedStoneChip swatch label =
+highlightedStoneChip : Color -> String -> Element msg
+highlightedStoneChip swatch label =
     labeledStone swatch True label
 
 
@@ -586,7 +586,7 @@ labeledStone swatch marked label =
 
 
 {-| A small boon circle with no caption, for the row of boons on a character
-sheet. Marked with a centre dot when the boon is pledged into the current roll.
+sheet. Marked with a centre dot when the boon is highlighted into the current roll.
 -}
 boonDot : Bool -> Element msg
 boonDot marked =

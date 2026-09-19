@@ -2,7 +2,7 @@ module View.Characters exposing (view)
 
 {-| The Characters card: a tab strip over the three sheets and the selected
 sheet itself — owner row, boons (facilitator Grant only, for now — see
-`pledgeControls`), the text fields, and the three aspects with their
+`highlightControls`), the text fields, and the three aspects with their
 accumulated Banes. Collapsible as one of the left panel's three accordion
 sections (roadmap section 24, the 1c layout variant).
 -}
@@ -286,33 +286,33 @@ readOnlyField tipKey label value =
 
 {-| A character's boons, at the top of the sheet where a player can see their
 spendable stones alongside the current roll. The boons show as circles; the ones
-pledged into the next roll carry a centre dot rather than a separate count. Only
-the facilitator gets a control here (Grant `+` / `−`) — the player-facing Pledge
-control is disconnected for now (`pledgeControls`), so boon movement is left to
+highlighted into the next roll carry a centre dot rather than a separate count. Only
+the facilitator gets a control here (Grant `+` / `−`) — the player-facing Highlight
+control is disconnected for now (`highlightControls`), so boon movement is left to
 the facilitator while the table plays with the manual version of section 23.
 -}
 boonsBlock : Bool -> CharacterSheet -> Int -> Element Msg
-boonsBlock facilitator ch pledged =
+boonsBlock facilitator ch highlighted =
     Element.column [ spacing Ui.xs, width fill ]
         [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.boonsLabel)
-        , boonCircles ch.fate pledged
+        , boonCircles ch.fate highlighted
         , Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
             (grantControls facilitator ch)
         ]
 
 
-{-| `total` boon circles, the first `pledged` of them marked as pledged into the
+{-| `total` boon circles, the first `highlighted` of them marked as highlighted into the
 next roll.
 -}
 boonCircles : Int -> Int -> Element msg
-boonCircles total pledged =
+boonCircles total highlighted =
     if total <= 0 then
         el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.boonsNone)
 
     else
         Element.wrappedRow [ spacing Ui.xs ]
             (List.range 1 total
-                |> List.map (\i -> Ui.boonDot (i <= pledged))
+                |> List.map (\i -> Ui.boonDot (i <= highlighted))
             )
 
 
@@ -329,19 +329,19 @@ grantControls facilitator ch =
 
 
 -- OFF while testing the facilitator-run interface (roadmap section 23) —
--- `boonsBlock` no longer calls this, so a player can no longer pledge a boon
--- from the sheet. The proposal machinery behind it (`Kind.Pledge`,
--- `applyPledge`, `/stones/commit`, `drawFromBag`'s committed-boons odds bump)
+-- `boonsBlock` no longer calls this, so a player can no longer highlight a boon
+-- from the sheet. The proposal machinery behind it (`Kind.Highlight`,
+-- `applyHighlight`, `/moves/highlight`, `drawFromBag`'s committed-boons odds bump)
 -- is untouched; re-wiring this is a one-line change back in `boonsBlock`.
 
 
-pledgeControls : Bool -> Int -> Maybe String -> List (Element Msg)
-pledgeControls mine pending pendingId =
+highlightControls : Bool -> Int -> Maybe String -> List (Element Msg)
+highlightControls mine pending pendingId =
     if mine then
-        -- "Highlight" is the player-facing name for pledging a boon to the roll.
+        -- "Highlight" is the player-facing name for adding a boon to the pool.
         [ tip "Highlight" (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.highlight))
-        , Ui.ghostButton { onPress = Just CommitBoonDecrement, label = "−" }
-        , Ui.ghostButton { onPress = Just CommitBoonIncrement, label = "+" }
+        , Ui.ghostButton { onPress = Just HighlightDecrement, label = "−" }
+        , Ui.ghostButton { onPress = Just HighlightIncrement, label = "+" }
         ]
             ++ pendingHint pending pendingId
 

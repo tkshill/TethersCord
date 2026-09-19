@@ -83,9 +83,9 @@ stoneControl inflight stone =
 
 {-| The queue of player-initiated requests awaiting a decision. Hidden when
 empty — with every proposal-posting control disconnected from the client
-(23.4) alongside `pledge` and `add-boon` (23.2), that is its steady state for
+(23.4) alongside `highlight` and `add-boon` (23.2), that is its steady state for
 now; the routes stay live for whichever one is re-wired first. `drafts` holds
-the context note typed for each Add a Detail / Gain Insight, keyed by
+the context note typed for each Add Detail / Gain Insight, keyed by
 proposal id so the rows do not share one field.
 -}
 proposalsPanel : Set String -> Dict String String -> List CharacterSheet -> List Proposal -> Element Msg
@@ -149,8 +149,8 @@ proposalRow inflight drafts characters p =
                 (inputAttrs ++ [ width fill ])
                 { onChange = ProposalDraftChanged p.id
                 , text = draft
-                , placeholder = Just (Input.placeholder [] (text Copy.floatingBoonContextPlaceholder))
-                , label = Input.labelHidden "Floating boon context"
+                , placeholder = Just (Input.placeholder [] (text Copy.sessionAspectContextPlaceholder))
+                , label = Input.labelHidden "Session boon context"
                 }
 
           else
@@ -164,15 +164,15 @@ describeProposal characters p =
         Kind.AddBoon ->
             Copy.proposalAddBoon
 
-        Kind.Pledge ->
+        Kind.Highlight ->
             if p.delta >= 0 then
-                Copy.proposalPledge
+                Copy.proposalHighlight
 
             else
-                Copy.proposalPledgeWithdraw
+                Copy.proposalHighlightWithdraw
 
-        Kind.AbilityProposal Kind.HelpOut ->
-            Copy.proposalHelpOut
+        Kind.AbilityProposal Kind.Alter ->
+            Copy.proposalAlter
 
         Kind.AbilityProposal Kind.AddDetail ->
             Copy.proposalAddDetail
@@ -180,16 +180,16 @@ describeProposal characters p =
         Kind.AbilityProposal Kind.GainInsight ->
             Copy.proposalGainInsight
 
-        Kind.AbilityProposal Kind.SuggestCompel ->
-            Copy.proposalSuggestCompelOn
+        Kind.AbilityProposal Kind.Complicate ->
+            Copy.proposalComplicateOn
                 (p.targetSlot
                     |> Maybe.andThen (\s -> characterAtSlot s characters)
                     |> Maybe.map characterLabel
-                    |> Maybe.withDefault Copy.proposalSuggestCompelFallback
+                    |> Maybe.withDefault Copy.proposalComplicateFallback
                 )
 
         Kind.AcceptCompel ->
             Copy.proposalAcceptCompel
 
-        Kind.UseFloating ->
-            Copy.proposalUseFloating
+        Kind.UseSessionBoon ->
+            Copy.proposalUseSessionBoon

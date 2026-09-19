@@ -78,7 +78,7 @@ gameState =
     , session = Nothing
     , characters = [ character ]
     , sessionHistory = []
-    , floatingBoons = []
+    , sessionAspects = []
     , usedAbilities = []
     , npcs = []
     , locations = []
@@ -103,16 +103,16 @@ model =
     , dirtySlots = Set.empty
     , dirtyEntities = Set.empty
     , fieldSaveSeq = 0
-    , pendingPledgeDelta = 0
-    , pledgeSeq = 0
+    , pendingHighlightDelta = 0
+    , highlightSeq = 0
     , selectedSlot = 0
     , logAtBottom = True
     , newSessionGoal = ""
     , goalEdit = ""
     , sessionControlsExpanded = False
     , proposalDrafts = Dict.empty
-    , newFloatingBoonNote = ""
-    , newFloatingBoonKind = Boon
+    , newSessionAspectNote = ""
+    , newSessionAspectKind = Boon
     , loadingHistory = False
     , noMoreHistory = False
     , guideExpanded = False
@@ -128,7 +128,7 @@ model =
 
 
 {-| A full `GameState` wire payload as the Worker broadcasts it, exercising every
-sub-decoder: floating boons, used abilities, and a proposal of each awkward
+sub-decoder: session aspects, used abilities, and a proposal of each awkward
 `kind`.
 -}
 snapshotJson : String
@@ -145,13 +145,13 @@ snapshotJson =
     , "committedBoons": [ { "slot": 1, "count": 2 } ]
     , "proposals":
         [ { "id": "p1", "kind": "add-boon", "proposerId": "u1", "proposerName": "Ada"
-          , "slot": null, "delta": 0, "floatingId": null, "targetSlot": null }
-        , { "id": "p2", "kind": "pledge", "proposerId": "u1", "proposerName": "Ada"
-          , "slot": 1, "delta": 1, "floatingId": null, "targetSlot": null }
-        , { "id": "p3", "kind": "suggest-compel", "proposerId": "u1", "proposerName": "Ada"
-          , "slot": 1, "delta": 0, "floatingId": null, "targetSlot": 2 }
-        , { "id": "p4", "kind": "use-floating", "proposerId": "u1", "proposerName": "Ada"
-          , "slot": 1, "delta": 0, "floatingId": "f1", "targetSlot": null }
+          , "slot": null, "delta": 0, "sessionAspectId": null, "targetSlot": null }
+        , { "id": "p2", "kind": "highlight", "proposerId": "u1", "proposerName": "Ada"
+          , "slot": 1, "delta": 1, "sessionAspectId": null, "targetSlot": null }
+        , { "id": "p3", "kind": "complicate", "proposerId": "u1", "proposerName": "Ada"
+          , "slot": 1, "delta": 0, "sessionAspectId": null, "targetSlot": 2 }
+        , { "id": "p4", "kind": "use-session-boon", "proposerId": "u1", "proposerName": "Ada"
+          , "slot": 1, "delta": 0, "sessionAspectId": "f1", "targetSlot": null }
         ]
     , "session": { "id": "s1", "goal": "Escape the vault" }
     , "characters":
@@ -164,11 +164,11 @@ snapshotJson =
         [ { "id": "s0", "goal": "The bridge", "startedAt": 1699000000000
           , "endedAt": 1699000900000 }
         ]
-    , "floatingBoons":
+    , "sessionAspects":
         [ { "id": "f1", "kind": "Bane", "text": "the rope still holds", "createdByName": "Gm"
           , "createdAt": 1700000002000 }
         ]
-    , "usedAbilities": [ { "slot": 1, "kinds": ["help-out", "add-detail"] } ]
+    , "usedAbilities": [ { "slot": 1, "kinds": ["alter", "add-detail"] } ]
     , "npcs":
         [ { "id": "n1", "name": "The Archivist", "notes": "keeps the vault keys"
           , "createdAt": 1700000003000, "updatedAt": 1700000004000 }

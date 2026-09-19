@@ -1,12 +1,12 @@
 module View.Moves exposing (view)
 
 {-| The Moves card, shown once the viewer holds a sheet: the once-per-session
-abilities (Alter / Add a Detail / Gain Insight), Complicate against
+abilities (Alter / Add Detail / Gain Insight), Complicate against
 another claimed sheet, and the any-time Accept Compel.
 
 -- OFF while testing simplified interface (roadmap section 23.4): every entry
 here used to be a button posting a proposal for the facilitator to accept or
-reject. The `Msg` constructors (`UseAbility`, `SuggestCompel`,
+reject. The `Msg` constructors (`UseAbility`, `Complicate`,
 `AcceptCompelMove`), their `Effect`s, `Api` calls, and the worker's proposal
 routes are all still live and untouched — only this card's `onPress` hooks
 are gone, so it now reads as a reminder of what a player can say at the
@@ -28,7 +28,7 @@ against — every `Kind.AbilityKind` constructor.
 -}
 allAbilities : List Kind.AbilityKind
 allAbilities =
-    [ Kind.HelpOut, Kind.AddDetail, Kind.GainInsight, Kind.SuggestCompel ]
+    [ Kind.Alter, Kind.AddDetail, Kind.GainInsight, Kind.Complicate ]
 
 
 type alias Props =
@@ -46,7 +46,7 @@ view ctx props gs =
                 (accordionHeaderWith props.open (Ui.sectionTitle Copy.movesTitle) (ToggleLeftSection MovesSection) (remainingSummary gs ch)
                     :: (if props.open then
                             [ abilityRow gs ch
-                            , suggestCompelRow gs ch
+                            , complicateRow gs ch
                             , Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
                                 [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.anyTime)
                                 , tip "Accept Compel" (moveLabel Copy.acceptCompel)
@@ -101,7 +101,7 @@ abilityRow gs ch =
         in
         Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
             [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.oncePerSession)
-            , entry Kind.HelpOut Copy.helpOut
+            , entry Kind.Alter Copy.alter
             , entry Kind.AddDetail Copy.addDetail
             , entry Kind.GainInsight Copy.gainInsight
             ]
@@ -110,15 +110,15 @@ abilityRow gs ch =
 {-| Complicate: a once-per-session ability that names another player's
 character. One label per other claimed sheet; "(used)" once raised.
 -}
-suggestCompelRow : GameState -> CharacterSheet -> Element Msg
-suggestCompelRow gs ch =
+complicateRow : GameState -> CharacterSheet -> Element Msg
+complicateRow gs ch =
     if gs.session == Nothing then
         none
 
     else
         let
             used =
-                abilityUsed ch.slot Kind.SuggestCompel gs.usedAbilities
+                abilityUsed ch.slot Kind.Complicate gs.usedAbilities
 
             targets =
                 gs.characters
@@ -133,7 +133,7 @@ suggestCompelRow gs ch =
         in
         Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
             (tip "Complicate"
-                (el [ Font.size 11, Font.color Ui.inkSoft ] (text (Copy.suggestCompel ++ suffix)))
+                (el [ Font.size 11, Font.color Ui.inkSoft ] (text (Copy.complicate ++ suffix)))
                 :: (if used then
                         []
 

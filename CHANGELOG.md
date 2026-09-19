@@ -10,6 +10,16 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **Move vocabulary rename** (roadmap section 26.1). The moves and session
+  boons use one set of names in copy, code, wire strings and routes: Highlight
+  (was Pledge), Complicate (was Suggest Compel), Alter (was Help Out; "Alter
+  Fate" in copy), Add Detail, and session boons and banes (was floating
+  boons, with `floatingBoons` / `floatingId` becoming `sessionAspects` /
+  `sessionAspectId`). Routes move to `/moves/highlight`,
+  `/moves/use-session-boon`, `/session-aspects` and `/overcome/roll`.
+  `migrateStoneState` reads proposals, used-ability flags and floating boons
+  stored under the old names, so tables mid-session keep their state. No
+  behaviour change. `RULES.md` records the resulting rules.
 - **Two-panel layout, replacing the three-column shell** (roadmap section 24).
   The left panel's three cards (Facilitator panel, Characters, Moves) become
   collapsible accordion sections at a mouse-draggable width; the right panel

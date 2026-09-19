@@ -90,11 +90,11 @@ export function totalCommittedBoons(committed: CommittedBoon[]): number {
 }
 
 /**
- * Pledge (`delta` +1) or withdraw (-1) one of a character's own boons on the
- * next roll, clamped to what they hold. Shared by the direct pledge route and
- * an accepted `pledge` proposal.
+ * Highlight (`delta` +1) or withdraw (-1) one of a character's own boons on the
+ * next roll, clamped to what they hold. Shared by the direct highlight route and
+ * an accepted `highlight` proposal.
  */
-export function applyPledge(
+export function applyHighlight(
   state: GameState,
   slot: number,
   delta: number,
@@ -115,8 +115,8 @@ export function applyPledge(
 }
 
 /**
- * Drop a slot's pledged boons and any proposal that points at it (as the
- * proposer's own slot or as a `suggest-compel` target). Called when a sheet
+ * Drop a slot's highlighted boons and any proposal that points at it (as the
+ * proposer's own slot or as a `complicate` target). Called when a sheet
  * changes hands, so an accepted roll or proposal cannot spend or target the
  * wrong character's boons.
  */

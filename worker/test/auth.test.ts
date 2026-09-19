@@ -85,16 +85,16 @@ describe("route auth", () => {
     });
   });
 
-  describe("/stones/draw", () => {
+  describe("/overcome/roll", () => {
     it("403s a player drawing", async () => {
       await seedAuth("player-draw");
-      const res = await call("t-draw", "/stones/draw", { token: "player-draw" });
+      const res = await call("t-draw", "/overcome/roll", { token: "player-draw" });
       expect(res.status).toBe(403);
     });
 
     it("204s a facilitator drawing", async () => {
       await seedAuth("fac-draw", { facilitator: true });
-      const res = await call("t-facdraw", "/stones/draw", { token: "fac-draw" });
+      const res = await call("t-facdraw", "/overcome/roll", { token: "fac-draw" });
       expect(res.status).toBe(204);
     });
   });

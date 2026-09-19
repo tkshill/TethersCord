@@ -8,7 +8,7 @@ module Types exposing
     , Connection(..)
     , EntityField(..)
     , EntityKind(..)
-    , FloatingBoon
+    , SessionAspect
     , Flags
     , GameState
     , LeftSection(..)
@@ -102,9 +102,9 @@ type alias Message =
     }
 
 
-{-| Boons a character has pledged toward the next draw's odds; only slots with
-a non-zero pledge appear. 23.1 retired the roll/reroll/accept lifecycle that
-used to spend these from `fate` on accept — what a pledge costs, if anything,
+{-| Boons a character has highlighted toward the next draw's odds; only slots with
+a non-zero highlight appear. 23.1 retired the roll/reroll/accept lifecycle that
+used to spend these from `fate` on accept — what a highlight costs, if anything,
 going forward is an open question (see ROADMAP.md 23).
 -}
 type alias CommittedBoon =
@@ -115,7 +115,7 @@ type alias CommittedBoon =
 
 {-| The character holding `slot`, if any. One shared slot lookup for `Main` (the
 state-merge helpers) and `View` (the panels that resolve a proposal's target,
-e.g. a Suggest Compel).
+e.g. a Complicate).
 -}
 characterAtSlot : Int -> List CharacterSheet -> Maybe CharacterSheet
 characterAtSlot slot characters =
@@ -133,8 +133,8 @@ committedBoonsForSlot slot committed =
 
 {-| A player-initiated request the facilitator resolves through the accept /
 reject queue. See `Kind.ProposalKind` for the kinds. `delta` is `±1` for a
-pledge; `floatingId` names the boon for `UseFloating`; `targetSlot` names the
-compelled character for `AbilityProposal SuggestCompel`.
+highlight; `sessionAspectId` names the boon for `UseSessionBoon`; `targetSlot` names the
+target character for `AbilityProposal Complicate`.
 -}
 type alias Proposal =
     { id : String
@@ -143,17 +143,17 @@ type alias Proposal =
     , proposerName : String
     , slot : Maybe Int
     , delta : Int
-    , floatingId : Maybe String
+    , sessionAspectId : Maybe String
     , targetSlot : Maybe Int
     }
 
 
 {-| A session context owned by no character — a Boon or (23.3) a Bane, with
 `text` as the note of the context it stands for. The facilitator plants one
-directly, or approves an Add a Detail / Gain Insight (always a Boon); either
+directly, or approves an Add Detail / Gain Insight (always a Boon); either
 way, the facilitator removing it is the only way it goes.
 -}
-type alias FloatingBoon =
+type alias SessionAspect =
     { id : String
     , kind : Stone
     , text : String
@@ -369,7 +369,7 @@ type alias GameState =
     , session : Maybe Session
     , characters : List CharacterSheet
     , sessionHistory : List SessionSummary
-    , floatingBoons : List FloatingBoon
+    , sessionAspects : List SessionAspect
     , usedAbilities : List UsedAbility
     , npcs : List TableEntity
     , locations : List TableEntity
@@ -423,11 +423,11 @@ type alias Model =
     -- `FieldSaveDue` only fires the write if it still carries the latest value.
     , fieldSaveSeq : Int
 
-    -- Net pledge delta the Highlight +/- buttons have accumulated but not yet
-    -- sent, coalesced into a single `/stones/commit` after a short pause, with
-    -- `pledgeSeq` as its debounce token.
-    , pendingPledgeDelta : Int
-    , pledgeSeq : Int
+    -- Net highlight delta the Highlight +/- buttons have accumulated but not yet
+    -- sent, coalesced into a single `/moves/highlight` after a short pause, with
+    -- `highlightSeq` as its debounce token.
+    , pendingHighlightDelta : Int
+    , highlightSeq : Int
 
     -- Which character sheet's tab is open. Sheets are shown one at a time.
     , selectedSlot : Int
@@ -449,18 +449,18 @@ type alias Model =
     -- by `ToggleSessionControls`, purely local view state.
     , sessionControlsExpanded : Bool
 
-    -- Context note the facilitator types when approving an Add a Detail or Gain
-    -- Insight proposal (the text attached to the resulting floating boon), keyed
+    -- Context note the facilitator types when approving an Add Detail or Gain
+    -- Insight proposal (the text attached to the resulting session aspect), keyed
     -- by proposal id so each queued proposal has its own field.
     , proposalDrafts : Dict String String
 
-    -- Draft text in the facilitator's "add a floating boon" field (23.2) —
+    -- Draft text in the facilitator's "add a session aspect" field (23.2) —
     -- planting a session context directly, not through an ability proposal.
-    , newFloatingBoonNote : String
+    , newSessionAspectNote : String
 
     -- Which kind the facilitator's next planted session context will be
     -- (23.3) — toggled by the Boon / Bane picker next to the draft field.
-    , newFloatingBoonKind : Stone
+    , newSessionAspectKind : Stone
 
     -- A `GET /messages/history` fetch for older log rows is in flight.
     , loadingHistory : Bool
@@ -520,7 +520,7 @@ type Connection
 
 {-| The right panel's tab strip (roadmap section 24, the 1c layout variant):
 the facilitator's reference state (NPCs and locations); the table's session
-context (floating boons and session history); and the glossary. One at a
+context (session aspects and session history); and the glossary. One at a
 time; the event log is not among them — it is its own pinned region beneath
 the strip, always visible regardless of which tab is selected.
 -}
@@ -576,9 +576,9 @@ type Msg
     | ClearLog
     | FromDiscordRaw Decode.Value
     | AddBoon
-    | CommitBoonIncrement
-    | CommitBoonDecrement
-    | PledgeDue Int
+    | HighlightIncrement
+    | HighlightDecrement
+    | HighlightDue Int
     | SelectSlot Int
     | ClaimSlot Int
     | ReleaseSlot Int
@@ -588,9 +588,9 @@ type Msg
     | ProposalResolved String (Result Http.Error ())
     | ProposalDraftChanged String String
     | UseAbility AbilityKind
-    | SuggestCompel Int
+    | Complicate Int
     | AcceptCompelMove
-    | UseFloatingBoon String
+    | UseSessionBoon String
     | SessionGoalChanged String
     | SessionGoalEditChanged String
     | SaveSessionGoal
@@ -612,10 +612,10 @@ type Msg
     | DrawStones
     | AddStone Stone
     | RemoveStone Stone
-    | FloatingBoonDraftChanged String
-    | FloatingBoonKindChanged Stone
-    | AddFloatingBoon
-    | DeleteFloatingBoon String
+    | SessionAspectDraftChanged String
+    | SessionAspectKindChanged Stone
+    | AddSessionAspect
+    | DeleteSessionAspect String
     | CharacterFieldInput Int CharacterField String
     | CharacterFieldBlur Int
     | FieldSaveDue Int

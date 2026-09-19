@@ -6,15 +6,15 @@ import type {
 } from "@cloudflare/workers-types";
 import type {
   AbilityKind,
-  AddFloatingBoonInput,
+  AddSessionAspectInput,
   AddOrRemoveStoneInput,
   AspectName,
-  CommitBoonInput,
+  HighlightInput,
   CommittedBoon,
   EntityInput,
   EntityKind,
   Env,
-  FloatingBoon,
+  SessionAspect,
   GameState,
   Message,
   PendingRoll,
@@ -33,10 +33,10 @@ import type {
   UpdateSessionGoalInput,
   UsedAbilities,
   UseAbilityInput,
-  UseFloatingBoonInput,
+  UseSessionBoonInput,
 } from "./types";
 import {
-  applyPledge,
+  applyHighlight,
   characterLabel,
   clearSlotPendingState,
   describeStones,
@@ -74,25 +74,25 @@ const CHARACTER_SLOT_COUNT = 3;
 /** Boons the facilitator pays out for an approved Accept Compel move. */
 const ACCEPT_COMPEL_BOONS = 2;
 
-/** Boons an approved Suggest Compel pays: the suggester, then the compelled character. */
-const SUGGEST_COMPEL_SUGGESTER_BOONS = 1;
-const SUGGEST_COMPEL_TARGET_BOONS = 2;
+/** Boons an approved Complicate pays: the suggester, then the target character. */
+const COMPLICATE_SUGGESTER_BOONS = 1;
+const COMPLICATE_TARGET_BOONS = 2;
 
 /** The once-per-session abilities, for validation of the `/abilities/use` route. */
 const ABILITY_KINDS: readonly AbilityKind[] = [
-  "help-out",
+  "alter",
   "add-detail",
   "gain-insight",
-  "suggest-compel",
+  "complicate",
 ];
 
 /** A crypto.randomUUID() shape, for the `/proposals/:id/…` and
  * `/{npcs,locations}/:id/…` route patterns. */
 const UUID = "[0-9a-fA-F-]{36}";
 
-/** Sanity bound on a single coalesced pledge delta; `applyPledge` clamps the
+/** Sanity bound on a single coalesced highlight delta; `applyHighlight` clamps the
  * real effect to what the character holds anyway. */
-const MAX_PLEDGE_DELTA = 50;
+const MAX_HIGHLIGHT_DELTA = 50;
 
 /**
  * How many of the most recent messages the Durable Object holds in memory and
@@ -265,8 +265,8 @@ export class GameTable implements DurableObject {
       );
     }
 
-    if (url.pathname === "/stones/commit" && request.method === "POST") {
-      return this.withLock(() => this.handleCommitBoon(request, authInfo));
+    if (url.pathname === "/moves/highlight" && request.method === "POST") {
+      return this.withLock(() => this.handleHighlight(request, authInfo));
     }
 
     const proposalMatch = url.pathname.match(
@@ -302,11 +302,11 @@ export class GameTable implements DurableObject {
       return this.withLock(() => this.handleAcceptCompelMove(authInfo));
     }
 
-    if (url.pathname === "/stones/use-floating" && request.method === "POST") {
-      return this.withLock(() => this.handleUseFloating(request, authInfo));
+    if (url.pathname === "/moves/use-session-boon" && request.method === "POST") {
+      return this.withLock(() => this.handleUseSessionBoon(request, authInfo));
     }
 
-    if (url.pathname === "/stones/draw" && request.method === "POST") {
+    if (url.pathname === "/overcome/roll" && request.method === "POST") {
       return (
         facilitatorOnly(authInfo) ??
         this.withLock(() => this.handleDraw(authInfo))
@@ -327,21 +327,21 @@ export class GameTable implements DurableObject {
       );
     }
 
-    if (url.pathname === "/stones/floating-boons" && request.method === "POST") {
+    if (url.pathname === "/session-aspects" && request.method === "POST") {
       return (
         facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleAddFloatingBoon(request, authInfo))
+        this.withLock(() => this.handleAddSessionAspect(request, authInfo))
       );
     }
 
-    const floatingBoonMatch = url.pathname.match(
-      new RegExp(`^/stones/floating-boons/(${UUID})/delete$`),
+    const sessionAspectMatch = url.pathname.match(
+      new RegExp(`^/session-aspects/(${UUID})/delete$`),
     );
-    if (floatingBoonMatch && request.method === "POST") {
-      const [, floatingId] = floatingBoonMatch;
+    if (sessionAspectMatch && request.method === "POST") {
+      const [, sessionAspectId] = sessionAspectMatch;
       return (
         facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleDeleteFloatingBoon(floatingId, authInfo))
+        this.withLock(() => this.handleDeleteSessionAspect(sessionAspectId, authInfo))
       );
     }
 
@@ -569,7 +569,7 @@ export class GameTable implements DurableObject {
       messages,
       stonePool: stones.stonePool,
       committedBoons: stones.committedBoons,
-      floatingBoons: stones.floatingBoons,
+      sessionAspects: stones.sessionAspects,
       usedAbilities: stones.usedAbilities,
       proposals: stones.proposals,
       session: stones.session,
@@ -616,7 +616,7 @@ export class GameTable implements DurableObject {
     return {
       stonePool: state.stonePool,
       committedBoons: state.committedBoons,
-      floatingBoons: state.floatingBoons,
+      sessionAspects: state.sessionAspects,
       usedAbilities: state.usedAbilities,
       proposals: state.proposals,
       session: state.session,
@@ -823,23 +823,23 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * Pledge (or withdraw) boons of the caller's own on the next roll. The slot is
+   * Highlight (or withdraw) boons of the caller's own on the next roll. The slot is
    * the sheet they have claimed. Queued as a proposal; the effect only lands
    * when the facilitator accepts it. `delta` is the net change the client has
-   * coalesced from a run of +/- taps, not necessarily ±1; `applyPledge` clamps
+   * coalesced from a run of +/- taps, not necessarily ±1; `applyHighlight` clamps
    * it to `[0, fate]` on accept.
    */
-  private async handleCommitBoon(
+  private async handleHighlight(
     request: Request,
     authInfo: AuthInfo,
   ): Promise<Response> {
-    const input = (await readJson(request)) as CommitBoonInput | null;
+    const input = (await readJson(request)) as HighlightInput | null;
     const delta = input?.delta;
     if (
       typeof delta !== "number" ||
       !Number.isInteger(delta) ||
       delta === 0 ||
-      Math.abs(delta) > MAX_PLEDGE_DELTA
+      Math.abs(delta) > MAX_HIGHLIGHT_DELTA
     ) {
       return new Response("delta must be a non-zero integer", { status: 400 });
     }
@@ -852,7 +852,7 @@ export class GameTable implements DurableObject {
     }
 
     return this.addProposal({
-      kind: "pledge",
+      kind: "highlight",
       proposerId: authInfo.discordUserId,
       proposerName: authInfo.username,
       slot: character.slot,
@@ -861,10 +861,10 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * Raise a once-per-session ability (`help-out` / `add-detail` / `gain-insight`
-   * / `suggest-compel`) for the caller's claimed sheet. The ability is only
+   * Raise a once-per-session ability (`alter` / `add-detail` / `gain-insight`
+   * / `complicate`) for the caller's claimed sheet. The ability is only
    * marked used when the facilitator accepts it; a rejection costs nothing.
-   * `suggest-compel` carries a `targetSlot` — the character being compelled.
+   * `complicate` carries a `targetSlot` — the character being target.
    */
   private async handleUseAbility(
     request: Request,
@@ -901,17 +901,17 @@ export class GameTable implements DurableObject {
     ) {
       return new Response("That ability is already proposed", { status: 409 });
     }
-    if (kind === "help-out") {
-      // 23.1 retired the overcome/pending-roll lifecycle Help Out rerolled,
+    if (kind === "alter") {
+      // 23.1 retired the overcome/pending-roll lifecycle Alter Fate rerolled,
       // so there is no roll left to help with — refuse rather than raise a
       // proposal `handleProposalDecision` could never usefully accept.
-      return new Response("Help Out has no roll to help with", {
+      return new Response("Alter Fate has no roll to alter", {
         status: 400,
       });
     }
 
     let targetSlot: number | null = null;
-    if (kind === "suggest-compel") {
+    if (kind === "complicate") {
       const raw = input?.targetSlot;
       if (
         typeof raw !== "number" ||
@@ -922,7 +922,7 @@ export class GameTable implements DurableObject {
         return new Response("A target character is required", { status: 400 });
       }
       if (raw === character.slot) {
-        return new Response("You cannot compel your own character", {
+        return new Response("You cannot complicate your own character", {
           status: 400,
         });
       }
@@ -973,19 +973,19 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * Raise a request to spend a floating boon on the roll. Like a Highlight, it
+   * Raise a request to spend a session boon on the roll. Like a Highlight, it
    * only lands when the facilitator accepts it; the boon then leaves the
-   * floating pool and a Boon enters the bag.
+   * session aspects and a Boon enters the bag.
    */
-  private async handleUseFloating(
+  private async handleUseSessionBoon(
     request: Request,
     authInfo: AuthInfo,
   ): Promise<Response> {
-    const input = (await readJson(request)) as UseFloatingBoonInput | null;
-    const floatingId =
-      typeof input?.floatingId === "string" ? input.floatingId : "";
-    if (!floatingId) {
-      return new Response("floatingId is required", { status: 400 });
+    const input = (await readJson(request)) as UseSessionBoonInput | null;
+    const sessionAspectId =
+      typeof input?.sessionAspectId === "string" ? input.sessionAspectId : "";
+    if (!sessionAspectId) {
+      return new Response("sessionAspectId is required", { status: 400 });
     }
 
     const character = this.game.characters.find(
@@ -994,42 +994,42 @@ export class GameTable implements DurableObject {
     if (!character) {
       return new Response("Claim a character sheet first", { status: 400 });
     }
-    if (!this.game.floatingBoons.some((f) => f.id === floatingId)) {
-      return new Response("No such floating boon", { status: 404 });
+    if (!this.game.sessionAspects.some((f) => f.id === sessionAspectId)) {
+      return new Response("No such session boon", { status: 404 });
     }
     if (
       this.game.proposals.some(
-        (p) => p.kind === "use-floating" && p.floatingId === floatingId,
+        (p) => p.kind === "use-session-boon" && p.sessionAspectId === sessionAspectId,
       )
     ) {
-      return new Response("That floating boon is already proposed", {
+      return new Response("That session boon is already proposed", {
         status: 409,
       });
     }
 
     return this.addProposal({
-      kind: "use-floating",
+      kind: "use-session-boon",
       proposerId: authInfo.discordUserId,
       proposerName: authInfo.username,
       slot: character.slot,
       delta: 0,
-      floatingId,
+      sessionAspectId,
     });
   }
 
   private async addProposal(
     fields: Omit<
       Proposal,
-      "id" | "createdAt" | "floatingId" | "targetSlot"
+      "id" | "createdAt" | "sessionAspectId" | "targetSlot"
     > & {
-      floatingId?: string | null;
+      sessionAspectId?: string | null;
       targetSlot?: number | null;
     },
   ): Promise<Response> {
-    const { floatingId = null, targetSlot = null, ...rest } = fields;
+    const { sessionAspectId = null, targetSlot = null, ...rest } = fields;
     const proposal: Proposal = {
       ...rest,
-      floatingId,
+      sessionAspectId,
       targetSlot,
       id: crypto.randomUUID(),
       createdAt: Date.now(),
@@ -1043,8 +1043,8 @@ export class GameTable implements DurableObject {
   /**
    * Facilitator resolves one proposal. Accept applies its effect (clamped to
    * current state); reject just drops it. Either way it leaves the queue. Some
-   * accepts can still be refused — Help Out with no roll to affect, an
-   * Add a Detail / Gain Insight with no context note — in which case the
+   * accepts can still be refused — Alter Fate with no roll to affect, an
+   * Add Detail / Gain Insight with no context note — in which case the
    * proposal stays put for another try.
    */
   private async handleProposalDecision(
@@ -1070,25 +1070,25 @@ export class GameTable implements DurableObject {
           state = { ...state, stonePool: [...state.stonePool, "Boon"] };
           break;
 
-        case "pledge": {
-          const pledger =
+        case "highlight": {
+          const proposerSheet =
             proposal.slot === null
               ? undefined
               : state.characters.find((c) => c.slot === proposal.slot);
-          if (!pledger) {
+          if (!proposerSheet) {
             return this.proposalTargetGone();
           }
-          state = applyPledge(state, pledger.slot, proposal.delta);
+          state = applyHighlight(state, proposerSheet.slot, proposal.delta);
           break;
         }
 
-        case "help-out":
-          // Unreachable: `handleUseAbility` refuses every help-out raise
+        case "alter":
+          // Unreachable: `handleUseAbility` refuses every alter raise
           // outright now that 23.1 has retired the overcome/pending-roll
           // lifecycle it rerolled, so no proposal of this kind ever reaches
           // an accept. Kept only so this switch stays exhaustive over
           // `ProposalKind`.
-          return new Response("Help Out has no roll to help with", {
+          return new Response("Alter Fate has no roll to alter", {
             status: 400,
           });
 
@@ -1099,10 +1099,10 @@ export class GameTable implements DurableObject {
           if (!text) {
             return new Response("A context note is required", { status: 400 });
           }
-          const floating: FloatingBoon = {
+          const aspect: SessionAspect = {
             id: crypto.randomUUID(),
             // An ability always produces a Boon; only the facilitator's
-            // direct create (`handleAddFloatingBoon`) can pick Bane (23.3).
+            // direct create (`handleAddSessionAspect`) can pick Bane (23.3).
             kind: "Boon",
             text,
             createdByName: proposal.proposerName,
@@ -1110,7 +1110,7 @@ export class GameTable implements DurableObject {
           };
           state = {
             ...state,
-            floatingBoons: [...state.floatingBoons, floating],
+            sessionAspects: [...state.sessionAspects, aspect],
             usedAbilities: markAbilityUsed(
               state.usedAbilities,
               proposal.slot ?? -1,
@@ -1123,28 +1123,28 @@ export class GameTable implements DurableObject {
           break;
         }
 
-        case "suggest-compel": {
+        case "complicate": {
           const suggester =
             proposal.slot === null
               ? undefined
               : state.characters.find((c) => c.slot === proposal.slot);
-          const compelled =
+          const target =
             proposal.targetSlot === null
               ? undefined
               : state.characters.find((c) => c.slot === proposal.targetSlot);
-          if (!suggester || !compelled) {
+          if (!suggester || !target) {
             return this.proposalTargetGone();
           }
           let characters = state.characters;
           characters = await this.bumpFate(
             characters,
             suggester.slot,
-            SUGGEST_COMPEL_SUGGESTER_BOONS,
+            COMPLICATE_SUGGESTER_BOONS,
           );
           characters = await this.bumpFate(
             characters,
-            compelled.slot,
-            SUGGEST_COMPEL_TARGET_BOONS,
+            target.slot,
+            COMPLICATE_TARGET_BOONS,
           );
           state = {
             ...state,
@@ -1152,14 +1152,14 @@ export class GameTable implements DurableObject {
             usedAbilities: markAbilityUsed(
               state.usedAbilities,
               suggester.slot,
-              "suggest-compel",
+              "complicate",
             ),
           };
-          logLine = `Compel suggested — ${characterLabel(
+          logLine = `Complicate — ${characterLabel(
             suggester,
-          )} +${SUGGEST_COMPEL_SUGGESTER_BOONS}, ${characterLabel(
-            compelled,
-          )} +${SUGGEST_COMPEL_TARGET_BOONS} boons`;
+          )} +${COMPLICATE_SUGGESTER_BOONS}, ${characterLabel(
+            target,
+          )} +${COMPLICATE_TARGET_BOONS} boons`;
           break;
         }
 
@@ -1185,21 +1185,21 @@ export class GameTable implements DurableObject {
           break;
         }
 
-        case "use-floating": {
-          const floating = state.floatingBoons.find(
-            (f) => f.id === proposal.floatingId,
+        case "use-session-boon": {
+          const aspect = state.sessionAspects.find(
+            (f) => f.id === proposal.sessionAspectId,
           );
-          if (!floating) {
+          if (!aspect) {
             return this.proposalTargetGone();
           }
           state = {
             ...state,
-            floatingBoons: state.floatingBoons.filter(
-              (f) => f.id !== floating.id,
+            sessionAspects: state.sessionAspects.filter(
+              (f) => f.id !== aspect.id,
             ),
             stonePool: [...state.stonePool, "Boon"],
           };
-          logLine = `Floating boon spent — ${floating.text} (${proposal.proposerName})`;
+          logLine = `Session boon used — ${aspect.text} (${proposal.proposerName})`;
           break;
         }
       }
@@ -1219,7 +1219,7 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * An accepted proposal whose character / floating boon has since gone (a
+   * An accepted proposal whose character / session aspect has since gone (a
    * released or reslotted sheet). Return an error and leave the proposal
    * queued rather than dropping it with no effect and no log line.
    */
@@ -1353,11 +1353,11 @@ export class GameTable implements DurableObject {
    * a Detail / Gain Insight creates (always a Boon), without routing through
    * that ability's proposal.
    */
-  private async handleAddFloatingBoon(
+  private async handleAddSessionAspect(
     request: Request,
     authInfo: AuthInfo,
   ): Promise<Response> {
-    const input = (await readJson(request)) as AddFloatingBoonInput | null;
+    const input = (await readJson(request)) as AddSessionAspectInput | null;
     const kind = input?.kind;
     if (kind !== "Boon" && kind !== "Bane") {
       return new Response("kind must be Boon or Bane", { status: 400 });
@@ -1367,7 +1367,7 @@ export class GameTable implements DurableObject {
       return new Response("text is required", { status: 400 });
     }
 
-    const floating: FloatingBoon = {
+    const aspect: SessionAspect = {
       id: crypto.randomUUID(),
       kind,
       text,
@@ -1376,7 +1376,7 @@ export class GameTable implements DurableObject {
     };
 
     return this.commit(
-      { ...this.game, floatingBoons: [...this.game.floatingBoons, floating] },
+      { ...this.game, sessionAspects: [...this.game.sessionAspects, aspect] },
       {
         authorId: authInfo.discordUserId,
         authorName: authInfo.username,
@@ -1391,27 +1391,27 @@ export class GameTable implements DurableObject {
    * "use" state distinct from this now that a roll no longer draws from
    * anything but the pool (23.1) — the lifecycle is just create and delete.
    */
-  private async handleDeleteFloatingBoon(
-    floatingId: string,
+  private async handleDeleteSessionAspect(
+    sessionAspectId: string,
     authInfo: AuthInfo,
   ): Promise<Response> {
-    const floating = this.game.floatingBoons.find((f) => f.id === floatingId);
-    if (!floating) {
-      return new Response("No such floating boon", { status: 404 });
+    const aspect = this.game.sessionAspects.find((f) => f.id === sessionAspectId);
+    if (!aspect) {
+      return new Response("No such session boon", { status: 404 });
     }
 
     return this.commit(
       {
         ...this.game,
-        floatingBoons: this.game.floatingBoons.filter(
-          (f) => f.id !== floatingId,
+        sessionAspects: this.game.sessionAspects.filter(
+          (f) => f.id !== sessionAspectId,
         ),
       },
       {
         authorId: authInfo.discordUserId,
         authorName: authInfo.username,
         role: authInfo.role,
-        content: `Session note removed (${floating.kind}) — ${floating.text}`,
+        content: `Session note removed (${aspect.kind}) — ${aspect.text}`,
       },
     );
   }
@@ -1443,11 +1443,11 @@ export class GameTable implements DurableObject {
         session: { id, goal },
         // A new session starts from a clean slate. Nothing left open at the end
         // of the previous session (or before this one began) carries in:
-        // abilities, floating boons, pledges, or a proposal queue. The stone
+        // abilities, session aspects, highlights, or a proposal queue. The stone
         // pool is untouched — it is shared across sessions and only ever
         // changed by moves and the facilitator's direct edits.
         usedAbilities: [],
-        floatingBoons: [],
+        sessionAspects: [],
         committedBoons: [],
         proposals: [],
       },
@@ -1501,10 +1501,10 @@ export class GameTable implements DurableObject {
         sessionHistory,
         stonePool,
         // Ending a session discards everything left unresolved: unspent
-        // floating boons, once-per-session abilities, pledged boons, and any
+        // session aspects, once-per-session abilities, highlighted boons, and any
         // proposal the facilitator never accepted or rejected. Nothing from a
         // closed session carries in.
-        floatingBoons: [],
+        sessionAspects: [],
         usedAbilities: [],
         committedBoons: [],
         proposals: [],
@@ -1619,7 +1619,7 @@ export class GameTable implements DurableObject {
       return new Response("Sheet already claimed", { status: 409 });
     }
     // Re-claiming a sheet the caller already holds is a no-op — don't wipe that
-    // slot's own pledges / proposals.
+    // slot's own highlights / proposals.
     if (target.ownerId === authInfo.discordUserId) {
       return ackResponse();
     }
@@ -1642,7 +1642,7 @@ export class GameTable implements DurableObject {
       }),
     };
     // Any sheet whose owner just changed — the one just claimed, and any the
-    // caller was released from to take it — must not keep pledges or proposals
+    // caller was released from to take it — must not keep highlights or proposals
     // aimed at whoever held it before.
     for (const changed of [slot, ...priorSlots.map((p) => p.slot)]) {
       next = clearSlotPendingState(next, changed);
