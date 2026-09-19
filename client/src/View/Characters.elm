@@ -90,7 +90,7 @@ characterSheet facilitator myId aspectExamplesOpen ch =
         editable =
             facilitator || mine || ch.ownerId == Nothing
     in
-    Element.column [ spacing Ui.sm, width fill ]
+    Element.column [ spacing Ui.md, width fill ]
         [ ownerRow facilitator mine ch
         , boonsBlock facilitator ch
         , field editable ch NameField "" "Name" ch.name
