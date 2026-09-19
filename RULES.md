@@ -11,9 +11,9 @@ Where a section below describes a rule that has been decided but not yet built,
 it is marked .
 
 > **Status.** Written 2026-09-18 from the section 26 design pass. The Worker
-> implements every rule below (roadmap 26.2, with tests) and the client exposes
-> them (26.3). The in-app glossary and copy still describe some retired mechanics
-> and are rewritten in 26.4.
+> implements every rule below (roadmap 26.2, with tests), the client exposes them
+> (26.3), and the in-app glossary and copy follow this file (26.4). What is left
+> is a table playtest.
 
 ## The table
 

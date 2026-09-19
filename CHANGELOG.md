@@ -10,6 +10,15 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **Glossary and copy rewritten to the new rules** (roadmap section 26.4). The
+  "How to play" glossary now follows `RULES.md`: it describes the shared pool
+  that resets after every Overcome, the Overcome itself (roll, reroll, accept or
+  reject, and the frozen pool as a table rule), each move with its cost and
+  conditions, and session boons and banes with their consumed mark. Compel,
+  Accept Compel, Gain Insight, the once-per-session limits and aspect Banes are
+  gone from it, and a test now fails if one comes back. The top bar's goal label
+  gets its colon, the right-panel tab is "Session boons & banes", and a player who
+  has not claimed a sheet is told why the Moves card is empty.
 - **Player moves and the Overcome stage in the client** (roadmap section 26.3),
   completing 26.2. The top bar becomes a stage: the shared pool shown as stones,
   an **Overcome** button open to any player, and — while a roll is pending — the

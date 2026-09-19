@@ -1775,16 +1775,29 @@ pending proposals (see Open questions).
 Compel, Gain Insight and the once-per-session limits, and the Guide and tooltips
 still reference them; the "Goal" label is missing its colon.
 
-### 26.4 Copy, glossary, and a real playtest
+### 26.4 Copy, glossary, and a real playtest — done except the playtest
 
-- [ ] Rewrite `Copy.elm` and `Copy/Terms.elm` to the mechanics in `RULES.md`
-      (cost text on each move, the Overcome loop, Alter Fate's conditions);
-      remove every stale reference (once-per-session, compel, floating boon,
-      pledge).
-- [ ] Sweep the Moves and Facilitator UI for the "outdated elements" the
-      playtest flagged; fix what is found.
-- [ ] `pnpm run build` green, then one **table playtest** against the checklist
-      below, and record what it showed here.
+- [x] **`Copy/Terms.elm` rewritten to `RULES.md`.** Groups are Roles, The session,
+      Stones & the pool, The Overcome, Moves, Aspects & growth. Retired: the
+      Compel, Accept Compel, Gain Insight, Roll and The bag entries and every
+      once-per-session and aspect-Bane claim. New: The pool (resets after each
+      Overcome), Overcome (the fork, the roll, accept / reject, the frozen-pool
+      table rule), and one entry per move with its cost and conditions. The Alter
+      Fate term is named as the moves are, and "Session boon" covers session banes
+      and the consumed mark.
+- [x] **A regression test** (`CopyTermsTest`) fails if any term mentions a mechanic
+      `RULES.md` retired, and checks that every term a view looks up for a tooltip
+      exists.
+- [x] **`Copy.elm` swept**: unused strings removed (`addBoon`, `highlight`,
+      `pendingSuffix`, `sessionAspectChip`), stale "session context" / 23.x
+      wording replaced, the goal label given its colon (`Goal: `), the right-panel
+      tab renamed "Session boons & banes", and the Add Detail field's placeholder
+      reworded ("Wording for the session boon…").
+- [x] **Moves card**: a player who has not claimed a sheet now sees the card with
+      "Claim a character sheet to use moves." instead of nothing.
+- [ ] **One table playtest** against the checklist below, then record what it
+      showed here. Not something the code can do; section 26 stays open until it
+      has been run.
 
 ### Manual playtest checklist
 

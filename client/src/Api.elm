@@ -280,15 +280,15 @@ postUseSessionBoon flags auth sessionAspectId toMsg =
     postJson flags auth "/moves/use-session-boon" (Encode.object [ ( "sessionAspectId", Encode.string sessionAspectId ) ]) toMsg
 
 
-{-| Facilitator-only (23.2): add one stone directly to the shared pool,
-independent of a draw.
+{-| Facilitator-only: add one stone directly to the shared pool, independent of
+any Overcome.
 -}
 postAddStone : Flags -> Auth -> Stone -> (Result Http.Error () -> msg) -> Cmd msg
 postAddStone flags auth stone toMsg =
     postJson flags auth "/stones/add" (Encode.object [ ( "kind", Encode.string (stoneLabel stone) ) ]) toMsg
 
 
-{-| Facilitator-only (23.2): remove one stone of `stone`'s kind directly from
+{-| Facilitator-only: remove one stone of `stone`'s kind directly from
 the shared pool. The Worker 400s if the pool holds none of that kind.
 -}
 postRemoveStone : Flags -> Auth -> Stone -> (Result Http.Error () -> msg) -> Cmd msg

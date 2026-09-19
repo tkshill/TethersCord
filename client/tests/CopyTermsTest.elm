@@ -46,6 +46,28 @@ suite =
             \_ ->
                 Terms.termShort "Overcome"
                     |> Expect.equal overcomeShort
+        , test "no term describes a mechanic RULES.md retired" <|
+            \_ ->
+                let
+                    retired =
+                        [ "compel", "pledge", "floating", "once per session", "once-per-session", "insight", "the bag", "untether" ]
+
+                    mentions t =
+                        let
+                            text =
+                                String.toLower (t.term ++ " " ++ t.short ++ " " ++ t.long)
+                        in
+                        List.any (\word -> String.contains word text) retired
+                in
+                Terms.terms
+                    |> List.filter mentions
+                    |> List.map .term
+                    |> Expect.equalLists []
+        , test "every term a view looks up for a tooltip exists" <|
+            \_ ->
+                [ "Session", "Session boon", "Aspect", "Highlight", "Complicate", "Add Detail", "Alter Fate" ]
+                    |> List.filter (\name -> Terms.termShort name == "")
+                    |> Expect.equalLists []
         , test "termShort returns \"\" for an unknown name" <|
             \_ ->
                 Terms.termShort "Nonsense"

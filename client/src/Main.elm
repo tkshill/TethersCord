@@ -614,8 +614,8 @@ update msg model =
                 _ ->
                     ( model, Effect.None )
 
-        -- Facilitator-only hand-edits of the shared pool (23.2), independent
-        -- of a draw and of each other.
+        -- Facilitator-only hand-edits of the shared pool, independent of an
+        -- Overcome and of each other.
         AddStone stone ->
             guard (AddingStone stone) model (\auth -> Effect.PostAddStone auth stone)
 
