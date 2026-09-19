@@ -7,10 +7,12 @@ incremental work on top of it.
 against.
 
 **Phase 1** (sections 1–16, 19, 21, 22) is shipped — each section is the record
-of what landed and the decisions taken along the way. **Phase 2** (section 23)
-is the current plan: a deliberate simplification for the ongoing testing
-phase, moving stone and resource management onto the facilitator by hand and
-rebuilding the view as three viewport-sized columns. **Phase 3**, at the end,
+of what landed and the decisions taken along the way. **Phase 2** (sections
+23–26) is the current plan: section 23 was a deliberate simplification for the
+testing phase, moving stone and resource management onto the facilitator by hand
+and rebuilding the view as three viewport-sized columns (section 24 then made it
+two panels); section 26 gives the players their moves back and restores the
+Overcome roll in a simpler form, and `RULES.md` states the resulting rules. **Phase 3**, at the end,
 collects everything else still open, moved out of the Phase 1 sections so the
 outstanding-but-not-next work sits in one list — it kept its original `P2.x`
 item labels since they're referenced from `CLAUDE.md` and commit messages, so
@@ -1431,7 +1433,14 @@ question this section is about.
       static screenshot can't show motion); its mouse-subscription gating
       follows the same pattern already exercised elsewhere in `Main.update`.
 
-## 25. Architecture review follow-ups — next
+## 25. Architecture review follow-ups — deferred until section 26 lands
+
+**Reassess after section 26.** Section 26 (player moves and the Overcome loop)
+goes first and reshapes the very handlers 25.1 restructures — the proposal kinds,
+the roll lifecycle, and the session reset. Its worker tests are what will protect
+25.1's restructuring. 25.3 and 25.4 are client-only and independent; 25.4 is
+scheduled as the first step of 26.3. 25.5 and 25.7 are largely reshaped by 26.2
+(see section 26).
 
 An architecture review (2026-09-18) looked for places where a module's
 interface is as wide as its implementation, where a rule lives in several
@@ -1558,13 +1567,239 @@ possible.
       `gameLogic.test.ts`, run without `workerd` — and does `vitest` need a
       second, plain-Node project for them?
 
+## 26. Player moves and the Overcome loop — next
+
+Section 23 moved every stone and boon onto the facilitator's hands for the
+testing phase, and section 24 fixed the layout. Playtest said what that cost:
+
+- **Leftover stones skewed the pool.** Boons and Banes left in the shared pool
+  after a roll compounded over a session and skewed later results heavily.
+- **Players missed pressing buttons.** With the facilitator doing every
+  manipulation, players had nothing to trigger.
+- **Some Moves UI was stale** (copy naming abilities that no longer exist,
+  controls that do nothing), and the layout was clunky, which section 24 already
+  addressed.
+
+This section gives the players their moves back, restores the roll lifecycle in
+a simpler form, and makes the pool reset itself. **`RULES.md` is the canonical
+statement of the rules this section builds; this section is the plan, not the
+rules.** It was settled in a design interview (2026-09-18); the decisions below
+are recorded so the reasoning survives.
+
+### Decisions
+
+- **Five official move names, used in copy and code alike:** Highlight,
+  Overcome, Complicate, Add Detail, Alter Fate. "Pledge" and "compel" are retired
+  everywhere; so are Gain Insight (folded into Add Detail) and Accept Compel
+  (Complicate replaces every compel reference).
+- **Every player move needs facilitator approval**, except editing a sheet and
+  sending messages, plus **Overcome**, which any player may press with no
+  approval. Both halves of every move (the proposal and its resolution) write a
+  message-log line.
+- **No once-per-session limits.** Moves are limited by cost only, plus Alter
+  Fate's own rules (only during a pending roll, once per player per Overcome, one
+  pending at a time).
+- **Costs are checked at proposal time** (the client disables the button when the
+  player's boons are too few; the worker also refuses the proposal with a 400) and
+  **again at accept time** (409, proposal stays queued). Costs are **paid on
+  approval only**. Highlight costs 1, Add Detail costs 1, Alter Fate costs 2.
+  Complicate and Overcome are free.
+- **The Overcome loop:** prepare the pool → one player rolls → optional Alter
+  Fate rerolls → the facilitator accepts or rejects. Accept **resets the pool to
+  two Boon and two Bane** and auto-creates a session boon or bane from a pair.
+  Reject discards the roll and changes nothing else. One roll pending at a time.
+- **"No pool changes after the roll" is a table rule**, not a worker guard.
+- **Session boons and banes** replace floating boons: one `SessionAspect` type
+  with a `consumed` flag. Spending marks consumed instead of deleting; a consumed
+  one cannot be spent again; the facilitator can unconsume, as a correction.
+  They persist across sessions. Players spend session boons through a proposal;
+  the facilitator uses session banes (or boons) directly.
+- **Sessions do nothing special on start or end** beyond recording the goal and
+  dates. No verdict, no pool top-up, no clearing of anything else. The message
+  log is the persistent record; real session logs come later.
+- **No aspect Banes.** Nothing writes them and the sheet display is left alone
+  until advancement is designed.
+- **Work order: this section before section 25.** Section 25 is reassessed once
+  this lands.
+
+### What this reverses or supersedes
+
+- **§23.1's stateless draw.** `/stones/draw`, "a draw touches nothing", and the
+  facilitator-only gate give way to a stateful pending roll. The roll/reroll/
+  accept *lifecycle* returns; `Overcome`-as-a-targeted-action and Press Fate's
+  target-paid reroll do not (Alter Fate replaces both).
+- **§23.4's inert Moves card** and the pledge / add-boon / use-floating
+  disconnections recorded in §23's open questions. The player-initiated
+  `add-boon` proposal stays cut; the facilitator's direct add stays.
+- **P2.12** (Complicate's suggester payout) — resolved: only the target is paid.
+- **P2.13's Moves count item** ("n of 4 left") — moot with once-per-session gone.
+  Its collapsed-Facilitator-header proposal count is folded into 26.3.
+- **Section 25.5** (session reset as data) is mostly moot: sessions no longer
+  clear anything. **25.7** (proposal discriminated union) gets cheaper because
+  the kinds are being reshaped here anyway.
+
+### 26.1 Vocabulary rename and `RULES.md` — no behaviour change
+
+One branch, mechanical, so it is easy to review; the existing test suites must
+pass unchanged apart from renamed identifiers.
+
+- [ ] **`RULES.md`** at the repo root (drafted with this section); a
+      `CLAUDE.md` convention that any rules change updates it and that
+      `Copy/Terms.elm` follows.
+- [ ] **Rename through types, `Kind`, `Msg`, `Effect`, `Api`, route paths, and
+      stored proposal `kind` strings.** Proposed mapping (finalise on the
+      branch; the client and Worker deploy together, so a wire rename is safe):
+
+      | Now | Becomes |
+      | --- | --- |
+      | `Pledge`, `CommitBoon*`, `/stones/commit`, `PledgeDue` | `Highlight`, `/moves/highlight` |
+      | `SuggestCompel` (`suggest-compel`), `targetSlot` | `Complicate` (`complicate`) |
+      | `HelpOut` (`help-out`) | `Alter` (`alter`); copy says "Alter Fate" |
+      | `AddDetail` (`add-detail`) | `AddDetail`, `/moves/add-detail` |
+      | `FloatingBoon`, `floatingBoons`, `UseFloating`, `/stones/floating-boons` | `SessionAspect`, `sessionAspects`, `UseSessionBoon`, `/session-aspects` |
+      | `/stones/draw` | `/overcome/roll` |
+
+- [ ] **`migrateStoneState.ts` reads the old shapes**: old proposal `kind`
+      strings map to the new ones, old floating boons become session aspects with
+      `consumed: false` (and `kind` defaulting to `"Boon"`, as today). Old message
+      rows are not rewritten.
+- [ ] **Copy rename only**: `Copy.elm` / `Copy/Terms.elm` use the five names and
+      drop "pledge" and "compel"; the card title becomes "Session boons & banes"
+      (veto welcome). The *mechanics* copy is rewritten in 26.4, once they exist.
+- [ ] Check that `/stones/add-boon` (the facilitator's direct action) is not
+      redundant with `/stones/add`; keep it if it is not, note the reason here if
+      it is dropped.
+- [ ] Update the `CLAUDE.md` route lists and naming as part of the rename.
+
+### 26.2 Worker: the rules — test-first
+
+The interesting branch. Build each rule as pure functions in `gameLogic.ts` first
+(with plain unit tests that need no `workerd`), then wire them into `GameTable`.
+Section 25.1 will later restructure the handlers; these tests are what protect it.
+
+- [ ] **Pending roll** in `KEY_STONES` next to the proposals:
+      `{ stones, rolledBy, rerolls } | null`, broadcast in `GameState`.
+      `POST /overcome/roll` (any authenticated player): 409 if one is pending;
+      draws two stones from the pool without touching it; logs the roll.
+- [ ] **`POST /overcome/reroll`** (`facilitatorOnly`, needs a pending roll):
+      free, immediate, logs.
+- [ ] **`POST /overcome/accept`** (`facilitatorOnly`): resets the pool to
+      `INITIAL_STONE_POOL`; a Boon+Boon draw creates a session boon, a Bane+Bane
+      draw a session bane (default text, `createdByName` = the roller); clears the
+      pending roll and the per-overcome Alter flags; withdraws any queued Alter
+      proposals; logs the final result. **`POST /overcome/reject`**: discards the
+      pending roll, clears the flags, withdraws queued Alter proposals, changes
+      nothing else, logs.
+- [ ] **`Proposal` kinds**: `Highlight`, `Complicate`, `AddDetail`, `Alter`,
+      `UseSessionBoon`, one route each under `/moves/`. Each requires a claimed
+      sheet, checks its cost at proposal time (400), and again at accept (409).
+      Cost is deducted on approval only.
+      - `Highlight`: proposer's `fate` −1, pool +1 Boon.
+      - `Complicate` (`{ targetSlot }`): target's `fate` +2; the suggester is
+        not paid; `SUGGEST_COMPEL_SUGGESTER_BOONS` is deleted.
+      - `AddDetail` (`{ text? }`, blank allowed): `fate` −1; creates a session
+        boon; the facilitator's accept may carry edited text.
+      - `Alter`: requires a pending roll, no other pending `Alter`, and the
+        proposer not already in this Overcome's used set; `fate` −2; rerolls;
+        marks the proposer used. A rejection changes nothing and does not mark
+        them used.
+      - `UseSessionBoon` (`{ id }`): 409 if already consumed or gone; marks
+        consumed; pool +1 Boon.
+- [ ] **Session aspects**: `consumed: boolean`. Facilitator routes: create, edit
+      text, delete, `use` (direct: marks consumed, adds its kind to the pool, no
+      approval), and `unconsume`. Both create and use write log lines.
+- [ ] **Delete** what no longer has a reason to exist: `usedAbilities` and its
+      `KEY_STONES` field, `committedBoons` and `drawFromBag`'s odds bump,
+      `GainInsight`, `AcceptCompel` and `/moves/accept-compel`,
+      `SUGGEST_COMPEL_SUGGESTER_BOONS`, the `help-out` always-400 branch, and the
+      old stateless `/stones/draw`. Session start/end stops clearing pending
+      state and stops topping up the pool.
+- [ ] **Tests** (`worker/test/`): the full loop end to end — prepare, roll, Alter
+      accepted, Alter rejected (not counted), second Alter by the same player
+      refused, facilitator reroll, accept (pool reset, session aspect created for
+      a pair, none for a mixed draw), reject (pool untouched) — plus every cost
+      boundary (exactly enough, one short), the 409 re-check at accept, and
+      `migrateStoneState` over an old blob.
+- [ ] Update `CLAUDE.md`'s "Realtime" section and the facilitator-only route
+      list for the new routes and the retired ones; add a `CHANGELOG.md` bullet.
+
+### 26.3 Client: moves, Overcome, and the facilitator queue
+
+- [ ] **Prototype first** (`/prototype`, throwaway): the top bar carrying the
+      Overcome button and the pending roll beside the pool. Settle the layout
+      before wiring it.
+- [ ] **Do roadmap 25.4 first** (typed in-flight action keys), so the new buttons
+      get their greyed-while-in-flight state from the compiler rather than a
+      string prefix.
+- [ ] **Top bar**: Overcome button (any player), the pending roll's stones and
+      rerolls visible to everyone, and the facilitator's Accept / Reject / Reroll.
+- [ ] **Moves accordion**: real buttons for Highlight, Complicate (with a
+      target picker over the other claimed sheets), Add Detail (with a text
+      field), Alter Fate (visible only while a roll is pending), and a "Use" on
+      each unconsumed session boon. Each button is disabled when the player's
+      boons are too few, matching the worker's proposal check. No "n of 4 left".
+- [ ] **Facilitator accordion**: the proposal queue for the new kinds, with an
+      editable text field on Add Detail, and a **pending-count in the header** so
+      a collapsed panel still signals a waiting proposal (P2.13).
+- [ ] **Session boons & banes card**: kind-coloured chips with a visible
+      consumed state; facilitator-only Use / Unconsume / Delete / edit text and the
+      always-visible add row that already exists.
+- [ ] Tests: `Api.decodeGameState` over a snapshot with a pending roll and a
+      consumed session aspect; `Main.update` guards and the `Effect` each new `Msg`
+      yields.
+
+### 26.4 Copy, glossary, and a real playtest
+
+- [ ] Rewrite `Copy.elm` and `Copy/Terms.elm` to the mechanics in `RULES.md`
+      (cost text on each move, the Overcome loop, Alter Fate's conditions);
+      remove every stale reference (once-per-session, compel, floating boon,
+      pledge).
+- [ ] Sweep the Moves and Facilitator UI for the "outdated elements" the
+      playtest flagged; fix what is found.
+- [ ] `pnpm run build` green, then one **table playtest** against the checklist
+      below, and record what it showed here.
+
+### Manual playtest checklist
+
+- A player Highlights, is accepted, and the pool visibly gains a Boon.
+- A player cannot press a move whose cost they cannot pay.
+- Two players press Overcome at once: one wins, the other sees a refusal.
+- Roll → Alter Fate → accepted: the log shows roll, reroll, then the accepted
+  result. A rejected Alter Fate costs the player nothing and they can try again.
+- A second Alter Fate from the same player in one Overcome is refused.
+- Accept with two Boons → a session boon appears; accept with a mixed draw → none;
+  either way the pool is 2/2.
+- Reject → nothing changes and the roll can be pressed again.
+- A session boon is used, shows consumed, cannot be used twice, and the
+  facilitator can unconsume it.
+- Ending a session changes nothing except the history.
+
+### Sequencing
+
+Branches 26.1 → 26.2 → 26.3 → 26.4, each off `main`, merged before the next
+starts; a section-26 docs branch (this file and `RULES.md`) goes first. §25.4
+lands as the first commit of 26.3. Nothing deploys until asked.
+
+### Open questions
+
+- [ ] **Two proposals pending against the same boons.** A player with two boons
+      can queue Alter Fate (2) and Highlight (1); both pass the proposal check,
+      and the second accept 409s. Tolerated for now. If it bites at the table,
+      count the player's own pending costs against what the buttons allow.
+- [ ] **Add Detail's text on a blank proposal and a blank accept.** The worker
+      falls back to a default (`Detail from <name>`); revisit the wording in play.
+- [ ] **Where rolled stones sit in the log.** The log carries each roll and
+      reroll as its own line; whether the UI should also fold them into one
+      "Overcome" entry is a presentation question for 26.3.
+- [ ] Aspect Banes and advancement — deliberately unresolved (see `RULES.md`).
+
 # Phase 3 — potential future plans
 
 Everything still open, moved out of the Phase 1 sections above so it sits in one
 list. Same conventions: each item is its own branch off `main` with a
 professional commit message, and `DESIGN_PRINCIPLES.md` is the yardstick. Items
 are roughly in value-over-effort order; the last two are explicitly not planned
-or not scheduled. Section 23 above (Phase 2) is next; everything here is
+or not scheduled. Section 26 above (Phase 2) is next; everything here is
 further out.
 
 ## P2.1 — Remaining test coverage (from §11)
