@@ -10,6 +10,14 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **Tool panel follow-ups to the two-panel UI**: the facilitator now gets a
+  Moves tab too (read-only — a preview of whichever character is selected on
+  the Sheet tab, buttons inert), so they can see what a player sees instead of
+  analysing the UI blind; the Context tab moves up next to Moves and the Sheet,
+  ahead of Cast; character sheet fields get more breathing room (`Ui.sm` instead
+  of `Ui.xs` between them); and the tool panel's default width goes from 320px
+  to 480px (max 720px) so it splits roughly evenly with the message log instead
+  of leaving the log dominant.
 - **Minimalist two-panel UI** (roadmap section 27, mockup 2a). The card-based
   layout is replaced by a one-line status strip (goal, pool as `+` / `−` marks,
   Overcome, who you are) over two flat panels: a 320px tool panel with glyph tabs

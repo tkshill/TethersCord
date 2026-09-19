@@ -2,11 +2,11 @@ module View exposing (logDomId, view)
 
 {-| The Activity view (roadmap section 27, mockup 2a): a one-line status strip
 (`View.TopBar`) over two panels — a tool panel on the left (a row of glyph tabs
-showing one tool at a time: Sheet, Facilitator, Moves, Cast, Context, Guide, each
-its own `View.*` module) and, on the right, the event log with the composer
-pinned beneath it, so sending a message never depends on which tool is open.
-The left panel's width is draggable (roadmap 24). Each tool is handed a
-`ViewContext` computed once here.
+showing one tool at a time: Sheet, Facilitator (facilitator only), Moves,
+Context, Cast, Guide, each its own `View.*` module) and, on the right, the event
+log with the composer pinned beneath it, so sending a message never depends on
+which tool is open. The left panel's width is draggable (roadmap 24). Each tool
+is handed a `ViewContext` computed once here.
 -}
 
 import Copy
@@ -139,8 +139,9 @@ toolPanel ctx model gs =
 
 
 {-| The tool actually shown: the selected one, unless this viewer has no such
-tool (the Facilitator tab is the facilitator's; Moves is a player's), in which
-case the Sheet.
+tool (the Facilitator tab is the facilitator's only), in which case the Sheet.
+Moves is open to both roles — the facilitator gets a read-only view of it (see
+`View.Moves`), so they can see what a player sees.
 -}
 effectiveTool : ViewContext -> ToolTab -> ToolTab
 effectiveTool ctx tab =
@@ -151,13 +152,6 @@ effectiveTool ctx tab =
 
             else
                 SheetTab
-
-        MovesTab ->
-            if ctx.facilitator then
-                SheetTab
-
-            else
-                MovesTab
 
         _ ->
             tab
@@ -194,20 +188,20 @@ toolStrip ctx selected gs =
                     [ tool FacilitatorTab "⚑" Copy.facilitatorPanelTitle (Copy.facilitatorTabTip (List.length gs.proposals)) ]
 
                 else
-                    [ tool MovesTab
-                        "▲"
-                        Copy.movesTitle
-                        (case myBoons of
-                            Just n ->
-                                Copy.movesTabTip n
-
-                            Nothing ->
-                                Copy.movesTitle
-                        )
-                    ]
+                    []
                )
-            ++ [ tool CastTab "☺" Copy.castTabLabel Copy.castTabTip
+            ++ [ tool MovesTab
+                    "▲"
+                    Copy.movesTitle
+                    (case myBoons of
+                        Just n ->
+                            Copy.movesTabTip n
+
+                        Nothing ->
+                            Copy.movesTitle
+                    )
                , tool ContextTab "◇" Copy.contextTabLabel (Copy.contextTabTip (List.length gs.sessionAspects))
+               , tool CastTab "☺" Copy.castTabLabel Copy.castTabTip
                , el [ Element.alignRight ] (tool GuideTab "?" Copy.guideTabLabel Copy.guideTabTip)
                ]
         )
@@ -227,7 +221,7 @@ toolBody ctx model gs tab =
             View.FacilitatorPanel.view ctx { drafts = model.proposalDrafts } gs
 
         MovesTab ->
-            View.Moves.view ctx { addDetailDraft = model.addDetailDraft } gs
+            View.Moves.view ctx { addDetailDraft = model.addDetailDraft, selectedSlot = model.selectedSlot } gs
 
         CastTab ->
             if not ctx.facilitator && List.isEmpty gs.npcs && List.isEmpty gs.locations then
