@@ -66,7 +66,7 @@ exactly).
 -}
 defaultLeftPanelWidth : Float
 defaultLeftPanelWidth =
-    480
+    720
 
 
 minLeftPanelWidth : Float
