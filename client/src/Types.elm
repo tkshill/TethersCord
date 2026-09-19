@@ -429,11 +429,11 @@ type alias Model =
     -- the field loses focus.
     , sessionAspectEdits : Dict String String
 
-    -- Draft text in the facilitator's "add a session aspect" field (23.2) —
-    -- planting a session context directly, not through an ability proposal.
+    -- Draft text in the facilitator's "add a session boon or bane" field —
+    -- planting one directly, not through a move.
     , newSessionAspectNote : String
 
-    -- Which kind the facilitator's next planted session context will be
+    -- Which kind the facilitator's next planted session boon or bane will be
     -- (23.3) — toggled by the Boon / Bane picker next to the draft field.
     , newSessionAspectKind : Stone
 
@@ -495,7 +495,7 @@ type Connection
 
 {-| The right panel's tab strip (roadmap section 24, the 1c layout variant):
 the facilitator's reference state (NPCs and locations); the table's session
-context (session aspects and session history); and the glossary. One at a
+boons and banes (with the session history); and the glossary. One at a
 time; the event log is not among them — it is its own pinned region beneath
 the strip, always visible regardless of which tab is selected.
 -}

@@ -60,7 +60,16 @@ view : ViewContext -> Props -> GameState -> Element Msg
 view ctx props gs =
     case myOwnedSheet ctx.myId gs of
         Nothing ->
-            none
+            -- The facilitator has no sheet and no use for the card; a player who
+            -- has not claimed one is told why it is empty.
+            if ctx.facilitator then
+                none
+
+            else
+                Ui.card
+                    [ Ui.sectionTitle Copy.movesTitle
+                    , el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.claimASheetForMoves)
+                    ]
 
         Just ch ->
             Ui.card

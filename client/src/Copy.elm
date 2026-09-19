@@ -71,11 +71,6 @@ waitingForFacilitator =
     "Waiting for the facilitator…"
 
 
-sessionAspectChip : String
-sessionAspectChip =
-    "Session"
-
-
 
 -- SHARED CONTROLS
 
@@ -138,7 +133,7 @@ send =
 
 goalLabel : String
 goalLabel =
-    "Goal  "
+    "Goal: "
 
 
 endSession : String
@@ -182,9 +177,7 @@ sessionHistoryTitle =
 
 
 
--- SESSION ASPECTS CARD (View/SessionAspects.elm) — the session boons and banes list,
--- renamed and moved to the centre column by roadmap section 23.5, as 23.3
--- anticipated.
+-- SESSION BOONS & BANES CARD (View/SessionAspects.elm)
 
 
 sessionAspectsTitle : String
@@ -212,15 +205,15 @@ sessionAspectUse =
     "Use"
 
 
-{-| Facilitator-only: remove a session context outright (23.2).
+{-| Facilitator-only: remove a session boon or bane outright.
 -}
 sessionAspectRemove : String
 sessionAspectRemove =
     "Remove"
 
 
-{-| Facilitator-only: the field and button that plant a session context
-directly (23.2), below the existing session aspects.
+{-| Facilitator-only: the field and button that plant a session boon or bane
+directly, below the existing ones.
 -}
 addSessionAspectPlaceholder : String
 addSessionAspectPlaceholder =
@@ -233,23 +226,14 @@ addSessionAspect =
 
 
 
--- FACILITATOR PANEL (View/FacilitatorPanel.elm) — the one-click draw (23.1),
--- direct pool edits (23.2), and the proposal queue, grouped into their own
--- facilitator-only panel in the left column by roadmap section 23.5.
+-- FACILITATOR PANEL (View/FacilitatorPanel.elm) — direct pool edits and the
+-- queue of proposals awaiting a decision, in their own facilitator-only section
+-- of the left panel. The Overcome controls are on the top bar's stage.
 
 
 facilitatorPanelTitle : String
 facilitatorPanelTitle =
     "Facilitator"
-
-
-{-| Player-facing "Add boon" is disconnected (23.2) — the facilitator hand-edits
-the pool directly now — but the underlying proposal it posted is untouched, so
-the string stays for whenever that's re-wired.
--}
-addBoon : String
-addBoon =
-    "Add boon"
 
 
 accept : String
@@ -264,7 +248,7 @@ proposalsTitle =
 
 sessionAspectContextPlaceholder : String
 sessionAspectContextPlaceholder =
-    "Context this boon represents…"
+    "Wording for the session boon…"
 
 
 reject : String
@@ -421,11 +405,6 @@ noOtherPlayers =
     "no other players"
 
 
-pendingSuffix : String
-pendingSuffix =
-    " (pending)"
-
-
 claimASheetForMoves : String
 claimASheetForMoves =
     "Claim a character sheet to use moves."
@@ -507,11 +486,6 @@ grant =
     "Grant"
 
 
-highlight : String
-highlight =
-    "Highlight"
-
-
 
 -- ENTITY CARDS — NPCs / Locations (View/Entities.elm)
 
@@ -578,7 +552,7 @@ npcsLocationsTabLabel =
 
 sessionContextTabLabel : String
 sessionContextTabLabel =
-    "Session context"
+    "Session boons & banes"
 
 
 guideTabLabel : String

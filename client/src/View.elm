@@ -5,7 +5,7 @@ the top bar) over two panels (roadmap section 24, replacing 23.5's
 three-column shell; this is the "1c" layout variant) — a resizable left panel
 of accordion sections (Facilitator panel, Characters, Moves, unchanged in
 content from 23.5) and a right panel splitting its height between a tab strip
-switching between NPCs & locations, session context (session aspects and
+switching between NPCs & locations, the session's boons and banes (with the
 session history), and the guide, and the event log pinned always-visible
 beneath it — with the composer pinned under the panels row rather than under
 any one column, since sending a message doesn't depend on which tab is
