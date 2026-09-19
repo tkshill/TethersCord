@@ -23,6 +23,7 @@ pair a label with its `Copy.Terms` gloss, and the left panel's accordion
 header (roadmap section 24, the 1c layout variant).
 -}
 
+import Action exposing (Action)
 import Copy
 import Copy.Terms as Terms
 import Element exposing (Element, el, fill, none, spacing, text, width)
@@ -45,6 +46,7 @@ type alias ViewContext =
     { facilitator : Bool
     , myId : Maybe String
     , zone : Time.Zone
+    , inflight : List Action
     }
 
 
@@ -131,8 +133,7 @@ countProposals myId kind proposals =
 
 {-| The id of the proposer's most recently queued proposal of `kind`, if any.
 This is what the "withdraw" link beside a "(pending)" hint pulls back — the
-latest matching one, since abilities and Add boon queue at most one and a highlight
-is applied as a net delta.
+latest matching one.
 -}
 latestProposalId : Maybe String -> Kind.ProposalKind -> List Proposal -> Maybe String
 latestProposalId myId kind proposals =

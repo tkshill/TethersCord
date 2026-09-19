@@ -73,13 +73,12 @@ gameState =
     { sessionId = "sess-1"
     , messages = []
     , stonePool = []
-    , committedBoons = []
+    , overcome = Nothing
     , proposals = []
     , session = Nothing
     , characters = [ character ]
     , sessionHistory = []
     , sessionAspects = []
-    , usedAbilities = []
     , npcs = []
     , locations = []
     }
@@ -99,18 +98,18 @@ model =
     , confirming = Nothing
     , editingSlot = Nothing
     , editingEntity = Nothing
-    , inflight = Set.empty
+    , inflight = []
     , dirtySlots = Set.empty
     , dirtyEntities = Set.empty
     , fieldSaveSeq = 0
-    , pendingHighlightDelta = 0
-    , highlightSeq = 0
     , selectedSlot = 0
     , logAtBottom = True
     , newSessionGoal = ""
     , goalEdit = ""
     , sessionControlsExpanded = False
     , proposalDrafts = Dict.empty
+    , addDetailDraft = ""
+    , sessionAspectEdits = Dict.empty
     , newSessionAspectNote = ""
     , newSessionAspectKind = Boon
     , loadingHistory = False
@@ -127,9 +126,9 @@ model =
     }
 
 
-{-| A full `GameState` wire payload as the Worker broadcasts it, exercising every
-sub-decoder: session aspects, used abilities, and a proposal of each awkward
-`kind`.
+{-| A full `GameState` wire payload as the Worker broadcasts it (the 26.2 shape),
+exercising every sub-decoder: a pending Overcome, session aspects with their
+consumed flag, and a proposal of each `kind`.
 -}
 snapshotJson : String
 snapshotJson =
@@ -142,16 +141,18 @@ snapshotJson =
           , "content": "welcome", "createdAt": 1700000001000 }
         ]
     , "stonePool": ["Boon", "Bane", "Boon"]
-    , "committedBoons": [ { "slot": 1, "count": 2 } ]
+    , "overcome": { "rolledBy": "Ada", "stones": ["Boon", "Bane"], "rerolls": 1, "alteredSlots": [1] }
     , "proposals":
-        [ { "id": "p1", "kind": "add-boon", "proposerId": "u1", "proposerName": "Ada"
-          , "slot": null, "delta": 0, "sessionAspectId": null, "targetSlot": null }
+        [ { "id": "p1", "kind": "alter", "proposerId": "u1", "proposerName": "Ada"
+          , "slot": 1, "sessionAspectId": null, "targetSlot": null, "text": null }
         , { "id": "p2", "kind": "highlight", "proposerId": "u1", "proposerName": "Ada"
-          , "slot": 1, "delta": 1, "sessionAspectId": null, "targetSlot": null }
+          , "slot": 1, "sessionAspectId": null, "targetSlot": null, "text": null }
         , { "id": "p3", "kind": "complicate", "proposerId": "u1", "proposerName": "Ada"
-          , "slot": 1, "delta": 0, "sessionAspectId": null, "targetSlot": 2 }
+          , "slot": 1, "sessionAspectId": null, "targetSlot": 2, "text": null }
         , { "id": "p4", "kind": "use-session-boon", "proposerId": "u1", "proposerName": "Ada"
-          , "slot": 1, "delta": 0, "sessionAspectId": "f1", "targetSlot": null }
+          , "slot": 1, "sessionAspectId": "f1", "targetSlot": null, "text": null }
+        , { "id": "p5", "kind": "add-detail", "proposerId": "u1", "proposerName": "Ada"
+          , "slot": 1, "sessionAspectId": null, "targetSlot": null, "text": "the door is barred" }
         ]
     , "session": { "id": "s1", "goal": "Escape the vault" }
     , "characters":
@@ -166,9 +167,10 @@ snapshotJson =
         ]
     , "sessionAspects":
         [ { "id": "f1", "kind": "Bane", "text": "the rope still holds", "createdByName": "Gm"
-          , "createdAt": 1700000002000 }
+          , "createdAt": 1700000002000, "consumed": false }
+        , { "id": "f2", "kind": "Boon", "text": "the guard looked away", "createdByName": "Ada"
+          , "createdAt": 1700000002500, "consumed": true }
         ]
-    , "usedAbilities": [ { "slot": 1, "kinds": ["alter", "add-detail"] } ]
     , "npcs":
         [ { "id": "n1", "name": "The Archivist", "notes": "keeps the vault keys"
           , "createdAt": 1700000003000, "updatedAt": 1700000004000 }

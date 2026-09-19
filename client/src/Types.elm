@@ -4,10 +4,10 @@ module Types exposing
     , Auth
     , CharacterField(..)
     , CharacterSheet
-    , CommittedBoon
     , Connection(..)
     , EntityField(..)
     , EntityKind(..)
+    , Overcome
     , SessionAspect
     , Flags
     , GameState
@@ -23,13 +23,10 @@ module Types exposing
     , Session
     , SessionSummary
     , TableEntity
-    , UsedAbility
-    , abilityUsed
     , actionPending
     , aspectBaneCount
     , aspectLabel
     , characterAtSlot
-    , committedBoonsForSlot
     , decodeRole
     , entitiesForKind
     , entityKindPath
@@ -46,10 +43,11 @@ without creating an import cycle (`Main` imports `View`, so `View` cannot import
 
 -}
 
+import Action exposing (Action)
 import Dict exposing (Dict)
 import Http
 import Json.Decode as Decode
-import Kind exposing (AbilityKind, ProposalKind)
+import Kind exposing (ProposalKind)
 import Roll exposing (Stone)
 import Set exposing (Set)
 import Time
@@ -102,14 +100,17 @@ type alias Message =
     }
 
 
-{-| Boons a character has highlighted toward the next draw's odds; only slots with
-a non-zero highlight appear. 23.1 retired the roll/reroll/accept lifecycle that
-used to spend these from `fate` on accept — what a highlight costs, if anything,
-going forward is an open question (see ROADMAP.md 23).
+{-| The Overcome in progress: one roll waiting on the facilitator to accept or
+reject it (roadmap 26.2). `stones` is the current draw — a reroll replaces it —
+`rerolls` counts redraws, and `alteredSlots` lists the characters whose Alter Fate
+has already been accepted this Overcome (each may succeed at one). The pool is not
+touched by a roll, so nothing here shows the pool.
 -}
-type alias CommittedBoon =
-    { slot : Int
-    , count : Int
+type alias Overcome =
+    { rolledBy : String
+    , stones : List Stone
+    , rerolls : Int
+    , alteredSlots : List Int
     }
 
 
@@ -122,19 +123,11 @@ characterAtSlot slot characters =
     characters |> List.filter (\c -> c.slot == slot) |> List.head
 
 
-committedBoonsForSlot : Int -> List CommittedBoon -> Int
-committedBoonsForSlot slot committed =
-    committed
-        |> List.filter (\c -> c.slot == slot)
-        |> List.head
-        |> Maybe.map .count
-        |> Maybe.withDefault 0
-
-
-{-| A player-initiated request the facilitator resolves through the accept /
-reject queue. See `Kind.ProposalKind` for the kinds. `delta` is `±1` for a
-highlight; `sessionAspectId` names the boon for `UseSessionBoon`; `targetSlot` names the
-target character for `AbilityProposal Complicate`.
+{-| A player move waiting on the facilitator (Overcome is not one — it needs no
+approval). See `Kind.ProposalKind` for the kinds. `sessionAspectId` names the
+boon for `UseSessionBoon`; `targetSlot` names the target character for
+`Complicate`; `text` is an Add Detail's suggested wording, if the player gave
+one.
 -}
 type alias Proposal =
     { id : String
@@ -142,51 +135,32 @@ type alias Proposal =
     , proposerId : String
     , proposerName : String
     , slot : Maybe Int
-    , delta : Int
     , sessionAspectId : Maybe String
     , targetSlot : Maybe Int
+    , text : Maybe String
     }
 
 
-{-| A session context owned by no character — a Boon or (23.3) a Bane, with
-`text` as the note of the context it stands for. The facilitator plants one
-directly, or approves an Add Detail / Gain Insight (always a Boon); either
-way, the facilitator removing it is the only way it goes.
+{-| A session boon or session bane: a note of something true in the fiction,
+owned by nobody, that can be spent into the pool. It comes from an accepted
+Overcome pair, an accepted Add Detail (always a Boon) or the facilitator.
+Spending it marks it `consumed` rather than deleting it, and a consumed one
+cannot be spent again (roadmap 26.2).
 -}
 type alias SessionAspect =
     { id : String
     , kind : Stone
     , text : String
     , createdByName : String
+    , consumed : Bool
     }
 
 
-{-| Which once-per-session abilities a character has already spent this session.
+{-| Whether the given action currently has a request in flight. Controls consult this to disable themselves and show a pending state.
 -}
-type alias UsedAbility =
-    { slot : Int
-    , kinds : List AbilityKind
-    }
-
-
-{-| Whether a mutation with the given action key currently has a request in
-flight. Controls consult this to disable themselves and show a pending state.
--}
-actionPending : String -> Model -> Bool
-actionPending key model =
-    Set.member key model.inflight
-
-
-{-| Whether the character in `slot` has already used the ability `kind` this
-session.
--}
-abilityUsed : Int -> AbilityKind -> List UsedAbility -> Bool
-abilityUsed slot kind used =
-    used
-        |> List.filter (\u -> u.slot == slot)
-        |> List.head
-        |> Maybe.map (\u -> List.member kind u.kinds)
-        |> Maybe.withDefault False
+actionPending : Action -> Model -> Bool
+actionPending action model =
+    Action.isPending action model.inflight
 
 
 {-| The running game session: just an id (ties back to the `game_sessions` row)
@@ -364,13 +338,12 @@ type alias GameState =
     { sessionId : String
     , messages : List Message
     , stonePool : List Stone
-    , committedBoons : List CommittedBoon
+    , overcome : Maybe Overcome
     , proposals : List Proposal
     , session : Maybe Session
     , characters : List CharacterSheet
     , sessionHistory : List SessionSummary
     , sessionAspects : List SessionAspect
-    , usedAbilities : List UsedAbility
     , npcs : List TableEntity
     , locations : List TableEntity
     }
@@ -407,10 +380,11 @@ type alias Model =
     -- any. Same purpose as `editingSlot` for the reference cards.
     , editingEntity : Maybe String
 
-    -- Mutation "action keys" with a request in flight. A control whose key is in
+    -- Mutations with a request in flight (`Action`). A control whose action is in
     -- here is disabled and shown pending, so an impatient double-click cannot
-    -- fire the same POST twice. Cleared when the matching result lands.
-    , inflight : Set String
+    -- fire the same POST twice. Cleared, a family at a time, when the matching
+    -- result lands.
+    , inflight : List Action
 
     -- Character slots / entity ids with unsaved local edits, waiting for the
     -- debounced save (`FieldSaveDue`). A whole sheet edit becomes one write
@@ -422,12 +396,6 @@ type alias Model =
     -- Monotonic token for the field-save debounce: every edit bumps it, and a
     -- `FieldSaveDue` only fires the write if it still carries the latest value.
     , fieldSaveSeq : Int
-
-    -- Net highlight delta the Highlight +/- buttons have accumulated but not yet
-    -- sent, coalesced into a single `/moves/highlight` after a short pause, with
-    -- `highlightSeq` as its debounce token.
-    , pendingHighlightDelta : Int
-    , highlightSeq : Int
 
     -- Which character sheet's tab is open. Sheets are shown one at a time.
     , selectedSlot : Int
@@ -449,10 +417,17 @@ type alias Model =
     -- by `ToggleSessionControls`, purely local view state.
     , sessionControlsExpanded : Bool
 
-    -- Context note the facilitator types when approving an Add Detail or Gain
-    -- Insight proposal (the text attached to the resulting session aspect), keyed
-    -- by proposal id so each queued proposal has its own field.
+    -- The wording the facilitator has typed for an Add Detail proposal before
+    -- accepting it (it starts as the player's suggestion, if any), keyed by
+    -- proposal id so each queued proposal has its own field.
     , proposalDrafts : Dict String String
+
+    -- The player's own suggested wording in the Moves card's Add Detail field.
+    , addDetailDraft : String
+
+    -- Unsaved edits to a session aspect's text, keyed by aspect id; saved when
+    -- the field loses focus.
+    , sessionAspectEdits : Dict String String
 
     -- Draft text in the facilitator's "add a session aspect" field (23.2) —
     -- planting a session context directly, not through an ability proposal.
@@ -554,13 +529,13 @@ type alias LeftSections =
 
 
 {-| The result of an acknowledge-only mutation (the Worker replies `204`, so
-there is nothing to fold in). `family` is the in-flight key prefix released on
+there is nothing to fold in). `family` is the in-flight `Action.Family` released on
 either outcome; `failMsg` is the transient error shown when the request failed.
 Ten near-identical `…Updated` messages collapsed into `MutationDone` carrying
 this.
 -}
 type alias MutationOutcome =
-    { family : String
+    { family : Action.Family
     , failMsg : String
     }
 
@@ -575,10 +550,6 @@ type Msg
     | GotEarlierMessages (Result Http.Error (List Message))
     | ClearLog
     | FromDiscordRaw Decode.Value
-    | AddBoon
-    | HighlightIncrement
-    | HighlightDecrement
-    | HighlightDue Int
     | SelectSlot Int
     | ClaimSlot Int
     | ReleaseSlot Int
@@ -587,10 +558,16 @@ type Msg
     | WithdrawProposal String
     | ProposalResolved String (Result Http.Error ())
     | ProposalDraftChanged String String
-    | UseAbility AbilityKind
-    | Complicate Int
-    | AcceptCompelMove
-    | UseSessionBoon String
+    | PressOvercome
+    | RerollOvercome
+    | AcceptOvercome
+    | RejectOvercome
+    | ProposeHighlight
+    | ProposeComplicate Int
+    | ProposeAddDetail
+    | ProposeAlter
+    | ProposeUseSessionBoon String
+    | AddDetailDraftChanged String
     | SessionGoalChanged String
     | SessionGoalEditChanged String
     | SaveSessionGoal
@@ -609,13 +586,16 @@ type Msg
     | ToggleAspectExamples Int Aspect
     | WsStatusChanged String
     | RetryGetGameState
-    | DrawStones
     | AddStone Stone
     | RemoveStone Stone
     | SessionAspectDraftChanged String
     | SessionAspectKindChanged Stone
     | AddSessionAspect
     | DeleteSessionAspect String
+    | UseSessionAspect String
+    | UnconsumeSessionAspect String
+    | SessionAspectTextChanged String String
+    | SaveSessionAspectText String
     | CharacterFieldInput Int CharacterField String
     | CharacterFieldBlur Int
     | FieldSaveDue Int

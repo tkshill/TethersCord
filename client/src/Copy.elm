@@ -30,9 +30,45 @@ baneStone =
     "Bane"
 
 
-highlightedChip : String
-highlightedChip =
-    "Highlighted"
+-- OVERCOME STAGE (View/TopBar.elm, roadmap 26.3)
+
+
+overcome : String
+overcome =
+    "Overcome"
+
+
+thePool : String
+thePool =
+    "the pool"
+
+
+overcomeDrew : String -> String
+overcomeDrew who =
+    who ++ " drew"
+
+
+rerollsNote : Int -> String
+rerollsNote n =
+    case n of
+        0 ->
+            "no rerolls"
+
+        1 ->
+            "1 reroll"
+
+        _ ->
+            String.fromInt n ++ " rerolls"
+
+
+rerollButton : String
+rerollButton =
+    "Reroll"
+
+
+waitingForFacilitator : String
+waitingForFacilitator =
+    "Waiting for the facilitator…"
 
 
 sessionAspectChip : String
@@ -132,7 +168,7 @@ saveGoal =
 
 bagOf : Int -> String
 bagOf n =
-    "Bag of " ++ String.fromInt n
+    String.fromInt n ++ " in the pool"
 
 
 
@@ -156,9 +192,19 @@ sessionAspectsTitle =
     "Session boons & banes"
 
 
-sessionAspectRequested : String
-sessionAspectRequested =
-    "(requested)"
+{-| The mark on a session boon or bane that has been spent into the pool. It
+stays on the table, visibly consumed, and cannot be spent again.
+-}
+sessionAspectConsumed : String
+sessionAspectConsumed =
+    "used"
+
+
+{-| Facilitator-only: clear a consumed mark, to correct a table miscommunication.
+-}
+sessionAspectUnconsume : String
+sessionAspectUnconsume =
+    "Unconsume"
 
 
 sessionAspectUse : String
@@ -197,11 +243,6 @@ facilitatorPanelTitle =
     "Facilitator"
 
 
-draw : String
-draw =
-    "Draw two stones"
-
-
 {-| Player-facing "Add boon" is disconnected (23.2) — the facilitator hand-edits
 the pool directly now — but the underlying proposal it posted is untouched, so
 the string stays for whenever that's re-wired.
@@ -235,39 +276,24 @@ reject =
 -- PROPOSAL DESCRIPTIONS (View/FacilitatorPanel.elm describeProposal)
 
 
-proposalAddBoon : String
-proposalAddBoon =
-    "add a boon to the pool"
-
-
 proposalHighlight : String
 proposalHighlight =
-    "highlight an aspect (adds a boon to the pool)"
-
-
-proposalHighlightWithdraw : String
-proposalHighlightWithdraw =
-    "withdraw a highlighted boon"
+    "Highlight — pays 1 boon, the pool gains a Boon"
 
 
 proposalAlter : String
 proposalAlter =
-    "Alter Fate — pay two boons to resolve the fork with an alternate action"
+    "Alter Fate — pays 2 boons, rerolls the Overcome"
 
 
 proposalAddDetail : String
 proposalAddDetail =
-    "Add Detail — a session boon"
-
-
-proposalGainInsight : String
-proposalGainInsight =
-    "Gain Insight — a session boon"
+    "Add Detail — pays 1 boon, makes a session boon"
 
 
 proposalComplicateOn : String -> String
 proposalComplicateOn who =
-    "Complicate " ++ who ++ " (+1 / +2 boons)"
+    "Complicate " ++ who ++ " — they gain 2 boons"
 
 
 proposalComplicateFallback : String
@@ -275,14 +301,22 @@ proposalComplicateFallback =
     "another character"
 
 
-proposalAcceptCompel : String
-proposalAcceptCompel =
-    "Accept Compel — take a complication for 2 boons"
+proposalUseSessionBoon : String -> String
+proposalUseSessionBoon note =
+    "Use Session Boon — " ++ note ++ "; the pool gains a Boon"
 
 
-proposalUseSessionBoon : String
-proposalUseSessionBoon =
-    "spend a session boon on the roll"
+proposalUseSessionBoonGone : String
+proposalUseSessionBoonGone =
+    "a session boon that is gone"
+
+
+{-| The header note beside the Facilitator accordion title: how many proposals
+are waiting, so a collapsed panel still signals that one is.
+-}
+proposalsWaiting : Int -> String
+proposalsWaiting n =
+    String.fromInt n ++ " waiting"
 
 
 
@@ -294,58 +328,97 @@ movesTitle =
     "Moves"
 
 
-anyTime : String
-anyTime =
-    "Any time"
+{-| The Moves accordion's header note: the viewer's own boons, the currency the
+moves are paid in.
+-}
+movesBoons : Int -> String
+movesBoons n =
+    case n of
+        1 ->
+            "1 boon"
+
+        _ ->
+            String.fromInt n ++ " boons"
 
 
-acceptCompel : String
-acceptCompel =
-    "Accept Compel"
+highlightBlurb : String
+highlightBlurb =
+    "Pay 1 boon: an aspect shapes the outcome, and the pool gains a Boon."
 
 
-abilitiesNeedSession : String
-abilitiesNeedSession =
-    "Abilities open once a session is running."
+highlightButton : String
+highlightButton =
+    "Highlight"
 
 
-oncePerSession : String
-oncePerSession =
-    "Once per session"
+complicateBlurb : String
+complicateBlurb =
+    "Suggest a complication for another character. Their player gains 2 boons."
 
 
-alter : String
-alter =
-    "Alter Fate"
+addDetailBlurb : String
+addDetailBlurb =
+    "Pay 1 boon to establish something true about the scene: suggest it, or leave it blank and ask the facilitator."
 
 
-addDetail : String
-addDetail =
+addDetailPlaceholder : String
+addDetailPlaceholder =
+    "Suggest a detail, or leave blank to ask for one…"
+
+
+addDetailButton : String
+addDetailButton =
     "Add Detail"
 
 
-gainInsight : String
-gainInsight =
-    "Gain Insight"
+alterBlurb : String
+alterBlurb =
+    "Pay 2 boons to reroll the Overcome. Once per Overcome."
 
 
-complicate : String
-complicate =
-    "Complicate"
+alterButton : String
+alterButton =
+    "Alter Fate"
 
 
-usedSuffix : String
-usedSuffix =
-    " (used)"
+alterNeedsBoons : String
+alterNeedsBoons =
+    "You need 2 boons."
 
 
-{-| The Moves card's collapsed-accordion summary (roadmap section 24, the 1c
-layout variant): how many of the four once-per-session-or-fewer abilities
-(Alter, Add Detail, Gain Insight, Complicate) are still unused.
--}
-movesRemainingSummary : Int -> Int -> String
-movesRemainingSummary remaining total =
-    String.fromInt remaining ++ " of " ++ String.fromInt total ++ " left"
+alterAlreadyUsed : String
+alterAlreadyUsed =
+    "You have already altered fate this Overcome."
+
+
+alterAlreadyProposed : String
+alterAlreadyProposed =
+    "An Alter Fate is already waiting for the facilitator."
+
+
+needsABoon : String
+needsABoon =
+    "You need a boon."
+
+
+useSessionBoonBlurb : String
+useSessionBoonBlurb =
+    "Spend a session boon: the pool gains a Boon."
+
+
+useButton : String
+useButton =
+    "Use"
+
+
+noSessionBoons : String
+noSessionBoons =
+    "No unspent session boons."
+
+
+noOtherPlayers : String
+noOtherPlayers =
+    "no other players"
 
 
 pendingSuffix : String
@@ -353,10 +426,9 @@ pendingSuffix =
     " (pending)"
 
 
-noOtherPlayers : String
-noOtherPlayers =
-    "no other players"
-
+claimASheetForMoves : String
+claimASheetForMoves =
+    "Claim a character sheet to use moves."
 
 
 -- CHARACTERS CARD (View/Characters.elm)

@@ -2,28 +2,31 @@ module Api exposing
     ( decodeGameState
     , getGameState
     , getMessageHistory
-    , postAcceptCompelMove
+    , postAddDetail
     , postAddSessionAspect
     , postAddStone
+    , postAlter
     , postCharacterUpdate
     , postClaimSlot
     , postClearMessages
-    , postHighlight
+    , postComplicate
     , postCreateEntity
     , postDeleteEntity
     , postDeleteSessionAspect
     , postEndSession
     , postFate
+    , postHighlight
     , postMessage
+    , postOvercome
     , postProposalDecision
     , postReleaseSlot
     , postRemoveStone
     , postSessionGoal
     , postStartSession
-    , postStones
-    , postComplicate
+    , postUnconsumeSessionAspect
     , postUpdateEntity
-    , postUseAbility
+    , postUpdateSessionAspect
+    , postUseSessionAspect
     , postUseSessionBoon
     , postWithdrawProposal
     )
@@ -43,7 +46,7 @@ import Json.Encode as Encode
 import Kind
 import Roll exposing (Stone(..), stoneLabel)
 import Time
-import Types exposing (Auth, CharacterSheet, CommittedBoon, EntityKind, SessionAspect, Flags, GameState, Proposal, Session, SessionSummary, TableEntity, UsedAbility, decodeRole, entityKindPath)
+import Types exposing (Auth, CharacterSheet, EntityKind, Flags, GameState, Overcome, Proposal, Session, SessionAspect, SessionSummary, TableEntity, decodeRole, entityKindPath)
 
 
 
@@ -140,11 +143,6 @@ postMessage flags auth content toMsg =
     postJson flags auth "/message" (Encode.object [ ( "content", Encode.string content ) ]) toMsg
 
 
-postStones : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
-postStones flags auth path toMsg =
-    postEmpty flags auth path toMsg
-
-
 {-| Facilitator-only: wipe this table's log. The resulting empty state arrives
 on the socket like any other mutation.
 -}
@@ -180,13 +178,20 @@ postFate flags auth slot delta toMsg =
         toMsg
 
 
-{-| Highlight (positive `delta`) or withdraw (negative) boons from the next roll.
-The slot is the caller's own claimed sheet, resolved server-side; the Worker
-clamps the highlight to what that character holds.
+{-| Highlight: propose paying one of the caller's own boons to add a Boon to the
+pool. The slot is the caller's claimed sheet, resolved server-side.
 -}
-postHighlight : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
-postHighlight flags auth delta toMsg =
-    postJson flags auth "/moves/highlight" (Encode.object [ ( "delta", Encode.int delta ) ]) toMsg
+postHighlight : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
+postHighlight flags auth toMsg =
+    postEmpty flags auth "/moves/highlight" toMsg
+
+
+{-| One step of the Overcome loop. `step` is `"roll"` (any player), or
+`"reroll"` / `"accept"` / `"reject"` (facilitator only).
+-}
+postOvercome : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postOvercome flags auth step toMsg =
+    postEmpty flags auth ("/overcome/" ++ step) toMsg
 
 
 {-| Claim a character sheet for the calling user, or release one. Releasing is
@@ -208,8 +213,8 @@ slotAction flags auth slot action toMsg =
 
 
 {-| Facilitator-only: `decision` is `"accept"` or `"reject"` for the proposal.
-`context` carries the facilitator's note when accepting an Add Detail /
-Gain Insight; it is ignored for every other kind and for a reject.
+`context` carries the facilitator's wording when accepting an Add Detail; it is
+ignored for every other kind and for a reject.
 -}
 postProposalDecision : Flags -> Auth -> String -> String -> Maybe String -> (Result Http.Error () -> msg) -> Cmd msg
 postProposalDecision flags auth proposalId decision context toMsg =
@@ -233,41 +238,42 @@ postWithdrawProposal flags auth proposalId toMsg =
     postEmpty flags auth ("/proposals/" ++ proposalId ++ "/withdraw") toMsg
 
 
-{-| Raise a once-per-session ability: `kind` is `"alter"`, `"add-detail"`, or
-`"gain-insight"`. Queued for the facilitator like any other proposal.
--}
-postUseAbility : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
-postUseAbility flags auth kind toMsg =
-    postJson flags auth "/abilities/use" (Encode.object [ ( "kind", Encode.string kind ) ]) toMsg
-
-
-{-| Raise the Accept Compel move — take on a complication for 2 boons on
-facilitator approval.
--}
-postAcceptCompelMove : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
-postAcceptCompelMove flags auth toMsg =
-    postEmpty flags auth "/moves/accept-compel" toMsg
-
-
-{-| Raise the Complicate ability against the character in `targetSlot` — a
-once-per-session ability, queued like the others. Approved → 1 boon to the
-suggester, 2 to the target character.
+{-| Complicate: propose a complication for the character in `targetSlot`. Free;
+approved, that character's player gains two boons.
 -}
 postComplicate : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
 postComplicate flags auth targetSlot toMsg =
+    postJson flags auth "/moves/complicate" (Encode.object [ ( "targetSlot", Encode.int targetSlot ) ]) toMsg
+
+
+{-| Add Detail: propose establishing a fact, costing one boon on approval. `text`
+is the player's suggested wording; `Nothing` leaves it to the facilitator.
+-}
+postAddDetail : Flags -> Auth -> Maybe String -> (Result Http.Error () -> msg) -> Cmd msg
+postAddDetail flags auth text toMsg =
     postJson flags
         auth
-        "/abilities/use"
+        "/moves/add-detail"
         (Encode.object
-            [ ( "kind", Encode.string "complicate" )
-            , ( "targetSlot", Encode.int targetSlot )
-            ]
+            (case text of
+                Just t ->
+                    [ ( "text", Encode.string t ) ]
+
+                Nothing ->
+                    []
+            )
         )
         toMsg
 
 
-{-| Ask to spend a session boon on the roll; the facilitator approves it like a
-Highlight.
+{-| Alter Fate: propose paying two boons to reroll the pending Overcome.
+-}
+postAlter : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
+postAlter flags auth toMsg =
+    postEmpty flags auth "/moves/alter" toMsg
+
+
+{-| Use Session Boon: propose spending an unconsumed session boon into the pool.
 -}
 postUseSessionBoon : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
 postUseSessionBoon flags auth sessionAspectId toMsg =
@@ -290,9 +296,8 @@ postRemoveStone flags auth stone toMsg =
     postJson flags auth "/stones/remove" (Encode.object [ ( "kind", Encode.string (stoneLabel stone) ) ]) toMsg
 
 
-{-| Facilitator-only (23.2, widened 23.3): plant a session context directly —
-Boon or Bane — without routing through an Add Detail / Gain Insight
-proposal (which always produces a Boon).
+{-| Facilitator-only: plant a session boon or bane directly, kind and note of
+the facilitator's choosing.
 -}
 postAddSessionAspect : Flags -> Auth -> Stone -> String -> (Result Http.Error () -> msg) -> Cmd msg
 postAddSessionAspect flags auth kind text toMsg =
@@ -307,11 +312,38 @@ postAddSessionAspect flags auth kind text toMsg =
         toMsg
 
 
-{-| Facilitator-only (23.2): remove a session context outright.
+{-| Facilitator-only: remove a session boon or bane outright.
 -}
 postDeleteSessionAspect : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
 postDeleteSessionAspect flags auth sessionAspectId toMsg =
     postEmpty flags auth ("/session-aspects/" ++ sessionAspectId ++ "/delete") toMsg
+
+
+{-| Facilitator-only: spend a session boon or bane into the pool directly, no
+approval. It is marked consumed, not deleted.
+-}
+postUseSessionAspect : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postUseSessionAspect flags auth sessionAspectId toMsg =
+    postEmpty flags auth ("/session-aspects/" ++ sessionAspectId ++ "/use") toMsg
+
+
+{-| Facilitator-only: clear a consumed mark, to correct a table miscommunication.
+It does not touch the pool.
+-}
+postUnconsumeSessionAspect : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postUnconsumeSessionAspect flags auth sessionAspectId toMsg =
+    postEmpty flags auth ("/session-aspects/" ++ sessionAspectId ++ "/unconsume") toMsg
+
+
+{-| Facilitator-only: rewrite a session boon or bane's text.
+-}
+postUpdateSessionAspect : Flags -> Auth -> String -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postUpdateSessionAspect flags auth sessionAspectId text toMsg =
+    postJson flags
+        auth
+        ("/session-aspects/" ++ sessionAspectId ++ "/update")
+        (Encode.object [ ( "text", Encode.string text ) ])
+        toMsg
 
 
 {-| Facilitator-only: open a session with a goal.
@@ -328,8 +360,8 @@ postSessionGoal flags auth goal toMsg =
     postJson flags auth "/session/goal" (Encode.object [ ( "goal", Encode.string goal ) ]) toMsg
 
 
-{-| Facilitator-only: end the running session. Tops the shared pool back up to
-its floor of 2 Boon / 2 Bane if it has fallen short of either.
+{-| Facilitator-only: end the running session. Records it in the history and
+nothing else; the pool, proposals and session boons carry across.
 -}
 postEndSession : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
 postEndSession flags auth toMsg =
@@ -398,13 +430,6 @@ decodeStoneList =
     Decode.list decodeStone
 
 
-decodeCommittedBoon : Decode.Decoder CommittedBoon
-decodeCommittedBoon =
-    Decode.map2 CommittedBoon
-        (Decode.field "slot" Decode.int)
-        (Decode.field "count" Decode.int)
-
-
 decodeProposal : Decode.Decoder Proposal
 decodeProposal =
     Decode.map8 Proposal
@@ -413,25 +438,28 @@ decodeProposal =
         (Decode.field "proposerId" Decode.string)
         (Decode.field "proposerName" Decode.string)
         (Decode.field "slot" (Decode.nullable Decode.int))
-        (Decode.field "delta" Decode.int)
         (Decode.field "sessionAspectId" (Decode.nullable Decode.string))
         (Decode.field "targetSlot" (Decode.nullable Decode.int))
+        (Decode.field "text" (Decode.nullable Decode.string))
 
 
 decodeSessionAspect : Decode.Decoder SessionAspect
 decodeSessionAspect =
-    Decode.map4 SessionAspect
+    Decode.map5 SessionAspect
         (Decode.field "id" Decode.string)
         (Decode.field "kind" decodeStone)
         (Decode.field "text" Decode.string)
         (Decode.field "createdByName" Decode.string)
+        (Decode.field "consumed" Decode.bool)
 
 
-decodeUsedAbility : Decode.Decoder UsedAbility
-decodeUsedAbility =
-    Decode.map2 UsedAbility
-        (Decode.field "slot" Decode.int)
-        (Decode.field "kinds" (Decode.list Kind.decodeAbilityKind))
+decodeOvercome : Decode.Decoder Overcome
+decodeOvercome =
+    Decode.map4 Overcome
+        (Decode.field "rolledBy" Decode.string)
+        (Decode.field "stones" decodeStoneList)
+        (Decode.field "rerolls" Decode.int)
+        (Decode.field "alteredSlots" (Decode.list Decode.int))
 
 
 decodeSession : Decode.Decoder Session
@@ -517,12 +545,11 @@ decodeGameState =
         (Decode.field "sessionId" Decode.string)
         (Decode.field "messages" (Decode.list decodeMessage))
         (Decode.field "stonePool" decodeStoneList)
-        (Decode.field "committedBoons" (Decode.list decodeCommittedBoon))
+        (Decode.field "overcome" (Decode.nullable decodeOvercome))
         (Decode.field "proposals" (Decode.list decodeProposal))
         (Decode.field "session" (Decode.nullable decodeSession))
         (Decode.field "characters" (Decode.list decodeCharacterSheet))
         (Decode.field "sessionHistory" (Decode.list decodeSessionSummary))
         |> andMap (Decode.field "sessionAspects" (Decode.list decodeSessionAspect))
-        |> andMap (Decode.field "usedAbilities" (Decode.list decodeUsedAbility))
         |> andMap (Decode.field "npcs" (Decode.list decodeTableEntity))
         |> andMap (Decode.field "locations" (Decode.list decodeTableEntity))

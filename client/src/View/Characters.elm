@@ -22,7 +22,6 @@ import View.Helpers
         , characterLabel
         , glossaryTitle
         , inputAttrs
-        , pendingHint
         , placeholder
         , tip
         , tipAttrs
@@ -106,7 +105,7 @@ characterSheet facilitator myId aspectExamplesOpen gs ch =
         , Border.rounded 6
         ]
         [ ownerRow facilitator mine ch
-        , boonsBlock facilitator ch (committedBoonsForSlot ch.slot gs.committedBoons)
+        , boonsBlock facilitator ch
         , field editable ch NameField "" "Name" ch.name
         , field editable ch NotableFeaturesField "" Copy.notableFeaturesLabel ch.notableFeatures
         , aspectField editable aspectExamplesOpen ch Archetype ArchetypeField ch.archetype
@@ -284,35 +283,32 @@ readOnlyField tipKey label value =
         ]
 
 
-{-| A character's boons, at the top of the sheet where a player can see their
-spendable stones alongside the current roll. The boons show as circles; the ones
-highlighted into the next roll carry a centre dot rather than a separate count. Only
-the facilitator gets a control here (Grant `+` / `−`) — the player-facing Highlight
-control is disconnected for now (`highlightControls`), so boon movement is left to
-the facilitator while the table plays with the manual version of section 23.
+{-| A character's boons, at the top of the sheet where a player can see what
+they can spend on a move. The boons show as circles. Only the facilitator gets a
+control here (Grant `+` / `−`); a player moves their own boons through the moves
+in the Moves card.
 -}
-boonsBlock : Bool -> CharacterSheet -> Int -> Element Msg
-boonsBlock facilitator ch highlighted =
+boonsBlock : Bool -> CharacterSheet -> Element Msg
+boonsBlock facilitator ch =
     Element.column [ spacing Ui.xs, width fill ]
         [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.boonsLabel)
-        , boonCircles ch.fate highlighted
+        , boonCircles ch.fate
         , Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
             (grantControls facilitator ch)
         ]
 
 
-{-| `total` boon circles, the first `highlighted` of them marked as highlighted into the
-next roll.
+{-| `total` boon circles.
 -}
-boonCircles : Int -> Int -> Element msg
-boonCircles total highlighted =
+boonCircles : Int -> Element msg
+boonCircles total =
     if total <= 0 then
         el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.boonsNone)
 
     else
         Element.wrappedRow [ spacing Ui.xs ]
             (List.range 1 total
-                |> List.map (\i -> Ui.boonDot (i <= highlighted))
+                |> List.map (\_ -> Ui.boonDot)
             )
 
 
@@ -323,27 +319,6 @@ grantControls facilitator ch =
         , Ui.ghostButton { onPress = Just (FateDecrement ch.slot), label = "−" }
         , Ui.ghostButton { onPress = Just (FateIncrement ch.slot), label = "+" }
         ]
-
-    else
-        []
-
-
--- OFF while testing the facilitator-run interface (roadmap section 23) —
--- `boonsBlock` no longer calls this, so a player can no longer highlight a boon
--- from the sheet. The proposal machinery behind it (`Kind.Highlight`,
--- `applyHighlight`, `/moves/highlight`, `drawFromBag`'s committed-boons odds bump)
--- is untouched; re-wiring this is a one-line change back in `boonsBlock`.
-
-
-highlightControls : Bool -> Int -> Maybe String -> List (Element Msg)
-highlightControls mine pending pendingId =
-    if mine then
-        -- "Highlight" is the player-facing name for adding a boon to the pool.
-        [ tip "Highlight" (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.highlight))
-        , Ui.ghostButton { onPress = Just HighlightDecrement, label = "−" }
-        , Ui.ghostButton { onPress = Just HighlightIncrement, label = "+" }
-        ]
-            ++ pendingHint pending pendingId
 
     else
         []
