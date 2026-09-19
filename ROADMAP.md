@@ -1505,7 +1505,7 @@ possible.
       over slot / entity id, so the entity half inherits the character tests and
       `Model` loses several fields for one. Independent of 25.1 — client only,
       can go first.
-- [ ] **25.4 — Typed in-flight action keys.** In-flight state is a
+- [x] **25.4 — Typed in-flight action keys** (done as the first step of 26.3: an `Action` custom type in its own `Action.elm`, since `Effect` imports `View`; `Model.inflight` is a `List Action`, `MutationOutcome.family` an `Action.Family`, `Ui.press` polymorphic over the action type, and `inflight` rides on `ViewContext`). In-flight state is a
       `Set String` keyed by strings like `"stones:add-boon"`, matched by prefix
       across `Main` (`clearInflight`), `Effect` and the views, so a typo compiles
       and a family clear is a `String.startsWith`. Replace the key with an

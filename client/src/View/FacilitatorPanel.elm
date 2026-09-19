@@ -10,6 +10,7 @@ left panel's three accordion sections (24, the 1c layout variant); its own
 title doubles as the toggle, same as `View.Guide`'s always has.
 -}
 
+import Action exposing (Action(..), Decision(..))
 import Copy
 import Dict exposing (Dict)
 import Element exposing (Element, el, fill, none, spacing, text, width)
@@ -17,15 +18,13 @@ import Element.Font as Font
 import Element.Input as Input
 import Kind
 import Roll exposing (Stone(..), stoneLabel)
-import Set exposing (Set)
 import Types exposing (..)
 import Ui
 import View.Helpers exposing (ViewContext, accordionHeader, characterLabel, inputAttrs)
 
 
 type alias Props =
-    { inflight : Set String
-    , drafts : Dict String String
+    { drafts : Dict String String
     , open : Bool
     }
 
@@ -40,11 +39,11 @@ view ctx props gs =
             (accordionHeader props.open (Ui.sectionTitle Copy.facilitatorPanelTitle) (ToggleLeftSection FacilitatorSection)
                 :: (if props.open then
                         [ Ui.primaryButton
-                            { onPress = Ui.press props.inflight "stones:draw" DrawStones
+                            { onPress = Ui.press ctx.inflight DrawingStones DrawStones
                             , label = Copy.draw
                             }
-                        , poolControls props.inflight
-                        , proposalsPanel props.inflight props.drafts gs.characters gs.proposals
+                        , poolControls ctx.inflight
+                        , proposalsPanel ctx.inflight props.drafts gs.characters gs.proposals
                         ]
 
                     else
@@ -57,12 +56,12 @@ view ctx props gs =
 Bane at a time, independent of a draw and of every other free-standing
 resource action — nothing here tries to link to the other.
 -}
-poolControls : Set String -> Element Msg
+poolControls : List Action -> Element Msg
 poolControls inflight =
     Element.wrappedRow [ spacing Ui.md, Element.centerY ] [ stoneControl inflight Boon, stoneControl inflight Bane ]
 
 
-stoneControl : Set String -> Stone -> Element Msg
+stoneControl : List Action -> Stone -> Element Msg
 stoneControl inflight stone =
     let
         label =
@@ -71,11 +70,11 @@ stoneControl inflight stone =
     Element.row [ spacing Ui.xs, Element.centerY ]
         [ el [ Font.size 11, Font.color Ui.inkSoft ] (text label)
         , Ui.ghostButton
-            { onPress = Ui.press inflight ("stones:remove-" ++ label) (RemoveStone stone)
+            { onPress = Ui.press inflight (RemovingStone stone) (RemoveStone stone)
             , label = "−"
             }
         , Ui.ghostButton
-            { onPress = Ui.press inflight ("stones:add-" ++ label) (AddStone stone)
+            { onPress = Ui.press inflight (AddingStone stone) (AddStone stone)
             , label = "+"
             }
         ]
@@ -88,7 +87,7 @@ now; the routes stay live for whichever one is re-wired first. `drafts` holds
 the context note typed for each Add Detail / Gain Insight, keyed by
 proposal id so the rows do not share one field.
 -}
-proposalsPanel : Set String -> Dict String String -> List CharacterSheet -> List Proposal -> Element Msg
+proposalsPanel : List Action -> Dict String String -> List CharacterSheet -> List Proposal -> Element Msg
 proposalsPanel inflight drafts characters proposals =
     if List.isEmpty proposals then
         none
@@ -100,7 +99,7 @@ proposalsPanel inflight drafts characters proposals =
             )
 
 
-proposalRow : Set String -> Dict String String -> List CharacterSheet -> Proposal -> Element Msg
+proposalRow : List Action -> Dict String String -> List CharacterSheet -> Proposal -> Element Msg
 proposalRow inflight drafts characters p =
     let
         needsContext =
@@ -113,8 +112,8 @@ proposalRow inflight drafts characters p =
             not needsContext || String.trim draft /= ""
 
         busy =
-            Set.member ("proposal:accept:" ++ p.id) inflight
-                || Set.member ("proposal:reject:" ++ p.id) inflight
+            Action.isPending (ResolvingProposal Accepting p.id) inflight
+                || Action.isPending (ResolvingProposal Rejecting p.id) inflight
 
         controls =
             Element.row [ spacing Ui.sm, Element.centerY, Element.alignRight ]

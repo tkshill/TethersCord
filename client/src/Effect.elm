@@ -14,6 +14,7 @@ user is authorised — `perform` only translates.
 
 -}
 
+import Action exposing (Family(..))
 import Api
 import Browser.Dom
 import Http
@@ -181,47 +182,47 @@ perform flags effect =
 
 
 {-| The result message for each family of acknowledge-only mutation. Each names
-the in-flight key prefix `update` releases on the ack and the transient error to
+the in-flight `Action.Family` `update` releases on the ack and the transient error to
 show if the POST failed; `update` has a single `MutationDone` branch that reads
-both off the record. `characterUpdated` uses the `"fate:"` family because the
+both off the record. `characterUpdated` uses the `FateFamily` because the
 Grant `+` / `−` is the only guarded character mutation — the debounced sheet
 save is not in-flight-tracked.
 -}
 messagePosted : Result Http.Error () -> Msg
 messagePosted =
-    MutationDone { family = "message:", failMsg = "Failed to post message." }
+    MutationDone { family = MessageFamily, failMsg = "Failed to post message." }
 
 
 logCleared : Result Http.Error () -> Msg
 logCleared =
-    MutationDone { family = "log:", failMsg = "Failed to clear the log." }
+    MutationDone { family = LogFamily, failMsg = "Failed to clear the log." }
 
 
 slotClaimed : Result Http.Error () -> Msg
 slotClaimed =
-    MutationDone { family = "slot:", failMsg = "Couldn't claim that character sheet." }
+    MutationDone { family = SlotFamily, failMsg = "Couldn't claim that character sheet." }
 
 
 moveRaised : Result Http.Error () -> Msg
 moveRaised =
-    MutationDone { family = "move:", failMsg = "Couldn't raise that move." }
+    MutationDone { family = MoveFamily, failMsg = "Couldn't raise that move." }
 
 
 sessionUpdated : Result Http.Error () -> Msg
 sessionUpdated =
-    MutationDone { family = "session:", failMsg = "Failed to update the session." }
+    MutationDone { family = SessionFamily, failMsg = "Failed to update the session." }
 
 
 stonesUpdated : Result Http.Error () -> Msg
 stonesUpdated =
-    MutationDone { family = "stones:", failMsg = "Failed to update stones." }
+    MutationDone { family = StonesFamily, failMsg = "Failed to update stones." }
 
 
 characterUpdated : Result Http.Error () -> Msg
 characterUpdated =
-    MutationDone { family = "fate:", failMsg = "Failed to update character sheet." }
+    MutationDone { family = FateFamily, failMsg = "Failed to update character sheet." }
 
 
 entityMutated : Result Http.Error () -> Msg
 entityMutated =
-    MutationDone { family = "entity:", failMsg = "Failed to update the table entry." }
+    MutationDone { family = EntityFamily, failMsg = "Failed to update the table entry." }

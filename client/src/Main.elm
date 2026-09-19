@@ -9,6 +9,7 @@ that into a `Cmd` once, here at the boundary.
 
 -}
 
+import Action exposing (Action(..), Decision(..), Family(..))
 import Api
 import Browser
 import Browser.Events
@@ -144,7 +145,7 @@ init flags =
       , confirming = Nothing
       , editingSlot = Nothing
       , editingEntity = Nothing
-      , inflight = Set.empty
+      , inflight = []
       , dirtySlots = Set.empty
       , dirtyEntities = Set.empty
       , fieldSaveSeq = 0
@@ -208,29 +209,41 @@ fail message model =
 do nothing — this is what makes an impatient double-click harmless. Otherwise
 mark the key busy and issue the effect (which needs auth).
 -}
-guard : String -> Model -> (Auth -> Effect) -> ( Model, Effect )
-guard key model toEffect =
-    if Set.member key model.inflight then
+guard : Action -> Model -> (Auth -> Effect) -> ( Model, Effect )
+guard action model toEffect =
+    if Action.isPending action model.inflight then
         ( model, Effect.None )
 
     else
         case model.auth of
             Just auth ->
-                ( { model | inflight = Set.insert key model.inflight }, toEffect auth )
+                ( { model | inflight = action :: model.inflight }, toEffect auth )
 
             Nothing ->
                 ( model, Effect.None )
 
 
-{-| Release every in-flight key sharing a prefix, once its (often shared) result
+{-| Release every in-flight action of a family, once its (often shared) result
 message has come back. Mutations are driven one at a time from the UI, so
-clearing by family rather than exact key is enough.
+clearing by family rather than exact action is enough.
 -}
-clearInflight : String -> Model -> Model
-clearInflight prefix model =
+clearInflight : Family -> Model -> Model
+clearInflight fam model =
     { model
-        | inflight = Set.filter (\key -> not (String.startsWith prefix key)) model.inflight
+        | inflight = List.filter (\action -> Action.family action /= fam) model.inflight
     }
+
+
+{-| The in-flight action for adding a blank row to an NPC / location collection.
+-}
+creatingEntity : EntityKind -> Action
+creatingEntity kind =
+    case kind of
+        Npc ->
+            CreatingNpc
+
+        Location ->
+            CreatingLocation
 
 
 {-| (Re)arm the field-save debounce after an edit or a blur: bump the token and
@@ -440,10 +453,10 @@ update msg model =
                     fail tag.failMsg (clearInflight tag.family model)
 
         ClearLog ->
-            guard "log:clear" { model | confirming = Nothing } Effect.PostClearMessages
+            guard ClearingLog { model | confirming = Nothing } Effect.PostClearMessages
 
         AddBoon ->
-            guard "stones:add-boon" model (\auth -> Effect.PostStones auth "/stones/add-boon")
+            guard AddingBoon model (\auth -> Effect.PostStones auth "/stones/add-boon")
 
         -- The +/- taps only nudge a running total; one coalesced proposal is
         -- sent once the taps stop (`HighlightDue`).
@@ -462,7 +475,7 @@ update msg model =
                     Just auth ->
                         ( { model
                             | pendingHighlightDelta = 0
-                            , inflight = Set.insert "stones:highlight" model.inflight
+                            , inflight = Highlighting :: model.inflight
                           }
                         , Effect.PostHighlight auth model.pendingHighlightDelta
                         )
@@ -476,10 +489,10 @@ update msg model =
 
         ClaimSlot slot ->
             -- Bring the claimed sheet's tab to the front as well.
-            guard "slot:claim" { model | selectedSlot = slot } (\auth -> Effect.PostClaimSlot auth slot)
+            guard ClaimingSlot { model | selectedSlot = slot } (\auth -> Effect.PostClaimSlot auth slot)
 
         ReleaseSlot slot ->
-            guard "slot:release" model (\auth -> Effect.PostReleaseSlot auth slot)
+            guard ReleasingSlot model (\auth -> Effect.PostReleaseSlot auth slot)
 
         AcceptProposal id ->
             let
@@ -496,17 +509,17 @@ update msg model =
                                     Just text
                             )
             in
-            guard ("proposal:accept:" ++ id)
+            guard (ResolvingProposal Accepting id)
                 model
                 (\auth -> Effect.PostProposalDecision auth id "accept" context)
 
         RejectProposal id ->
-            guard ("proposal:reject:" ++ id)
+            guard (ResolvingProposal Rejecting id)
                 model
                 (\auth -> Effect.PostProposalDecision auth id "reject" Nothing)
 
         WithdrawProposal id ->
-            guard ("proposal:withdraw:" ++ id)
+            guard (ResolvingProposal Withdrawing id)
                 model
                 (\auth -> Effect.PostWithdrawProposal auth id)
 
@@ -514,24 +527,24 @@ update msg model =
             ( { model | proposalDrafts = Dict.insert id s model.proposalDrafts }, Effect.None )
 
         ProposalResolved id (Ok ()) ->
-            ( clearInflight "proposal:" { model | proposalDrafts = Dict.remove id model.proposalDrafts }
+            ( clearInflight ProposalFamily { model | proposalDrafts = Dict.remove id model.proposalDrafts }
             , Effect.None
             )
 
         ProposalResolved _ (Err _) ->
-            fail "Failed to resolve the proposal." (clearInflight "proposal:" model)
+            fail "Failed to resolve the proposal." (clearInflight ProposalFamily model)
 
         UseAbility kind ->
-            guard ("move:" ++ Kind.abilityToString kind) model (\auth -> Effect.PostUseAbility auth kind)
+            guard (RaisingMove (Kind.AbilityProposal kind)) model (\auth -> Effect.PostUseAbility auth kind)
 
         Complicate targetSlot ->
-            guard "move:complicate" model (\auth -> Effect.PostComplicate auth targetSlot)
+            guard (RaisingMove (Kind.AbilityProposal Kind.Complicate)) model (\auth -> Effect.PostComplicate auth targetSlot)
 
         AcceptCompelMove ->
-            guard "move:accept-compel" model Effect.PostAcceptCompelMove
+            guard (RaisingMove Kind.AcceptCompel) model Effect.PostAcceptCompelMove
 
         UseSessionBoon sessionAspectId ->
-            guard "move:use-session-boon" model (\auth -> Effect.PostUseSessionBoon auth sessionAspectId)
+            guard (RaisingMove Kind.UseSessionBoon) model (\auth -> Effect.PostUseSessionBoon auth sessionAspectId)
 
         SessionGoalChanged s ->
             ( { model | newSessionGoal = s }, Effect.None )
@@ -544,7 +557,7 @@ update msg model =
                 ( { model | confirming = Nothing }, Effect.None )
 
             else
-                guard "session:goal"
+                guard SavingGoal
                     { model | confirming = Nothing }
                     (\auth -> Effect.PostSessionGoal auth model.goalEdit)
 
@@ -553,12 +566,12 @@ update msg model =
                 ( model, Effect.None )
 
             else
-                guard "session:start"
+                guard StartingSession
                     { model | newSessionGoal = "" }
                     (\auth -> Effect.PostStartSession auth model.newSessionGoal)
 
         EndSession ->
-            guard "session:end" { model | confirming = Nothing } Effect.PostEndSession
+            guard EndingSession { model | confirming = Nothing } Effect.PostEndSession
 
         RequestConfirm key ->
             ( { model | confirming = Just key }, Effect.None )
@@ -618,15 +631,15 @@ update msg model =
                     ( model, Effect.None )
 
         DrawStones ->
-            guard "stones:draw" model (\auth -> Effect.PostStones auth "/overcome/roll")
+            guard DrawingStones model (\auth -> Effect.PostStones auth "/overcome/roll")
 
         -- Facilitator-only hand-edits of the shared pool (23.2), independent
         -- of a draw and of each other.
         AddStone stone ->
-            guard ("stones:add-" ++ stoneLabel stone) model (\auth -> Effect.PostAddStone auth stone)
+            guard (AddingStone stone) model (\auth -> Effect.PostAddStone auth stone)
 
         RemoveStone stone ->
-            guard ("stones:remove-" ++ stoneLabel stone) model (\auth -> Effect.PostRemoveStone auth stone)
+            guard (RemovingStone stone) model (\auth -> Effect.PostRemoveStone auth stone)
 
         SessionAspectDraftChanged s ->
             ( { model | newSessionAspectNote = s }, Effect.None )
@@ -639,12 +652,12 @@ update msg model =
                 ( model, Effect.None )
 
             else
-                guard "stones:session-aspect-add"
+                guard AddingSessionAspect
                     { model | newSessionAspectNote = "" }
                     (\auth -> Effect.PostAddSessionAspect auth model.newSessionAspectKind model.newSessionAspectNote)
 
         DeleteSessionAspect sessionAspectId ->
-            guard ("stones:session-aspect-delete:" ++ sessionAspectId)
+            guard (DeletingSessionAspect sessionAspectId)
                 model
                 (\auth -> Effect.PostDeleteSessionAspect auth sessionAspectId)
 
@@ -682,13 +695,13 @@ update msg model =
                 flushFieldSaves model
 
         FateIncrement slot ->
-            guard ("fate:" ++ String.fromInt slot) model (\auth -> Effect.PostFate auth slot 1)
+            guard (GrantingFate slot) model (\auth -> Effect.PostFate auth slot 1)
 
         FateDecrement slot ->
-            guard ("fate:" ++ String.fromInt slot) model (\auth -> Effect.PostFate auth slot -1)
+            guard (GrantingFate slot) model (\auth -> Effect.PostFate auth slot -1)
 
         AddEntity kind ->
-            guard ("entity:create:" ++ entityKindPath kind) model (\auth -> Effect.PostCreateEntity auth kind)
+            guard (creatingEntity kind) model (\auth -> Effect.PostCreateEntity auth kind)
 
         EntityFieldInput kind entityId fieldTag value ->
             armFieldSave
@@ -725,7 +738,7 @@ update msg model =
                     else
                         model
             in
-            guard ("entity:delete:" ++ entityId)
+            guard (DeletingEntity entityId)
                 { released | dirtyEntities = Set.remove entityId released.dirtyEntities }
                 (\auth -> Effect.PostDeleteEntity auth kind entityId)
 

@@ -48,6 +48,7 @@ view model =
             { facilitator = isFacilitator model
             , myId = Maybe.map .userId model.auth
             , zone = model.timeZone
+            , inflight = model.inflight
             }
 
         top =
@@ -104,8 +105,7 @@ leftPanel ctx model gs =
         ]
         (Ui.scrollArea
             [ View.FacilitatorPanel.view ctx
-                { inflight = model.inflight
-                , drafts = model.proposalDrafts
+                { drafts = model.proposalDrafts
                 , open = model.openLeftSections.facilitator
                 }
                 gs
@@ -171,8 +171,7 @@ rightPanelTabContent ctx model gs =
         SessionTab ->
             Ui.scrollArea
                 [ View.SessionAspects.view ctx
-                    { inflight = model.inflight
-                    , sessionAspectDraft = model.newSessionAspectNote
+                    { sessionAspectDraft = model.newSessionAspectNote
                     , sessionAspectKind = model.newSessionAspectKind
                     }
                     gs

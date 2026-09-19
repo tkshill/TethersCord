@@ -64,13 +64,13 @@ import Set exposing (Set)
 -- CONTROL GATING
 
 
-{-| `Just msg` unless `key` already has a request in flight (it is in
+{-| `Just msg` unless `action` already has a request in flight (it is in
 `inflight`), in which case `Nothing` — which renders a button disabled, so an
 eager double-click is a no-op in the UI as well as in `update`.
 -}
-press : Set String -> String -> msg -> Maybe msg
-press inflight key msg =
-    if Set.member key inflight then
+press : List a -> a -> msg -> Maybe msg
+press inflight action msg =
+    if List.member action inflight then
         Nothing
 
     else

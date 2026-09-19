@@ -23,6 +23,7 @@ pair a label with its `Copy.Terms` gloss, and the left panel's accordion
 header (roadmap section 24, the 1c layout variant).
 -}
 
+import Action exposing (Action)
 import Copy
 import Copy.Terms as Terms
 import Element exposing (Element, el, fill, none, spacing, text, width)
@@ -45,6 +46,7 @@ type alias ViewContext =
     { facilitator : Bool
     , myId : Maybe String
     , zone : Time.Zone
+    , inflight : List Action
     }
 
 

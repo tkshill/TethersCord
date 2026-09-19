@@ -11,20 +11,19 @@ there is always somewhere to add the first one. "Use" on a session aspect
 removes session context directly, with no third "spend it" state in between.
 -}
 
+import Action exposing (Action(..))
 import Copy
 import Element exposing (Element, el, fill, none, spacing, text, width)
 import Element.Font as Font
 import Element.Input as Input
 import Roll exposing (Stone(..))
-import Set exposing (Set)
 import Types exposing (..)
 import Ui
 import View.Helpers exposing (ViewContext, glossaryTitle, inputAttrs)
 
 
 type alias Props =
-    { inflight : Set String
-    , sessionAspectDraft : String
+    { sessionAspectDraft : String
     , sessionAspectKind : Stone
     }
 
@@ -37,13 +36,13 @@ view ctx props gs =
     else
         Ui.card
             (glossaryTitle Copy.sessionAspectsTitle "Session boon"
-                :: List.map (row ctx.facilitator props.inflight) gs.sessionAspects
+                :: List.map (row ctx.facilitator ctx.inflight) gs.sessionAspects
                 ++ Ui.onlyWhen ctx.facilitator
-                    [ addSessionAspectRow props.inflight props.sessionAspectDraft props.sessionAspectKind ]
+                    [ addSessionAspectRow ctx.inflight props.sessionAspectDraft props.sessionAspectKind ]
             )
 
 
-row : Bool -> Set String -> SessionAspect -> Element Msg
+row : Bool -> List Action -> SessionAspect -> Element Msg
 row facilitator inflight fb =
     Element.wrappedRow [ spacing Ui.sm, Element.centerY, width fill ]
         [ sessionAspectChip fb.kind
@@ -51,7 +50,7 @@ row facilitator inflight fb =
         , if facilitator then
             el [ Element.alignRight ]
                 (Ui.ghostButton
-                    { onPress = Ui.press inflight ("stones:session-aspect-delete:" ++ fb.id) (DeleteSessionAspect fb.id)
+                    { onPress = Ui.press inflight (DeletingSessionAspect fb.id) (DeleteSessionAspect fb.id)
                     , label = Copy.sessionAspectRemove
                     }
                 )
@@ -74,7 +73,7 @@ sessionAspectChip kind =
             Ui.highlightedStoneChip Ui.baneFill Copy.baneStone
 
 
-addSessionAspectRow : Set String -> String -> Stone -> Element Msg
+addSessionAspectRow : List Action -> String -> Stone -> Element Msg
 addSessionAspectRow inflight draft draftKind =
     Element.wrappedRow [ spacing Ui.sm, width fill, Element.centerY ]
         [ Ui.tab (draftKind == Boon) Copy.boonStone (SessionAspectKindChanged Boon)
@@ -92,7 +91,7 @@ addSessionAspectRow inflight draft draftKind =
                     Nothing
 
                 else
-                    Ui.press inflight "stones:session-aspect-add" AddSessionAspect
+                    Ui.press inflight AddingSessionAspect AddSessionAspect
             , label = Copy.addSessionAspect
             }
         ]

@@ -5,6 +5,7 @@ next model and an `Effect` value a test can match on directly — no `Cmd`, no
 mocking.
 -}
 
+import Action exposing (Action(..), Family(..))
 import Dict
 import Effect exposing (Effect(..))
 import Expect
@@ -23,7 +24,7 @@ the old `StonesUpdated` constructor.
 -}
 stonesDone : Result Http.Error () -> Msg
 stonesDone =
-    MutationDone { family = "stones:", failMsg = "Failed to update stones." }
+    MutationDone { family = StonesFamily, failMsg = "Failed to update stones." }
 
 
 {-| Model after a successful auth + first snapshot: authorised, with game state.
@@ -149,6 +150,13 @@ suite =
                     Main.update DrawStones settled
                         |> Tuple.second
                         |> Expect.equal (Effect.PostStones Fixtures.playerAuth "/overcome/roll")
+            , test "a result message releases only its own family of in-flight actions" <|
+                \_ ->
+                    Main.update (stonesDone (Ok ()))
+                        { ready | inflight = [ DrawingStones, GrantingFate 0, AddingStone Boon ] }
+                        |> Tuple.first
+                        |> .inflight
+                        |> Expect.equal [ GrantingFate 0 ]
             , test "AddStone posts the stone's kind" <|
                 \_ ->
                     Main.update (AddStone Bane) ready

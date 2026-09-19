@@ -46,6 +46,7 @@ without creating an import cycle (`Main` imports `View`, so `View` cannot import
 
 -}
 
+import Action exposing (Action)
 import Dict exposing (Dict)
 import Http
 import Json.Decode as Decode
@@ -169,12 +170,11 @@ type alias UsedAbility =
     }
 
 
-{-| Whether a mutation with the given action key currently has a request in
-flight. Controls consult this to disable themselves and show a pending state.
+{-| Whether the given action currently has a request in flight. Controls consult this to disable themselves and show a pending state.
 -}
-actionPending : String -> Model -> Bool
-actionPending key model =
-    Set.member key model.inflight
+actionPending : Action -> Model -> Bool
+actionPending action model =
+    Action.isPending action model.inflight
 
 
 {-| Whether the character in `slot` has already used the ability `kind` this
@@ -407,10 +407,11 @@ type alias Model =
     -- any. Same purpose as `editingSlot` for the reference cards.
     , editingEntity : Maybe String
 
-    -- Mutation "action keys" with a request in flight. A control whose key is in
+    -- Mutations with a request in flight (`Action`). A control whose action is in
     -- here is disabled and shown pending, so an impatient double-click cannot
-    -- fire the same POST twice. Cleared when the matching result lands.
-    , inflight : Set String
+    -- fire the same POST twice. Cleared, a family at a time, when the matching
+    -- result lands.
+    , inflight : List Action
 
     -- Character slots / entity ids with unsaved local edits, waiting for the
     -- debounced save (`FieldSaveDue`). A whole sheet edit becomes one write
@@ -554,13 +555,13 @@ type alias LeftSections =
 
 
 {-| The result of an acknowledge-only mutation (the Worker replies `204`, so
-there is nothing to fold in). `family` is the in-flight key prefix released on
+there is nothing to fold in). `family` is the in-flight `Action.Family` released on
 either outcome; `failMsg` is the transient error shown when the request failed.
 Ten near-identical `…Updated` messages collapsed into `MutationDone` carrying
 this.
 -}
 type alias MutationOutcome =
-    { family : String
+    { family : Action.Family
     , failMsg : String
     }
 
