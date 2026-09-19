@@ -58,18 +58,18 @@ fieldSaveDelay =
     1000
 
 
-{-| The left panel's width in pixels (roadmap section 24, the 1c layout
-variant), and the range the draggable divider clamps it to so neither panel
-can be dragged away to nothing.
+{-| The left tool panel's width in pixels (roadmap section 27, mockup 2a's
+320), and the range the draggable divider clamps it to so neither panel can be
+dragged away to nothing.
 -}
 defaultLeftPanelWidth : Float
 defaultLeftPanelWidth =
-    420
+    320
 
 
 minLeftPanelWidth : Float
 minLeftPanelWidth =
-    280
+    260
 
 
 maxLeftPanelWidth : Float
@@ -91,22 +91,6 @@ connectionFromString raw =
 
         _ ->
             Offline
-
-
-{-| Flip one of the left panel's three accordion sections, leaving the other
-two untouched (roadmap section 24, the 1c layout variant).
--}
-toggleLeftSection : LeftSection -> LeftSections -> LeftSections
-toggleLeftSection section sections =
-    case section of
-        FacilitatorSection ->
-            { sections | facilitator = not sections.facilitator }
-
-        CharactersSection ->
-            { sections | characters = not sections.characters }
-
-        MovesSection ->
-            { sections | moves = not sections.moves }
 
 
 main : Program Flags Model Msg
@@ -153,13 +137,11 @@ init flags =
       , newSessionAspectKind = Boon
       , loadingHistory = False
       , noMoreHistory = False
-      , guideExpanded = False
       , aspectExamplesOpen = Nothing
       , connection = Connected
       , gameStateAttempts = 0
       , timeZone = Time.utc
-      , rightPanelTab = NpcsLocationsTab
-      , openLeftSections = { facilitator = True, characters = True, moves = False }
+      , toolTab = SheetTab
       , leftPanelWidth = defaultLeftPanelWidth
       , draggingDivider = False
       }
@@ -566,17 +548,11 @@ update msg model =
         DismissError ->
             ( { model | error = Nothing }, Effect.None )
 
-        ToggleGuide ->
-            ( { model | guideExpanded = not model.guideExpanded }, Effect.None )
-
         ToggleSessionControls ->
             ( { model | sessionControlsExpanded = not model.sessionControlsExpanded }, Effect.None )
 
-        SelectRightPanelTab tab ->
-            ( { model | rightPanelTab = tab }, Effect.None )
-
-        ToggleLeftSection section ->
-            ( { model | openLeftSections = toggleLeftSection section model.openLeftSections }, Effect.None )
+        SelectTool tab ->
+            ( { model | toolTab = tab }, Effect.None )
 
         DividerDragStarted ->
             ( { model | draggingDivider = True }, Effect.None )

@@ -11,15 +11,13 @@ module Types exposing
     , SessionAspect
     , Flags
     , GameState
-    , LeftSection(..)
-    , LeftSections
     , Message
     , Model
     , Msg(..)
     , MutationOutcome
     , Proposal
-    , RightPanelTab(..)
     , Role(..)
+    , ToolTab(..)
     , Session
     , SessionSummary
     , TableEntity
@@ -444,10 +442,6 @@ type alias Model =
     -- ask for and the "load earlier" affordance is hidden.
     , noMoreHistory : Bool
 
-    -- Whether the "How to play" glossary card is expanded. Collapsed on load;
-    -- toggled by `ToggleGuide`, purely local view state.
-    , guideExpanded : Bool
-
     -- Which aspect field, if any, has its "see examples" list open on the
     -- character sheet: `Just ( slot, aspect )`. One at a time; `ToggleAspectExamples`.
     , aspectExamplesOpen : Maybe ( Int, Aspect )
@@ -464,21 +458,15 @@ type alias Model =
     -- UTC and is replaced once Time.here resolves.
     , timeZone : Time.Zone
 
-    -- Which tab the right panel's tab strip is showing (roadmap section 24).
-    -- Purely local view state, toggled by `SelectRightPanelTab`; the event log
-    -- is not one of these tabs — it is pinned beneath the strip instead — so
-    -- this defaults to the first reference-state tab.
-    , rightPanelTab : RightPanelTab
+    -- Which tool the left panel's glyph strip is showing (roadmap section
+    -- 27). Purely local view state, toggled by `SelectTool`; the event log and
+    -- composer are not tools — they own the right panel outright.
+    , toolTab : ToolTab
 
-    -- Which of the left panel's three accordion sections (24, the 1c layout
-    -- variant) are open. Purely local view state, toggled by
-    -- `ToggleLeftSection`.
-    , openLeftSections : LeftSections
-
-    -- The left panel's width in pixels (24, 1c), dragged by the divider
-    -- handle between the two panels. `draggingDivider` is true for the
-    -- duration of a drag, gating the mouse-move/mouse-up subscriptions that
-    -- track it (`Main.subscriptions`).
+    -- The left panel's width in pixels, dragged by the divider handle between
+    -- the two panels. `draggingDivider` is true for the duration of a drag,
+    -- gating the mouse-move/mouse-up subscriptions that track it
+    -- (`Main.subscriptions`).
     , leftPanelWidth : Float
     , draggingDivider : Bool
     }
@@ -493,35 +481,18 @@ type Connection
     | Rejected
 
 
-{-| The right panel's tab strip (roadmap section 24, the 1c layout variant):
-the facilitator's reference state (NPCs and locations); the table's session
-boons and banes (with the session history); and the glossary. One at a
-time; the event log is not among them — it is its own pinned region beneath
-the strip, always visible regardless of which tab is selected.
+{-| The left panel's tool strip (roadmap section 27, mockup 2a): one tool shown
+at a time under a row of glyph tabs. The facilitator's queue and pool edits
+(`FacilitatorTab`) are for the facilitator only; `MovesTab` is for a player who
+holds a sheet. The event log is not a tool — it fills the right panel.
 -}
-type RightPanelTab
-    = NpcsLocationsTab
-    | SessionTab
+type ToolTab
+    = SheetTab
+    | FacilitatorTab
+    | MovesTab
+    | CastTab
+    | ContextTab
     | GuideTab
-
-
-{-| Which of the left panel's three cards an accordion toggle names (24, 1c).
--}
-type LeftSection
-    = FacilitatorSection
-    | CharactersSection
-    | MovesSection
-
-
-{-| Open/closed state for each of the left panel's three accordion sections.
-Facilitator and Characters default open; Moves defaults closed, since a
-player checks it far less often than their own sheet.
--}
-type alias LeftSections =
-    { facilitator : Bool
-    , characters : Bool
-    , moves : Bool
-    }
 
 
 
@@ -576,10 +547,8 @@ type Msg
     | RequestConfirm String
     | CancelConfirm
     | DismissError
-    | ToggleGuide
     | ToggleSessionControls
-    | SelectRightPanelTab RightPanelTab
-    | ToggleLeftSection LeftSection
+    | SelectTool ToolTab
     | DividerDragStarted
     | DividerDragged Float
     | DividerDragEnded

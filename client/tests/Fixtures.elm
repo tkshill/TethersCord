@@ -23,7 +23,7 @@ import Types
         , Flags
         , GameState
         , Model
-        , RightPanelTab(..)
+        , ToolTab(..)
         , Role(..)
         )
 
@@ -114,14 +114,12 @@ model =
     , newSessionAspectKind = Boon
     , loadingHistory = False
     , noMoreHistory = False
-    , guideExpanded = False
     , aspectExamplesOpen = Nothing
     , connection = Connected
     , gameStateAttempts = 0
     , timeZone = Time.utc
-    , rightPanelTab = NpcsLocationsTab
-    , openLeftSections = { facilitator = True, characters = True, moves = False }
-    , leftPanelWidth = 420
+    , toolTab = SheetTab
+    , leftPanelWidth = 320
     , draggingDivider = False
     }
 

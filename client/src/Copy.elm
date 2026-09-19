@@ -89,11 +89,6 @@ loadingTable =
     "Loading the table…"
 
 
-appTitle : String
-appTitle =
-    "Tethers"
-
-
 reconnecting : String
 reconnecting =
     "Reconnecting to the table…"
@@ -119,21 +114,11 @@ messagePlaceholder =
     "Write a message…"
 
 
-send : String
-send =
-    "Send"
-
-
 
 -- TOP BAR (View/TopBar.elm) — the running session's goal and the shared
 -- stone pool, both moved off the old Session / Stones cards by roadmap
 -- section 23.6. Session start / end / goal-edit sit behind the bar's
 -- expander so it stays one line at rest.
-
-
-goalLabel : String
-goalLabel =
-    "Goal: "
 
 
 endSession : String
@@ -161,9 +146,17 @@ saveGoal =
     "Save goal"
 
 
-bagOf : Int -> String
-bagOf n =
-    String.fromInt n ++ " in the pool"
+{-| The status strip's tooltip over the pool marks. -}
+bagTip : Int -> Int -> String
+bagTip boons banes =
+    "The pool: " ++ String.fromInt boons ++ " Boon, " ++ String.fromInt banes ++ " Bane"
+
+
+{-| The strip's tooltip on the running goal for the facilitator, who can click
+it to open the session controls. -}
+goalTip : String
+goalTip =
+    "Session goal — click to edit"
 
 
 
@@ -180,9 +173,9 @@ sessionHistoryTitle =
 -- SESSION BOONS & BANES CARD (View/SessionAspects.elm)
 
 
-sessionAspectsTitle : String
-sessionAspectsTitle =
-    "Session boons & banes"
+noSessionAspects : String
+noSessionAspects =
+    "No session boons or banes yet."
 
 
 {-| The mark on a session boon or bane that has been spent into the pool. It
@@ -244,6 +237,11 @@ accept =
 proposalsTitle : String
 proposalsTitle =
     "Proposals"
+
+
+noProposals : String
+noProposals =
+    "Nothing is waiting on you."
 
 
 sessionAspectContextPlaceholder : String
@@ -534,29 +532,70 @@ entityUnnamed =
 -- LOG CARD (View/Log.elm)
 
 
-logTitle : String
-logTitle =
-    "Log"
+
+-- TOOL STRIP (View.elm, roadmap section 27) — the label shown on the selected
+-- glyph tab, and the tooltip on each unselected one.
 
 
-
--- RIGHT PANEL TABS (View.elm) — roadmap section 24. `logTitle` above doubles
--- as the Log tab's label; these two are new, standing for the cards each tab
--- combines.
-
-
-npcsLocationsTabLabel : String
-npcsLocationsTabLabel =
-    "NPCs & Locations"
+sheetTabLabel : String
+sheetTabLabel =
+    "Sheet"
 
 
-sessionContextTabLabel : String
-sessionContextTabLabel =
-    "Session boons & banes"
+{-| The Facilitator tab's tooltip: how many proposals are waiting, so the count
+shows even while another tool is open. -}
+facilitatorTabTip : Int -> String
+facilitatorTabTip n =
+    case n of
+        0 ->
+            "Facilitator controls"
+
+        _ ->
+            "Facilitator controls — " ++ proposalsWaiting n
+
+
+movesTabTip : Int -> String
+movesTabTip boons =
+    "Moves — " ++ movesBoons boons
+
+
+castTabLabel : String
+castTabLabel =
+    "Cast"
+
+
+castTabTip : String
+castTabTip =
+    "Cast & locations"
+
+
+noCast : String
+noCast =
+    "The facilitator has not added any NPCs or locations yet."
+
+
+contextTabLabel : String
+contextTabLabel =
+    "Context"
+
+
+contextTabTip : Int -> String
+contextTabTip n =
+    case n of
+        1 ->
+            "Session context — 1 aspect"
+
+        _ ->
+            "Session context — " ++ String.fromInt n ++ " aspects"
 
 
 guideTabLabel : String
 guideTabLabel =
+    "Guide"
+
+
+guideTabTip : String
+guideTabTip =
     "How to play"
 
 

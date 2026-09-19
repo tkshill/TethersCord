@@ -1,22 +1,20 @@
 module Ui exposing
     ( accent
-    , baneDot
-    , baneFill
+    , baneMarks
     , banner
-    , boonDot
+    , boonMarks
     , confirmButton
-    , errorNote
-    , boonFill
-    , card
-    , cardFill
     , danger
     , divider
     , dragHandle
+    , errorNote
     , facilitatorTint
+    , flat
     , ghostButton
     , ink
     , inkSoft
     , line
+    , linkButton
     , lg
     , md
     , mono
@@ -24,21 +22,21 @@ module Ui exposing
     , onEnter
     , onScrolledToBottom
     , onlyWhen
+    , oneLine
     , page
+    , panel
+    , paper
     , press
     , primaryButton
     , sans
     , scrollArea
-    , scrollColumn
     , sectionTitle
     , shrinkable
     , sm
     , speakerColor
-    , liftedStone
-    , stoneChip
-    , stoneCircle
     , tab
-    , wash
+    , tint
+    , toolTab
     , withTip
     , xl
     , xs
@@ -147,29 +145,24 @@ accentText =
     rgb255 253 252 250
 
 
-{-| A light warm wash for a surface that groups shared table state, such as the
-top bar's stage.
+{-| A faint warm tint for a strip that sits apart from the paper — the proposal
+strip, the session-controls row, a highlighted log line.
 -}
-wash : Color
-wash =
-    rgb255 0xEE 0xE8 0xD8
+tint : Color
+tint =
+    rgb255 246 244 240
+
+
+{-| The chip behind the selected tool tab.
+-}
+selectedWash : Color
+selectedWash =
+    rgb255 235 232 226
 
 
 facilitatorTint : Color
 facilitatorTint =
     rgb255 122 74 44
-
-
-{-| Stone fills. A Boon is near-white on the paper surface; a Bane is near-black.
--}
-boonFill : Color
-boonFill =
-    rgb255 249 248 246
-
-
-baneFill : Color
-baneFill =
-    rgb255 42 42 46
 
 
 danger : Color
@@ -252,48 +245,26 @@ mono =
 -- LAYOUT
 
 
-{-| The outer frame (roadmap sections 23.5 / 24): `top` is a slim, non-scrolling
-strip (header, connection/status notes, the top bar) sized to its content;
-`columns` fills the rest of the viewport as a fixed-height row, each entry
-expected to be one `scrollColumn` (or, for a panel that manages its own
-scrolling region internally, an `Element.column [ height fill, width
-(fillPortion n) ]` built by the caller); `bottom` is a second slim,
-non-scrolling strip pinned under the row — the composer, since 24 moved it off
-the log column onto the page (any tab can send a message, not just the Log
-one). `html` / `body` need `height: 100%` themselves (`client/index.html`) for
-`height fill` to have a viewport to fill against.
+{-| The outer frame (roadmap section 27, mockup 2a): `top` is a slim,
+non-scrolling stack (the notes and the one-line status strip) sized to its
+content; `columns` fills the rest of the viewport as a fixed-height row of two
+panels and the drag handle between them, edge to edge with no outer padding.
+Each panel owns its own scrolling regions. `html` / `body` need `height: 100%`
+themselves (`client/index.html`) for `height fill` to have a viewport to fill
+against.
 -}
-page : { top : List (Element msg), columns : List (Element msg), bottom : List (Element msg) } -> Html msg
+page : { top : List (Element msg), columns : List (Element msg) } -> Html msg
 page sections =
     Element.layout
         [ Background.color paper
         , Font.color ink
         , Font.family sans
-        , Font.size 14
+        , Font.size 13
         , height fill
         ]
         (Element.column [ height fill, width fill ]
-            [ Element.column [ spacing lg, padding lg, width fill ] sections.top
-            , Element.row
-                [ height fill
-                , width fill
-                , spacing lg
-                , Element.paddingEach { top = 0, right = lg, bottom = lg, left = lg }
-                , shrinkable
-                ]
-                sections.columns
-            , if List.isEmpty sections.bottom then
-                Element.none
-
-              else
-                Element.column
-                    [ spacing lg
-                    , padding lg
-                    , width fill
-                    , Border.widthEach { top = 1, right = 0, bottom = 0, left = 0 }
-                    , Border.color line
-                    ]
-                    sections.bottom
+            [ Element.column [ width fill ] sections.top
+            , Element.row [ height fill, width fill, shrinkable ] sections.columns
             ]
         )
 
@@ -313,80 +284,61 @@ shrinkable =
     Element.htmlAttribute (Html.Attributes.style "min-height" "0")
 
 
-{-| One of the page's top-level independently-scrolling columns: a vertical
-stack of cards, `fillPortion`-wide, that scrolls on its own once its content
-overflows the viewport.
--}
-scrollColumn : Int -> List (Element msg) -> Element msg
-scrollColumn portion children =
-    Element.column
-        [ height fill
-        , width (Element.fillPortion portion)
-        , spacing lg
-        , Element.scrollbarY
-        , shrinkable
-        ]
-        children
-
-
-{-| As `scrollColumn`, but `width fill` instead of a `fillPortion` of the page
-row — for a scrolling stack of cards nested inside a panel that already owns
-its width itself, such as one tab's content in the right panel (roadmap
-section 24).
+{-| A vertical stack that fills its container and scrolls on its own once its
+content overflows — a tool panel's body. `shrinkable` is what lets it clip
+instead of growing.
 -}
 scrollArea : List (Element msg) -> Element msg
 scrollArea children =
     Element.column
         [ height fill
         , width fill
-        , spacing lg
+        , spacing sm
         , Element.scrollbarY
         , shrinkable
         ]
         children
 
 
-card : List (Element msg) -> Element msg
-card children =
-    Element.column
-        [ Background.color panel
-        , Border.color line
-        , Border.width 1
-        , Border.rounded 8
-        , padding lg
-        , spacing md
-        , width fill
-        ]
-        children
-
-
-{-| As `card`, but fills the height of its container instead of shrinking to
-its content — for the log card, the one card that fills a whole column
-(right, 23.5) rather than sitting in a scrolling stack of them.
+{-| A single line of text that ellipsises instead of wrapping when it is too long
+for its slot — the strip's goal and the proposal strip's summary. It sits in a
+`width fill` slot that may shrink below its content (`min-width: 0`); the text
+itself is a plain block so `text-overflow` applies, which a wrapping paragraph
+would not honour.
 -}
-cardFill : List (Element msg) -> Element msg
-cardFill children =
-    Element.column
-        [ Background.color panel
-        , Border.color line
-        , Border.width 1
-        , Border.rounded 8
-        , padding lg
-        , spacing md
-        , width fill
-        , height fill
-        , shrinkable
-        ]
-        children
+oneLine : List (Attribute msg) -> String -> Element msg
+oneLine attrs content =
+    el
+        (width fill
+            :: Element.htmlAttribute (Html.Attributes.style "min-width" "0")
+            :: attrs
+        )
+        (Element.html
+            (Html.div
+                [ Html.Attributes.style "white-space" "nowrap"
+                , Html.Attributes.style "overflow" "hidden"
+                , Html.Attributes.style "text-overflow" "ellipsis"
+                ]
+                [ Html.text content ]
+            )
+        )
+
+
+{-| A tool's content: a plain stack with no surface of its own. The panel it
+sits in supplies the background and the edges, so the tools stay flat.
+-}
+flat : List (Element msg) -> Element msg
+flat children =
+    Element.column [ spacing sm, width fill ] children
 
 
 sectionTitle : String -> Element msg
 sectionTitle label =
     el
-        [ Font.size 12
+        [ Font.size 10
         , Font.semiBold
         , Font.color inkSoft
-        , Font.letterSpacing 0.8
+        , Font.letterSpacing 0.5
         ]
         (text (String.toUpper label))
 
@@ -396,7 +348,7 @@ Always the quiet tone — failures are shown separately by `errorNote`.
 -}
 banner : String -> Element msg
 banner status =
-    el [ Font.size 12, Font.color inkSoft ] (text status)
+    el [ Font.size 11, Font.color inkSoft ] (text status)
 
 
 {-| A transient failure note, shown in the danger tone beneath the status line.
@@ -406,7 +358,7 @@ errorNote : Maybe String -> Element msg
 errorNote maybeError =
     case maybeError of
         Just message ->
-            el [ Font.size 12, Font.color danger ] (text message)
+            el [ Font.size 11, Font.color danger ] (text message)
 
         Nothing ->
             Element.none
@@ -425,8 +377,9 @@ divider label =
         ]
 
 
-{-| The draggable handle between two resizable panels (roadmap section 24, the
-1c layout variant): a slim `cursor: col-resize` strip with a small grip mark.
+{-| The draggable handle between two resizable panels (roadmap section 24, kept
+by 27): a slim `cursor: col-resize` strip that reads as the hairline between the
+panels.
 `onStart` fires on mousedown; the caller tracks the mouse from there for as
 long as its own "is this dragging" flag stays true (`Main.subscriptions`),
 since a handle this size cannot itself receive the `mousemove` events once the
@@ -435,7 +388,7 @@ pointer leaves it.
 dragHandle : msg -> Element msg
 dragHandle onStart =
     el
-        [ width (Element.px 9)
+        [ width (Element.px 5)
         , height fill
         , Element.htmlAttribute (Html.Attributes.style "cursor" "col-resize")
         , Element.htmlAttribute (Html.Events.on "mousedown" (Decode.succeed onStart))
@@ -443,10 +396,9 @@ dragHandle onStart =
         (el
             [ Element.centerX
             , Element.centerY
-            , width (Element.px 3)
-            , Element.height (Element.px 28)
+            , width (Element.px 1)
+            , height fill
             , Background.color line
-            , Border.rounded 3
             ]
             Element.none
         )
@@ -472,10 +424,10 @@ primaryButton config =
     Input.button
         [ Background.color accent
         , Font.color accentText
-        , Font.size 13
+        , Font.size 12
         , Font.semiBold
-        , paddingXY_ md sm
-        , Border.rounded 6
+        , paddingXY_ 9 3
+        , Border.rounded 4
         , Element.mouseOver [ Background.color ink ]
         ]
         { onPress = config.onPress, label = text config.label }
@@ -486,12 +438,25 @@ ghostButton config =
     Input.button
         [ Background.color panel
         , Font.color ink
-        , Font.size 13
-        , paddingXY_ md sm
+        , Font.size 12
+        , paddingXY_ 8 2
         , Border.color line
         , Border.width 1
-        , Border.rounded 6
+        , Border.rounded 4
         , Element.mouseOver [ Border.color accent, Font.color accent ]
+        ]
+        { onPress = config.onPress, label = text config.label }
+
+
+{-| A quiet text action for a row's own controls (Use, Undo, withdraw): no
+border, muted until hovered.
+-}
+linkButton : { onPress : Maybe msg, label : String } -> Element msg
+linkButton config =
+    Input.button
+        [ Font.size 11
+        , Font.color inkSoft
+        , Element.mouseOver [ Font.color accent ]
         ]
         { onPress = config.onPress, label = text config.label }
 
@@ -515,10 +480,10 @@ confirmButton config =
             [ Input.button
                 [ Background.color danger
                 , Font.color accentText
-                , Font.size 13
+                , Font.size 12
                 , Font.semiBold
-                , paddingXY_ md sm
-                , Border.rounded 6
+                , paddingXY_ 9 3
+                , Border.rounded 4
                 ]
                 { onPress = Just config.onConfirm, label = text config.confirm }
             , ghostButton { onPress = Just config.onCancel, label = "Cancel" }
@@ -528,124 +493,91 @@ confirmButton config =
         ghostButton { onPress = Just config.onArm, label = config.idle }
 
 
-{-| One entry in a tab strip. The selected tab reads as the accent button; the
-rest are quiet until hovered.
+{-| One entry in a compact tab strip (the character slots on the Sheet): the
+selected one reads as the accent button, the rest are quiet until hovered.
 -}
 tab : Bool -> String -> msg -> Element msg
 tab selected label msg =
     Input.button
-        [ Font.size 12
-        , paddingXY_ md xs
-        , Border.rounded 6
-        , Border.width 1
-        , Background.color
-            (if selected then
-                accent
-
-             else
-                panel
-            )
-        , Font.color
+        ([ Font.size 12
+         , paddingXY_ 7 2
+         , Border.rounded 4
+         , Font.color
             (if selected then
                 accentText
 
              else
                 inkSoft
             )
-        , Border.color
+         , Background.color
             (if selected then
                 accent
 
              else
-                line
+                Element.rgba255 0 0 0 0
             )
-        , Element.mouseOver
-            (if selected then
-                []
+         ]
+            ++ (if selected then
+                    [ Font.semiBold ]
 
-             else
-                [ Border.color accent, Font.color accent ]
-            )
-        ]
+                else
+                    [ Element.mouseOver [ Font.color ink ] ]
+               )
+        )
         { onPress = Just msg, label = text label }
 
 
-{-| A stone: a filled circle with its name captioned beneath. `swatch` is the
-fill.
+{-| One glyph tab in the tool strip (mockup 2a). The selected tool shows its
+glyph and its name on a tinted chip; the others are a bare glyph, named by `tip`
+(a native tooltip, which is also where a count such as "1 proposal waiting"
+goes).
 -}
-stoneChip : Color -> String -> Element msg
-stoneChip swatch label =
-    labeledStone swatch False label
+toolTab : { glyph : String, label : String, tip : String, selected : Bool, onPress : msg } -> Element msg
+toolTab config =
+    Input.button
+        ([ Element.htmlAttribute (Html.Attributes.title config.tip)
+         , Border.rounded 4
+         , Font.color
+            (if config.selected then
+                ink
 
+             else
+                inkSoft
+            )
+         ]
+            ++ (if config.selected then
+                    [ Background.color selectedWash, Font.size 12, Font.semiBold, paddingXY_ 8 3 ]
 
-labeledStone : Color -> Bool -> String -> Element msg
-labeledStone swatch marked label =
-    Element.column
-        [ spacing xs, Font.size 10, Font.color inkSoft ]
-        [ el [ Element.centerX ] (stoneCircle swatch marked 22)
-        , el [ Element.centerX ] (text label)
-        ]
-
-
-{-| A small boon circle with no caption, for the row of boons on a character
-sheet.
--}
-boonDot : Element msg
-boonDot =
-    stoneCircle boonFill False 16
-
-
-{-| A small bane circle with no caption, for the Banes an aspect carries
-(section 19).
--}
-baneDot : Element msg
-baneDot =
-    stoneCircle baneFill False 12
-
-
-{-| The bare circle both stone shapes are built from. `marked` draws an accent
-centre dot; `size` is the diameter in pixels.
--}
-stoneCircle : Color -> Bool -> Int -> Element msg
-stoneCircle swatch marked size =
-    el
-        [ width (Element.px size)
-        , Element.height (Element.px size)
-        , Background.color swatch
-        , Border.color line
-        , Border.width 1
-        , Border.rounded 999
-        ]
-        (if marked then
-            el
-                [ Element.centerX
-                , Element.centerY
-                , width (Element.px (Basics.max 4 (size // 3)))
-                , Element.height (Element.px (Basics.max 4 (size // 3)))
-                , Background.color accent
-                , Border.rounded 999
-                ]
-                Element.none
-
-         else
-            Element.none
+                else
+                    [ width (Element.px 26)
+                    , paddingXY_ 0 3
+                    , Font.size 13
+                    , Element.mouseOver [ Background.color tint, Font.color ink ]
+                    ]
+               )
         )
+        { onPress = Just config.onPress
+        , label =
+            if config.selected then
+                text (config.glyph ++ " " ++ config.label)
+
+            else
+                el [ Element.centerX ] (text config.glyph)
+        }
 
 
-{-| A drawn stone, lifted clear of the pool: a larger disc ringed in the accent
-colour, so a pending Overcome's draw reads as "taken out of the bag".
+{-| The run of `+` marks for `n` boons, the table's boon shorthand (bag, sheet).
 -}
-liftedStone : Color -> Element msg
-liftedStone swatch =
-    el
-        [ width (Element.px 44)
-        , Element.height (Element.px 44)
-        , Background.color swatch
-        , Border.color accent
-        , Border.width 3
-        , Border.rounded 999
-        ]
-        Element.none
+boonMarks : Int -> Element msg
+boonMarks n =
+    el [ Font.letterSpacing 2 ] (text (String.repeat (Basics.max 0 n) "+"))
+
+
+{-| The run of `−` marks for `n` banes, in the danger tone.
+-}
+baneMarks : Int -> Element msg
+baneMarks n =
+    el [ Font.letterSpacing 2, Font.color danger ] (text (String.repeat (Basics.max 0 n) "−"))
 
 
 paddingXY_ : Int -> Int -> Attribute msg

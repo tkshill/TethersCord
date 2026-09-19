@@ -1,6 +1,6 @@
 module View.Session exposing (view)
 
-{-| The Session history card — the table's completed sessions, newest first.
+{-| The Session history, under the Context tool — the table's completed sessions, newest first.
 All that is left of the old Session card once its running goal and start /
 end / edit controls moved to the top bar (`View.TopBar`, roadmap section
 23.6); a session's goal is free text with no roll or verdict tied to ending
@@ -23,7 +23,7 @@ view ctx gs =
         none
 
     else
-        Ui.card
+        Ui.flat
             (Ui.sectionTitle Copy.sessionHistoryTitle
                 :: List.map (pastSessionRow ctx.zone) gs.sessionHistory
             )

@@ -1,29 +1,26 @@
 module View.Characters exposing (view)
 
-{-| The Characters card: a tab strip over the three sheets and the selected
-sheet itself — owner row, boons (facilitator Grant only, for now — see
-`highlightControls`), the text fields, and the three aspects with their
-accumulated Banes. Collapsible as one of the left panel's three accordion
-sections (roadmap section 24, the 1c layout variant).
+{-| The Sheet tool (roadmap section 27): a strip of character slots over the
+selected sheet — owner row, boons (facilitator Grant only, for now — see
+`boonsBlock`), and the fields, each a label and a hairline input. An aspect
+shows the Banes it has accumulated as `−` marks at its end.
 -}
 
 import Copy
-import Element exposing (Element, el, fill, height, none, padding, px, spacing, text, width)
-import Element.Border as Border
+import Element exposing (Element, el, fill, height, px, spacing, text, width)
 import Element.Font as Font
 import Element.Input as Input
 import Format
+import Html.Attributes
 import Types exposing (..)
 import Ui
 import View.Helpers
     exposing
         ( ViewContext
-        , accordionHeader
         , characterLabel
-        , glossaryTitle
+        , inlineInputAttrs
         , inputAttrs
         , placeholder
-        , tip
         , tipAttrs
         )
 
@@ -31,39 +28,36 @@ import View.Helpers
 type alias Props =
     { selectedSlot : Int
     , aspectExamplesOpen : Maybe ( Int, Aspect )
-    , open : Bool
     }
+
+
+{-| Width of the label column, so every field's value starts at the same x.
+-}
+labelWidth : Int
+labelWidth =
+    104
 
 
 view : ViewContext -> Props -> GameState -> Element Msg
 view ctx props gs =
-    Ui.card
-        (accordionHeader props.open (glossaryTitle Copy.charactersTitle "Aspect") (ToggleLeftSection CharactersSection)
-            :: (if props.open then
-                    [ let
-                        selected =
-                            case List.filter (\c -> c.slot == props.selectedSlot) gs.characters of
-                                first :: _ ->
-                                    Just first
+    let
+        selected =
+            case List.filter (\c -> c.slot == props.selectedSlot) gs.characters of
+                first :: _ ->
+                    Just first
 
-                                [] ->
-                                    List.head gs.characters
-                      in
-                      Element.column [ spacing Ui.md, width fill ]
-                        [ tabStrip ctx.myId props.selectedSlot gs.characters
-                        , case selected of
-                            Just ch ->
-                                characterSheet ctx.facilitator ctx.myId props.aspectExamplesOpen gs ch
+                [] ->
+                    List.head gs.characters
+    in
+    Ui.flat
+        [ tabStrip ctx.myId props.selectedSlot gs.characters
+        , case selected of
+            Just ch ->
+                characterSheet ctx.facilitator ctx.myId props.aspectExamplesOpen ch
 
-                            Nothing ->
-                                placeholder Copy.noCharacterSheets
-                        ]
-                    ]
-
-                else
-                    []
-               )
-        )
+            Nothing ->
+                placeholder Copy.noCharacterSheets
+        ]
 
 
 {-| One tab per sheet, labelled by character name (or a slot number until one is
@@ -87,8 +81,8 @@ tabLabel myId ch =
         characterLabel ch
 
 
-characterSheet : Bool -> Maybe String -> Maybe ( Int, Aspect ) -> GameState -> CharacterSheet -> Element Msg
-characterSheet facilitator myId aspectExamplesOpen gs ch =
+characterSheet : Bool -> Maybe String -> Maybe ( Int, Aspect ) -> CharacterSheet -> Element Msg
+characterSheet facilitator myId aspectExamplesOpen ch =
     let
         mine =
             ch.ownerId /= Nothing && ch.ownerId == myId
@@ -96,14 +90,7 @@ characterSheet facilitator myId aspectExamplesOpen gs ch =
         editable =
             facilitator || mine || ch.ownerId == Nothing
     in
-    Element.column
-        [ spacing Ui.sm
-        , padding Ui.md
-        , width fill
-        , Border.color Ui.line
-        , Border.width 1
-        , Border.rounded 6
-        ]
+    Element.column [ spacing Ui.xs, width fill ]
         [ ownerRow facilitator mine ch
         , boonsBlock facilitator ch
         , field editable ch NameField "" "Name" ch.name
@@ -116,9 +103,9 @@ characterSheet facilitator myId aspectExamplesOpen gs ch =
         ]
 
 
-{-| An aspect field: the input, its accumulated Banes as dots beneath, and —
-while the sheet is editable — a "see examples" toggle that opens a short list of
-sample aspects from `ASPECTS.md` to write against.
+{-| An aspect field: the input, its accumulated Banes as `−` marks at the end
+of the row, and — while the sheet is editable — a "see examples" toggle that
+opens a short list of sample aspects from `ASPECTS.md` to write against.
 -}
 aspectField : Bool -> Maybe ( Int, Aspect ) -> CharacterSheet -> Aspect -> CharacterField -> String -> Element Msg
 aspectField editable examplesOpen ch aspect fieldTag value =
@@ -126,23 +113,24 @@ aspectField editable examplesOpen ch aspect fieldTag value =
         count =
             aspectBaneCount aspect ch.aspectBanes
 
-        extras =
+        banes =
             if count > 0 then
-                [ Element.row [ spacing Ui.xs, Element.centerY ]
-                    (List.repeat count Ui.baneDot
-                        ++ [ el [ Font.size 10, Font.color Ui.inkSoft ]
-                                (text (String.fromInt count ++ " " ++ Format.pluralize count Copy.baneStone))
-                           ]
-                    )
+                [ el
+                    [ Element.centerY
+                    , Font.size 12
+                    , Element.htmlAttribute
+                        (Html.Attributes.title (String.fromInt count ++ " " ++ Format.pluralize count Copy.baneStone ++ " on this aspect"))
+                    ]
+                    (Ui.baneMarks count)
                 ]
 
             else
                 []
     in
     Element.column [ spacing Ui.xs, width fill ]
-        (field editable ch fieldTag (aspectLabel aspect) (aspectLabel aspect) value
-            :: extras
-            ++ aspectExamplesBlock editable examplesOpen ch.slot aspect
+        (Element.row [ width fill, spacing Ui.xs ]
+            (field editable ch fieldTag (aspectLabel aspect) (aspectLabel aspect) value :: banes)
+            :: aspectExamplesBlock editable examplesOpen ch.slot aspect
         )
 
 
@@ -160,26 +148,21 @@ aspectExamplesBlock editable examplesOpen slot aspect =
             open =
                 examplesOpen == Just ( slot, aspect )
         in
-        Input.button
-            [ Font.size 11
-            , Font.color Ui.inkSoft
-            , Font.underline
-            , Element.mouseOver [ Font.color Ui.accent ]
-            ]
-            { onPress = Just (ToggleAspectExamples slot aspect)
-            , label =
-                text
-                    (if open then
+        el [ Element.paddingEach { top = 0, right = 0, bottom = 0, left = labelWidth + 4 } ]
+            (Ui.linkButton
+                { onPress = Just (ToggleAspectExamples slot aspect)
+                , label =
+                    if open then
                         Copy.aspectExamplesHideLabel
 
-                     else
+                    else
                         Copy.aspectExamplesLabel
-                    )
-            }
+                }
+            )
             :: (if open then
                     [ Element.column
                         [ spacing Ui.xs
-                        , Element.paddingEach { top = Ui.xs, right = 0, bottom = Ui.xs, left = Ui.sm }
+                        , Element.paddingEach { top = Ui.xs, right = 0, bottom = Ui.xs, left = labelWidth + 4 + Ui.sm }
                         ]
                         (List.map exampleRow (Copy.aspectExamples aspect))
                     ]
@@ -239,7 +222,7 @@ field : Bool -> CharacterSheet -> CharacterField -> String -> String -> String -
 field editable ch fieldTag tipKey label value =
     if editable then
         Input.text
-            (inputAttrs ++ tipAttrs tipKey ++ [ Ui.onBlur (CharacterFieldBlur ch.slot) ])
+            (inlineInputAttrs ++ tipAttrs tipKey ++ [ width fill, Ui.onBlur (CharacterFieldBlur ch.slot) ])
             { onChange = CharacterFieldInput ch.slot fieldTag
             , text = value
             , placeholder = Nothing
@@ -254,7 +237,7 @@ notesField : Bool -> CharacterSheet -> Element Msg
 notesField editable ch =
     if editable then
         Input.multiline
-            (inputAttrs ++ [ height (px 72), Ui.onBlur (CharacterFieldBlur ch.slot) ])
+            (inputAttrs ++ [ height (px 64), width fill, Ui.onBlur (CharacterFieldBlur ch.slot) ])
             { onChange = CharacterFieldInput ch.slot NotesField
             , text = ch.notes
             , placeholder = Nothing
@@ -268,10 +251,11 @@ notesField editable ch =
 
 readOnlyField : String -> String -> String -> Element msg
 readOnlyField tipKey label value =
-    Element.column (spacing Ui.xs :: width fill :: tipAttrs tipKey)
-        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text label)
+    Element.row (spacing Ui.xs :: width fill :: tipAttrs tipKey)
+        [ el [ width (px labelWidth), Element.alignTop, Font.size 10, Font.color Ui.inkSoft, Font.letterSpacing 0.5 ]
+            (text (String.toUpper label))
         , Element.paragraph
-            (inputAttrs ++ [ Font.color Ui.inkSoft ])
+            [ Font.size 13, Element.paddingXY 4 2, Font.color Ui.inkSoft ]
             [ text
                 (if String.trim value == "" then
                     "—"
@@ -284,40 +268,33 @@ readOnlyField tipKey label value =
 
 
 {-| A character's boons, at the top of the sheet where a player can see what
-they can spend on a move. The boons show as circles. Only the facilitator gets a
+they can spend on a move, as a run of `+` marks. Only the facilitator gets a
 control here (Grant `+` / `−`); a player moves their own boons through the moves
-in the Moves card.
+in the Moves tool.
 -}
 boonsBlock : Bool -> CharacterSheet -> Element Msg
 boonsBlock facilitator ch =
-    Element.column [ spacing Ui.xs, width fill ]
-        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.boonsLabel)
-        , boonCircles ch.fate
-        , Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
-            (grantControls facilitator ch)
-        ]
+    Element.row [ width fill, spacing Ui.xs, Element.centerY ]
+        (el [ width (px labelWidth), Font.size 10, Font.color Ui.inkSoft, Font.letterSpacing 0.5 ]
+            (text (String.toUpper Copy.boonsLabel))
+            :: (if ch.fate <= 0 then
+                    el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.boonsNone)
 
-
-{-| `total` boon circles.
--}
-boonCircles : Int -> Element msg
-boonCircles total =
-    if total <= 0 then
-        el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.boonsNone)
-
-    else
-        Element.wrappedRow [ spacing Ui.xs ]
-            (List.range 1 total
-                |> List.map (\_ -> Ui.boonDot)
-            )
+                else
+                    el [ Font.size 14 ] (Ui.boonMarks ch.fate)
+               )
+            :: grantControls facilitator ch
+        )
 
 
 grantControls : Bool -> CharacterSheet -> List (Element Msg)
 grantControls facilitator ch =
     if facilitator then
-        [ el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.grant)
-        , Ui.ghostButton { onPress = Just (FateDecrement ch.slot), label = "−" }
-        , Ui.ghostButton { onPress = Just (FateIncrement ch.slot), label = "+" }
+        [ Element.row [ Element.alignRight, spacing Ui.xs ]
+            [ el [ Font.size 10, Font.color Ui.inkSoft ] (text Copy.grant)
+            , Ui.ghostButton { onPress = Just (FateDecrement ch.slot), label = "−" }
+            , Ui.ghostButton { onPress = Just (FateIncrement ch.slot), label = "+" }
+            ]
         ]
 
     else
@@ -326,4 +303,5 @@ grantControls facilitator ch =
 
 fieldLabel : String -> Input.Label msg
 fieldLabel label =
-    Input.labelAbove [ Font.size 11, Font.color Ui.inkSoft ] (text label)
+    Input.labelLeft [ width (px labelWidth), Element.centerY, Font.size 10, Font.color Ui.inkSoft, Font.letterSpacing 0.5 ]
+        (text (String.toUpper label))

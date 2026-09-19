@@ -1,13 +1,13 @@
 module View.Entities exposing (view)
 
-{-| A facilitator-owned reference card — the cast (`Npc`) or the map
+{-| A facilitator-owned reference list — the cast (`Npc`) or the map
 (`Location`). The facilitator gets an editable list with an Add button and a
-Delete per row; players get a plain read-only list, and the card is hidden from
+Delete per row; players get a plain read-only list, and the list is hidden from
 them entirely while it is empty.
 -}
 
 import Copy
-import Element exposing (Element, el, fill, height, none, padding, px, spacing, text, width)
+import Element exposing (Element, el, fill, height, none, px, spacing, text, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
@@ -34,7 +34,7 @@ view ctx kind gs =
         none
 
     else
-        Ui.card
+        Ui.flat
             (Ui.sectionTitle title
                 :: (if List.isEmpty entities then
                         [ placeholder (Copy.noEntitiesYet title) ]
@@ -61,12 +61,11 @@ entityRow : EntityKind -> Bool -> TableEntity -> Element Msg
 entityRow kind facilitator entity =
     let
         boxAttrs =
-            [ spacing Ui.sm
-            , padding Ui.md
+            [ spacing Ui.xs
+            , Element.paddingEach { top = 0, right = 0, bottom = Ui.sm, left = 0 }
             , width fill
+            , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
             , Border.color Ui.line
-            , Border.width 1
-            , Border.rounded 6
             ]
     in
     if facilitator then
@@ -85,7 +84,7 @@ entityRow kind facilitator entity =
                     (Ui.ghostButton { onPress = Just (DeleteEntity kind entity.id), label = Copy.entityDelete })
                 ]
             , Input.multiline
-                (inputAttrs ++ [ height (px 60), Ui.onBlur (EntityFieldBlur kind entity.id) ])
+                (inputAttrs ++ [ height (px 56), Ui.onBlur (EntityFieldBlur kind entity.id) ])
                 { onChange = EntityFieldInput kind entity.id EntityNotesField
                 , text = entity.notes
                 , placeholder = Just (Input.placeholder [] (text "Notes"))
