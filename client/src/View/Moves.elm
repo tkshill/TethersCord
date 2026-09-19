@@ -1,6 +1,6 @@
 module View.Moves exposing (view)
 
-{-| The Moves card, shown once the viewer holds a sheet (roadmap 26.3): a real
+{-| The Moves tool (roadmap section 27, the ▲ tab), shown once the viewer holds a sheet (roadmap 26.3): a real
 button for each player move — Highlight, Complicate, Add Detail, Alter Fate and
 Use Session Boon. Each one queues a proposal for the facilitator; nothing lands
 until they accept it, and the cost of a move is paid only then (`RULES.md`).
@@ -8,12 +8,13 @@ until they accept it, and the cost of a move is paid only then (`RULES.md`).
 A move a player cannot afford is disabled here rather than refused after the
 fact: the Worker checks the cost when the proposal is raised and again when it is
 accepted, but the button says so first. Overcome is not one of these — it needs
-no approval and lives on the stage in `View.TopBar`.
+no approval and lives on the status strip in `View.TopBar`.
 -}
 
 import Action exposing (Action(..))
 import Copy
 import Element exposing (Element, el, fill, none, spacing, text, width)
+import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
 import Kind
@@ -23,7 +24,6 @@ import Ui
 import View.Helpers
     exposing
         ( ViewContext
-        , accordionHeaderWith
         , characterLabel
         , countProposals
         , inputAttrs
@@ -34,8 +34,7 @@ import View.Helpers
 
 
 type alias Props =
-    { open : Bool
-    , addDetailDraft : String
+    { addDetailDraft : String
     }
 
 
@@ -60,35 +59,22 @@ view : ViewContext -> Props -> GameState -> Element Msg
 view ctx props gs =
     case myOwnedSheet ctx.myId gs of
         Nothing ->
-            -- The facilitator has no sheet and no use for the card; a player who
+            -- The facilitator has no sheet and no use for the tool; a player who
             -- has not claimed one is told why it is empty.
             if ctx.facilitator then
                 none
 
             else
-                Ui.card
-                    [ Ui.sectionTitle Copy.movesTitle
-                    , el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.claimASheetForMoves)
-                    ]
+                el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.claimASheetForMoves)
 
         Just ch ->
-            Ui.card
-                (accordionHeaderWith props.open
-                    (Ui.sectionTitle Copy.movesTitle)
-                    (ToggleLeftSection MovesSection)
-                    (el [ Font.size 11, Font.color Ui.inkSoft ] (text (Copy.movesBoons ch.fate)))
-                    :: (if props.open then
-                            [ highlightRow ctx gs ch
-                            , complicateRow ctx gs ch
-                            , addDetailRow ctx props gs ch
-                            , alterRow ctx gs ch
-                            , useSessionBoonRow ctx gs
-                            ]
-
-                        else
-                            []
-                       )
-                )
+            Ui.flat
+                [ highlightRow ctx gs ch
+                , complicateRow ctx gs ch
+                , addDetailRow ctx props gs ch
+                , alterRow ctx gs ch
+                , useSessionBoonRow ctx gs
+                ]
 
 
 myOwnedSheet : Maybe String -> GameState -> Maybe CharacterSheet
@@ -103,7 +89,13 @@ then whatever controls it has.
 -}
 moveBlock : String -> String -> List (Element Msg) -> Element Msg
 moveBlock name blurb controls =
-    Element.column [ spacing Ui.xs, width fill ]
+    Element.column
+        [ spacing Ui.xs
+        , width fill
+        , Element.paddingEach { top = 0, right = 0, bottom = Ui.sm, left = 0 }
+        , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
+        , Border.color Ui.line
+        ]
         (Element.paragraph [ Font.size 12 ]
             [ tip name (el [ Font.semiBold ] (text name))
             , el [ Font.color Ui.inkSoft ] (text ("  " ++ blurb))

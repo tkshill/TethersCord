@@ -1,10 +1,10 @@
 module View.Log exposing (logDomId, view)
 
-{-| The Log card: the header with the facilitator's confirm-gated Clear log, the
-"load earlier messages" affordance, and the scrolling body of day-divided,
-speaker-coloured rows (folded behind `Element.Lazy`). The whole right column
-(roadmap section 23.5), so the card fills its height rather than shrinking to
-content.
+{-| The event log (roadmap section 27, mockup 2a): the right panel's body — day
+dividers and one line per message, `time name text`, the name in the speaker's
+colour — with the "load earlier messages" affordance at the top and, for the
+facilitator, a confirm-gated Clear log. Flat, not a card: the panel is the
+surface. The composer is pinned beneath it by `View`.
 -}
 
 import Copy
@@ -45,16 +45,21 @@ type alias Props =
 
 view : ViewContext -> Props -> GameState -> Element Msg
 view ctx props gs =
-    Ui.cardFill
-        [ logHeader ctx.facilitator props.confirming gs
+    Element.column [ width fill, height fill, Ui.shrinkable ]
+        [ if ctx.facilitator && not (List.isEmpty gs.messages) then
+            clearLogRow props.confirming
+
+          else
+            none
         , if List.isEmpty gs.messages then
-            placeholder Copy.noMessages
+            el [ Element.padding 14 ] (placeholder Copy.noMessages)
 
           else
             Element.column
                 [ width fill
                 , height fill
-                , spacing Ui.sm
+                , spacing 7
+                , Element.paddingXY 14 10
                 , Element.scrollbarY
                 , Ui.shrinkable
                 , Element.htmlAttribute (Html.Attributes.id logDomId)
@@ -73,7 +78,7 @@ list. A socket broadcast still decodes a fresh list, so it does not help there.
 -}
 lazyLogBody : Time.Zone -> List Message -> Element Msg
 lazyLogBody zone messages =
-    Element.column [ width fill, spacing Ui.sm ]
+    Element.column [ width fill, spacing 7 ]
         (logRows zone (speakerColors messages) messages)
 
 
@@ -95,30 +100,17 @@ loadEarlierRow loadingHistory noMoreHistory messages =
             )
 
 
-logHeader : Bool -> Maybe String -> GameState -> Element Msg
-logHeader facilitator confirming gs =
-    let
-        hasMessages =
-            not (List.isEmpty gs.messages)
-    in
-    Element.row [ width fill, spacing Ui.md ]
-        (Ui.sectionTitle Copy.logTitle
-            :: (if facilitator && hasMessages then
-                    [ el [ Element.alignRight ]
-                        (Ui.confirmButton
-                            { armed = confirming == Just "clear-log"
-                            , idle = Copy.clearLog
-                            , confirm = Copy.clearLog
-                            , onArm = RequestConfirm "clear-log"
-                            , onConfirm = ClearLog
-                            , onCancel = CancelConfirm
-                            }
-                        )
-                    ]
-
-                else
-                    []
-               )
+clearLogRow : Maybe String -> Element Msg
+clearLogRow confirming =
+    el [ Element.alignRight, Element.paddingXY 10 4 ]
+        (Ui.confirmButton
+            { armed = confirming == Just "clear-log"
+            , idle = Copy.clearLog
+            , confirm = Copy.clearLog
+            , onArm = RequestConfirm "clear-log"
+            , onConfirm = ClearLog
+            , onCancel = CancelConfirm
+            }
         )
 
 
@@ -177,17 +169,18 @@ messageRow zone colors msg =
         nameColor =
             Dict.get msg.authorId colors |> Maybe.withDefault Ui.ink
     in
-    Element.row [ width fill, spacing Ui.md ]
+    Element.row [ width fill, spacing 10 ]
         [ el
             [ Font.family Ui.mono
             , Font.size 11
             , Font.color Ui.inkSoft
             , Element.alignTop
-            , width (px 44)
+            , Element.paddingEach { top = 1, right = 0, bottom = 0, left = 0 }
+            , width (px 38)
             ]
             (text (Format.clock zone msg.createdAt))
-        , Element.paragraph [ spacing 3, Font.size 13 ]
-            [ el [ Font.semiBold, Font.color nameColor ] (text (msg.authorName ++ ": "))
+        , Element.paragraph [ spacing 4, Font.size 13 ]
+            [ el [ Font.semiBold, Font.color nameColor ] (text (msg.authorName ++ " "))
             , text msg.content
             ]
         ]

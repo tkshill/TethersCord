@@ -10,6 +10,15 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **Minimalist two-panel UI** (roadmap section 27, mockup 2a). The card-based
+  layout is replaced by a one-line status strip (goal, pool as `+` / `−` marks,
+  Overcome, who you are) over two flat panels: a 320px tool panel with glyph tabs
+  (Sheet, Facilitator, Moves, Cast, Context, Guide — one at a time) and the event
+  log with the composer pinned beneath it. The facilitator keeps a one-line
+  Accept / Reject strip for the oldest waiting proposal under every tool but the
+  Facilitator tab. Controls are smaller and denser; the composer sends on Enter
+  with no button. The accordions, the right-panel tab strip and the guide's
+  expander are gone.
 - **Glossary and copy rewritten to the new rules** (roadmap section 26.4). The
   "How to play" glossary now follows `RULES.md`: it describes the shared pool
   that resets after every Overcome, the Overcome itself (roll, reroll, accept or

@@ -1,15 +1,13 @@
 module View.Helpers exposing
     ( ViewContext
-    , accordionHeader
-    , accordionHeaderWith
     , characterLabel
     , countProposals
     , glossaryTitle
+    , inlineInputAttrs
     , inputAttrs
     , latestProposalId
     , pendingHint
     , placeholder
-    , stoneChip
     , tip
     , tipAttrs
     , withdrawLink
@@ -18,21 +16,20 @@ module View.Helpers exposing
 {-| Small view helpers shared by more than one of the `View.*` section modules:
 the `ViewContext` record threaded through every section, the proposal-count /
 latest-id lookups, the "(n pending) · withdraw" hint, the bordered-input
-attributes, the plain placeholder line, the two glossary-tooltip helpers that
-pair a label with its `Copy.Terms` gloss, and the left panel's accordion
-header (roadmap section 24, the 1c layout variant).
+attributes (boxed, and the hairline-only form the sheet and context rows use),
+the plain placeholder line, and the two glossary-tooltip helpers that pair a
+label with its `Copy.Terms` gloss.
 -}
 
 import Action exposing (Action)
 import Copy
 import Copy.Terms as Terms
-import Element exposing (Element, el, fill, none, spacing, text, width)
+import Element exposing (Element, el, none, spacing, text, width)
+import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
-import Element.Input as Input
 import Html.Attributes
 import Kind
-import Roll exposing (Stone(..))
 import Time
 import Types exposing (..)
 import Ui
@@ -47,6 +44,7 @@ type alias ViewContext =
     , myId : Maybe String
     , zone : Time.Zone
     , inflight : List Action
+    , username : String
     }
 
 
@@ -90,11 +88,27 @@ tipAttrs termKey =
 
 inputAttrs : List (Element.Attribute msg)
 inputAttrs =
-    [ Element.padding Ui.sm
+    [ Element.paddingXY 8 5
     , Border.color Ui.line
     , Border.width 1
     , Border.rounded 4
     , Font.size 13
+    ]
+
+
+{-| A field with only a hairline beneath it, turning accent on focus — the
+sheet's fields and the context rows, where a box around every value would be
+noise.
+-}
+inlineInputAttrs : List (Element.Attribute msg)
+inlineInputAttrs =
+    [ Element.paddingXY 4 2
+    , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
+    , Border.color Ui.line
+    , Border.rounded 0
+    , Background.color (Element.rgba255 0 0 0 0)
+    , Font.size 13
+    , Element.focused [ Border.color Ui.accent ]
     ]
 
 
@@ -108,16 +122,6 @@ characterLabel ch =
 
     else
         Copy.characterFallback ch.slot
-
-
-stoneChip : Stone -> Element msg
-stoneChip stone =
-    case stone of
-        Boon ->
-            Ui.stoneChip Ui.boonFill Copy.boonStone
-
-        Bane ->
-            Ui.stoneChip Ui.baneFill Copy.baneStone
 
 
 countProposals : Maybe String -> Kind.ProposalKind -> List Proposal -> Int
@@ -172,49 +176,7 @@ withdrawLink : Maybe String -> Element Msg
 withdrawLink maybeId =
     case maybeId of
         Just pid ->
-            Input.button
-                [ Font.size 11
-                , Font.color Ui.inkSoft
-                , Font.underline
-                , Element.mouseOver [ Font.color Ui.accent ]
-                ]
-                { onPress = Just (WithdrawProposal pid), label = text Copy.withdraw }
+            Ui.linkButton { onPress = Just (WithdrawProposal pid), label = Copy.withdraw }
 
         Nothing ->
             none
-
-
-{-| A left-panel card's title, doubled as its accordion toggle (roadmap
-section 24, the 1c layout variant) — the same self-contained pattern
-`View.Guide`'s own header already used. `title` is the card's usual heading
-element (built by the caller, so a plain `Ui.sectionTitle` or a
-`glossaryTitle` both work unchanged); clicking anywhere in the row fires
-`toggle`.
--}
-accordionHeader : Bool -> Element msg -> msg -> Element msg
-accordionHeader open title toggle =
-    accordionHeaderWith open title toggle none
-
-
-{-| As `accordionHeader`, with a trailing element (e.g. Moves' "n of 4 left")
-shown at the row's far end regardless of open/closed state.
--}
-accordionHeaderWith : Bool -> Element msg -> msg -> Element msg -> Element msg
-accordionHeaderWith open title toggle trailing =
-    Input.button [ width fill ]
-        { onPress = Just toggle
-        , label =
-            Element.row [ spacing Ui.sm, width fill ]
-                [ el [ Font.size 11, Font.color Ui.inkSoft ]
-                    (text
-                        (if open then
-                            "▾"
-
-                         else
-                            "▸"
-                        )
-                    )
-                , title
-                , el [ Element.alignRight ] trailing
-                ]
-        }

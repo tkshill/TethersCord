@@ -1,31 +1,33 @@
-module View.FacilitatorPanel exposing (view)
+module View.FacilitatorPanel exposing (strip, view)
 
-{-| The facilitator-only panel in the left column: direct pool edits (23.2) and
-the queue of player moves awaiting a decision. Renders nothing for a player; the
-Characters card below it is the one they share. Collapsible as one of the left
-panel's three accordion sections (24); its header carries a count of waiting
-proposals, so collapsing it does not hide that one is waiting (roadmap 26.3).
+{-| The facilitator's tool (roadmap section 27, the ⚑ tab): direct pool edits
+(23.2) and the queue of player moves awaiting a decision. Renders nothing for a
+player. The tab's tooltip carries a count of waiting proposals, and `strip` keeps
+the oldest one one click from Accept / Reject under any other tool, so a proposal
+is never buried behind the tab that holds the full queue.
 
 The Overcome — roll, reroll, accept, reject — is not here: it is shared table
-state, so it lives on the stage in `View.TopBar`.
+state, so it lives on the status strip in `View.TopBar`.
 -}
 
 import Action exposing (Action(..), Decision(..))
 import Copy
 import Dict exposing (Dict)
 import Element exposing (Element, el, fill, none, spacing, text, width)
+import Element.Background as Background
+import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
 import Kind
 import Roll exposing (Stone(..), stoneLabel)
+import Html.Attributes
 import Types exposing (..)
 import Ui
-import View.Helpers exposing (ViewContext, accordionHeaderWith, characterLabel, inputAttrs)
+import View.Helpers exposing (ViewContext, characterLabel, inputAttrs)
 
 
 type alias Props =
     { drafts : Dict String String
-    , open : Bool
     }
 
 
@@ -35,29 +37,59 @@ view ctx props gs =
         none
 
     else
-        Ui.card
-            (accordionHeaderWith props.open
-                (Ui.sectionTitle Copy.facilitatorPanelTitle)
-                (ToggleLeftSection FacilitatorSection)
-                (waitingNote (List.length gs.proposals))
-                :: (if props.open then
-                        [ poolControls ctx.inflight
-                        , proposalsPanel ctx.inflight props.drafts gs
-                        ]
+        Ui.flat
+            [ Ui.sectionTitle Copy.thePool
+            , poolControls ctx.inflight
+            , proposalsPanel ctx.inflight props.drafts gs
+            ]
+
+
+{-| The oldest waiting proposal as one line under the tool body, with Accept /
+Reject and a "+n" for the rest. Nothing for a player or an empty queue. An Add
+Detail accepted from here takes the player's own wording (or the Worker's
+default); to reword it first, open the Facilitator tab.
+-}
+strip : ViewContext -> GameState -> Element Msg
+strip ctx gs =
+    case ( ctx.facilitator, gs.proposals ) of
+        ( True, p :: rest ) ->
+            let
+                summary =
+                    proposerLabel gs p ++ " · " ++ describeProposal gs p
+
+                busy =
+                    Action.isPending (ResolvingProposal Accepting p.id) ctx.inflight
+                        || Action.isPending (ResolvingProposal Rejecting p.id) ctx.inflight
+
+                unlessBusy msg =
+                    if busy then
+                        Nothing
 
                     else
-                        []
-                   )
-            )
+                        Just msg
+            in
+            Element.row
+                [ width fill
+                , Element.height (Element.px 28)
+                , Element.paddingXY 10 0
+                , spacing 6
+                , Background.color Ui.tint
+                , Border.widthEach { top = 1, right = 0, bottom = 0, left = 0 }
+                , Border.color Ui.line
+                ]
+                [ el [ Font.size 12, Font.color Ui.accent ] (text "⚑")
+                , Ui.oneLine [ Font.size 11, Element.htmlAttribute (Html.Attributes.title summary) ] summary
+                , if List.isEmpty rest then
+                    none
 
+                  else
+                    el [ Font.size 10, Font.color Ui.inkSoft ] (text ("+" ++ String.fromInt (List.length rest)))
+                , Ui.primaryButton { onPress = unlessBusy (AcceptProposal p.id), label = Copy.accept }
+                , Ui.ghostButton { onPress = unlessBusy (RejectProposal p.id), label = Copy.reject }
+                ]
 
-waitingNote : Int -> Element msg
-waitingNote n =
-    if n <= 0 then
-        none
-
-    else
-        el [ Font.size 11, Font.color Ui.accent ] (text (Copy.proposalsWaiting n))
+        _ ->
+            none
 
 
 {-| Direct hand-edit of the shared pool (23.2): add or remove one Boon or one
@@ -83,20 +115,21 @@ stoneControl inflight stone =
         ]
 
 
-{-| The queue of player moves awaiting a decision. Hidden when empty. `drafts`
+{-| The queue of player moves awaiting a decision. `drafts`
 holds the wording the facilitator has typed for an Add Detail, keyed by proposal
 id so the rows do not share one field.
 -}
 proposalsPanel : List Action -> Dict String String -> GameState -> Element Msg
 proposalsPanel inflight drafts gs =
-    if List.isEmpty gs.proposals then
-        none
+    Element.column [ spacing Ui.sm, width fill ]
+        (Ui.sectionTitle Copy.proposalsTitle
+            :: (if List.isEmpty gs.proposals then
+                    [ el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.noProposals) ]
 
-    else
-        Element.column [ spacing Ui.sm, width fill ]
-            (el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.proposalsTitle)
-                :: List.map (proposalRow inflight drafts gs) gs.proposals
-            )
+                else
+                    List.map (proposalRow inflight drafts gs) gs.proposals
+               )
+        )
 
 
 proposalRow : List Action -> Dict String String -> GameState -> Proposal -> Element Msg

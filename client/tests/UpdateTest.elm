@@ -16,7 +16,7 @@ import Roll exposing (Stone(..))
 import Set
 import Test exposing (Test, describe, test)
 import Time
-import Types exposing (Model, Msg(..))
+import Types exposing (Model, Msg(..), ToolTab(..))
 
 
 {-| The collapsed acknowledge-only result for the stones family, standing in for
@@ -304,16 +304,10 @@ suite =
                 \_ ->
                     Main.update (SelectSlot 2) ready
                         |> Expect.equal ( { ready | selectedSlot = 2 }, Effect.None )
-            , test "ToggleGuide flips the guide open and shut, no effect" <|
+            , test "SelectTool switches the left panel's tool, no effect" <|
                 \_ ->
-                    let
-                        opened =
-                            Main.update ToggleGuide ready |> Tuple.first
-                    in
-                    ( opened.guideExpanded
-                    , Main.update ToggleGuide opened
-                    )
-                        |> Expect.equal ( True, ( ready, Effect.None ) )
+                    Main.update (SelectTool ContextTab) ready
+                        |> Expect.equal ( { ready | toolTab = ContextTab }, Effect.None )
             , test "ToggleSessionControls flips the top-bar expander open and shut, no effect" <|
                 \_ ->
                     let

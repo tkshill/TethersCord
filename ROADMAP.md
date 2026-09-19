@@ -1833,6 +1833,39 @@ lands as the first commit of 26.3. Nothing deploys until asked.
       "Overcome" entry is a presentation question for 26.3.
 - [ ] Aspect Banes and advancement — deliberately unresolved (see `RULES.md`).
 
+## 27. Minimalist two-panel UI (mockup 2a) — done
+
+Reworks the section-24 layout to the dense "2a" mockup from the design project
+(*Two Panel Redesign*): the cards go away, leaving hairlines between regions.
+
+- **Status strip**, one line: the running goal (the facilitator clicks it to open
+  the session controls), the pool as `+` / `−` marks, Overcome (or the
+  facilitator's Reroll / Reject / Accept while a roll is pending, with the draw in
+  a ringed chip), and who you are. It replaces the old header and stage.
+- **Tool panel** on the left (default 320px, still draggable): glyph tabs, one tool
+  at a time — Sheet, Facilitator, Moves, Cast, Context, Guide. The facilitator's
+  oldest waiting proposal keeps a one-line Accept / Reject strip under every tool
+  but their own.
+- **Log and composer** own the right panel; the composer has no Send button
+  (Enter sends).
+
+Where the mockup and the rules disagree, the rules win. Deliberate adaptations:
+
+- The mockup's moves (Accept Compel, Gain Insight), its "pledged" boons and its
+  Bane-landing-on-an-aspect draw line are retired concepts; the tool shows the
+  five current moves, boons as a plain `+` run, and the proposal strip shows
+  whatever kind is queued. Aspect Banes still render as `−` marks (legacy data).
+- The mockup has no place for the pending Overcome's facilitator controls, the
+  session goal editor, direct pool edits or Clear log; they live in the strip,
+  the click-open goal row, the ⚑ tab and a slim row atop the log.
+- The mockup's Sheet tab stacks Sheets / Moves / Context accordions; here each is
+  its own tab instead of duplicating content, so the ⚑ / ▲ / ◇ glyphs are tools,
+  not shortcuts.
+- The mockup's "Moves — 3 of 4 left" counter is a retired per-session limit; the
+  Moves tab's tooltip shows the viewer's boons instead.
+- Game events in the log are not tinted as in the mockup: the Worker logs them as
+  the acting user's own messages, with no system marker to key on.
+
 # Phase 3 — potential future plans
 
 Everything still open, moved out of the Phase 1 sections above so it sits in one

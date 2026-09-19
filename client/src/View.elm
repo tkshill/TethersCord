@@ -1,20 +1,18 @@
 module View exposing (logDomId, view)
 
-{-| The Activity view: the page shell (header, connection note, status banner,
-the top bar) over two panels (roadmap section 24, replacing 23.5's
-three-column shell; this is the "1c" layout variant) — a resizable left panel
-of accordion sections (Facilitator panel, Characters, Moves, unchanged in
-content from 23.5) and a right panel splitting its height between a tab strip
-switching between NPCs & locations, the session's boons and banes (with the
-session history), and the guide, and the event log pinned always-visible
-beneath it — with the composer pinned under the panels row rather than under
-any one column, since sending a message doesn't depend on which tab is
-showing. Each card still lives in its own `View.*` module and is handed a
+{-| The Activity view (roadmap section 27, mockup 2a): a one-line status strip
+(`View.TopBar`) over two panels — a tool panel on the left (a row of glyph tabs
+showing one tool at a time: Sheet, Facilitator, Moves, Cast, Context, Guide, each
+its own `View.*` module) and, on the right, the event log with the composer
+pinned beneath it, so sending a message never depends on which tool is open.
+The left panel's width is draggable (roadmap 24). Each tool is handed a
 `ViewContext` computed once here.
 -}
 
 import Copy
 import Element exposing (Element, el, fill, none, spacing, text, width)
+import Element.Background as Background
+import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
 import Html exposing (Html)
@@ -49,131 +47,200 @@ view model =
             , myId = Maybe.map .userId model.auth
             , zone = model.timeZone
             , inflight = model.inflight
+            , username = model.auth |> Maybe.map .username |> Maybe.withDefault ""
             }
+    in
+    case model.gameState of
+        Nothing ->
+            Ui.page
+                { top = notes model
+                , columns = [ el [ Element.padding 14 ] (placeholder Copy.loadingTable) ]
+                }
 
-        top =
-            header model
-                :: connectionNote model.connection
-                :: Ui.banner model.status
-                :: Ui.errorNote model.error
-                :: (case model.gameState of
-                        Just gs ->
-                            [ View.TopBar.view ctx
+        Just gs ->
+            Ui.page
+                { top =
+                    notes model
+                        ++ [ View.TopBar.view ctx
                                 { confirming = model.confirming
                                 , newSessionGoal = model.newSessionGoal
                                 , goalEdit = model.goalEdit
                                 , expanded = model.sessionControlsExpanded
                                 }
                                 gs
-                            ]
+                           ]
+                , columns =
+                    [ toolPanel ctx model gs
+                    , Ui.dragHandle DividerDragStarted
+                    , rightPanel ctx model gs
+                    ]
+                }
+
+
+{-| The quiet lines above the strip: connection trouble, an error, and — only
+while the table is still loading — the auth / connect status. Nothing at all
+when all is well, so the strip is the top edge of the page.
+-}
+notes : Model -> List (Element Msg)
+notes model =
+    let
+        lines =
+            connectionNote model.connection
+                ++ (if model.gameState == Nothing then
+                        [ Ui.banner model.status ]
+
+                    else
+                        []
+                   )
+                ++ (case model.error of
+                        Just _ ->
+                            [ Ui.errorNote model.error ]
 
                         Nothing ->
                             []
                    )
     in
-    case model.gameState of
-        Nothing ->
-            Ui.page
-                { top = top
-                , columns = [ Ui.scrollColumn 1 [ placeholder Copy.loadingTable ] ]
-                , bottom = []
-                }
+    if List.isEmpty lines then
+        []
 
-        Just gs ->
-            Ui.page
-                { top = top
-                , columns =
-                    [ leftPanel ctx model gs
-                    , Ui.dragHandle DividerDragStarted
-                    , rightPanel ctx model gs
-                    ]
-                , bottom = [ composer model ]
-                }
+    else
+        [ Element.column [ width fill, Element.paddingXY 10 4, spacing 2 ] lines ]
 
 
-{-| The left panel (roadmap section 24, the 1c layout variant): the same three
-cards 23.5 put here, now each its own collapsible accordion section, at a
-mouse-draggable pixel width (`Model.leftPanelWidth`) instead of a fixed
-`fillPortion` of the row.
+{-| The left panel: the glyph tab strip, the selected tool's body (scrolling on
+its own), and — for the facilitator, under any tool but their own — the oldest
+waiting proposal.
 -}
-leftPanel : ViewContext -> Model -> GameState -> Element Msg
-leftPanel ctx model gs =
-    Element.el
+toolPanel : ViewContext -> Model -> GameState -> Element Msg
+toolPanel ctx model gs =
+    let
+        selected =
+            effectiveTool ctx model.toolTab
+    in
+    Element.column
         [ Element.height fill
         , width (Element.px (round model.leftPanelWidth))
         , Ui.shrinkable
         ]
-        (Ui.scrollArea
-            [ View.FacilitatorPanel.view ctx
-                { drafts = model.proposalDrafts
-                , open = model.openLeftSections.facilitator
-                }
-                gs
-            , View.Characters.view ctx
-                { selectedSlot = model.selectedSlot
-                , aspectExamplesOpen = model.aspectExamplesOpen
-                , open = model.openLeftSections.characters
-                }
-                gs
-            , View.Moves.view ctx
-                { open = model.openLeftSections.moves
-                , addDetailDraft = model.addDetailDraft
-                }
-                gs
+        [ toolStrip ctx selected gs
+        , Element.el
+            [ Element.height fill
+            , width fill
+            , Ui.shrinkable
+            , Element.paddingEach { top = 8, right = 10, bottom = 8, left = 10 }
             ]
+            (Ui.scrollArea [ toolBody ctx model gs selected ])
+        , if selected == FacilitatorTab then
+            none
+
+          else
+            View.FacilitatorPanel.strip ctx gs
+        ]
+
+
+{-| The tool actually shown: the selected one, unless this viewer has no such
+tool (the Facilitator tab is the facilitator's; Moves is a player's), in which
+case the Sheet.
+-}
+effectiveTool : ViewContext -> ToolTab -> ToolTab
+effectiveTool ctx tab =
+    case tab of
+        FacilitatorTab ->
+            if ctx.facilitator then
+                FacilitatorTab
+
+            else
+                SheetTab
+
+        MovesTab ->
+            if ctx.facilitator then
+                SheetTab
+
+            else
+                MovesTab
+
+        _ ->
+            tab
+
+
+toolStrip : ViewContext -> ToolTab -> GameState -> Element Msg
+toolStrip ctx selected gs =
+    let
+        myBoons =
+            gs.characters
+                |> List.filter (\c -> c.ownerId /= Nothing && c.ownerId == ctx.myId)
+                |> List.head
+                |> Maybe.map .fate
+
+        tool tab glyph label tip =
+            Ui.toolTab
+                { glyph = glyph
+                , label = label
+                , tip = tip
+                , selected = selected == tab
+                , onPress = SelectTool tab
+                }
+    in
+    Element.row
+        [ width fill
+        , Element.height (Element.px 28)
+        , Element.paddingXY 6 0
+        , spacing 2
+        , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
+        , Border.color Ui.line
+        ]
+        (tool SheetTab "◆" Copy.sheetTabLabel Copy.charactersTitle
+            :: (if ctx.facilitator then
+                    [ tool FacilitatorTab "⚑" Copy.facilitatorPanelTitle (Copy.facilitatorTabTip (List.length gs.proposals)) ]
+
+                else
+                    [ tool MovesTab
+                        "▲"
+                        Copy.movesTitle
+                        (case myBoons of
+                            Just n ->
+                                Copy.movesTabTip n
+
+                            Nothing ->
+                                Copy.movesTitle
+                        )
+                    ]
+               )
+            ++ [ tool CastTab "☺" Copy.castTabLabel Copy.castTabTip
+               , tool ContextTab "◇" Copy.contextTabLabel (Copy.contextTabTip (List.length gs.sessionAspects))
+               , el [ Element.alignRight ] (tool GuideTab "?" Copy.guideTabLabel Copy.guideTabTip)
+               ]
         )
 
 
-{-| The right panel (roadmap section 24, the 1c layout variant): a tab strip
-and its content take the top share of the panel's height; the event log is
-pinned beneath, always visible regardless of which tab is selected, at
-roughly the mockup's 56/44 split (`fillPortion 5` / `4`).
--}
-rightPanel : ViewContext -> Model -> GameState -> Element Msg
-rightPanel ctx model gs =
-    Element.column
-        [ Element.height fill
-        , width fill
-        , spacing Ui.md
-        , Ui.shrinkable
-        ]
-        [ rightPanelTabStrip model.rightPanelTab
-        , Element.el [ Element.height (Element.fillPortion 5), width fill, Ui.shrinkable ]
-            (rightPanelTabContent ctx model gs)
-        , Element.el [ Element.height (Element.fillPortion 4), width fill, Ui.shrinkable ]
-            (View.Log.view ctx
-                { confirming = model.confirming
-                , loadingHistory = model.loadingHistory
-                , noMoreHistory = model.noMoreHistory
+toolBody : ViewContext -> Model -> GameState -> ToolTab -> Element Msg
+toolBody ctx model gs tab =
+    case tab of
+        SheetTab ->
+            View.Characters.view ctx
+                { selectedSlot = model.selectedSlot
+                , aspectExamplesOpen = model.aspectExamplesOpen
                 }
                 gs
-            )
-        ]
 
+        FacilitatorTab ->
+            View.FacilitatorPanel.view ctx { drafts = model.proposalDrafts } gs
 
-rightPanelTabStrip : RightPanelTab -> Element Msg
-rightPanelTabStrip selected =
-    Element.wrappedRow [ spacing Ui.xs, width fill ]
-        [ Ui.tab (selected == NpcsLocationsTab) Copy.npcsLocationsTabLabel (SelectRightPanelTab NpcsLocationsTab)
-        , Ui.tab (selected == SessionTab) Copy.sessionContextTabLabel (SelectRightPanelTab SessionTab)
-        , Ui.tab (selected == GuideTab) Copy.guideTabLabel (SelectRightPanelTab GuideTab)
-        ]
+        MovesTab ->
+            View.Moves.view ctx { addDetailDraft = model.addDetailDraft } gs
 
+        CastTab ->
+            if not ctx.facilitator && List.isEmpty gs.npcs && List.isEmpty gs.locations then
+                placeholder Copy.noCast
 
-{-| The selected tab's content, a plain `Ui.scrollArea` stack of the cards that
-tab combines. The event log is not one of these tabs — see `rightPanel`.
--}
-rightPanelTabContent : ViewContext -> Model -> GameState -> Element Msg
-rightPanelTabContent ctx model gs =
-    case model.rightPanelTab of
-        NpcsLocationsTab ->
-            Ui.scrollArea
-                [ View.Entities.view ctx Npc gs
-                , View.Entities.view ctx Location gs
-                ]
+            else
+                Ui.flat
+                    [ View.Entities.view ctx Npc gs
+                    , View.Entities.view ctx Location gs
+                    ]
 
-        SessionTab ->
-            Ui.scrollArea
+        ContextTab ->
+            Ui.flat
                 [ View.SessionAspects.view ctx
                     { sessionAspectDraft = model.newSessionAspectNote
                     , sessionAspectKind = model.newSessionAspectKind
@@ -184,18 +251,38 @@ rightPanelTabContent ctx model gs =
                 ]
 
         GuideTab ->
-            Ui.scrollArea [ View.Guide.view ctx { expanded = model.guideExpanded } ]
+            View.Guide.view
 
 
-connectionNote : Connection -> Element msg
+{-| The right panel: the event log filling it, the composer beneath.
+-}
+rightPanel : ViewContext -> Model -> GameState -> Element Msg
+rightPanel ctx model gs =
+    Element.column
+        [ Element.height fill
+        , width fill
+        , Background.color Ui.panel
+        , Ui.shrinkable
+        ]
+        [ View.Log.view ctx
+            { confirming = model.confirming
+            , loadingHistory = model.loadingHistory
+            , noMoreHistory = model.noMoreHistory
+            }
+            gs
+        , composer model
+        ]
+
+
+connectionNote : Connection -> List (Element msg)
 connectionNote conn =
     let
         note color label =
-            el [ Font.size 11, Font.color color ] (text label)
+            [ el [ Font.size 11, Font.color color ] (text label) ]
     in
     case conn of
         Connected ->
-            none
+            []
 
         Reconnecting ->
             note Ui.inkSoft Copy.reconnecting
@@ -217,38 +304,27 @@ isFacilitator model =
             False
 
 
-header : Model -> Element Msg
-header model =
-    Element.row [ width fill, spacing Ui.md ]
-        [ el [ Font.size 20, Font.semiBold ] (text Copy.appTitle)
-        , case model.auth of
-            Just auth ->
-                el
-                    [ Font.size 12
-                    , Font.color Ui.inkSoft
-                    , Element.alignRight
-                    ]
-                    (text (auth.username ++ " · " ++ roleLabel auth.role))
-
-            Nothing ->
-                none
-        ]
-
-
+{-| The message field, pinned under the log. Enter sends; there is no button.
+-}
 composer : Model -> Element Msg
 composer model =
-    case model.auth of
-        Nothing ->
-            placeholder Copy.waitingForAuth
+    Element.row
+        [ width fill
+        , Element.paddingXY 10 7
+        , Background.color Ui.paper
+        , Border.widthEach { top = 1, right = 0, bottom = 0, left = 0 }
+        , Border.color Ui.line
+        ]
+        [ case model.auth of
+            Nothing ->
+                placeholder Copy.waitingForAuth
 
-        Just _ ->
-            Element.row [ spacing Ui.sm, width fill ]
-                [ Input.text
+            Just _ ->
+                Input.text
                     (inputAttrs ++ [ width fill, Ui.onEnter SendMessage ])
                     { onChange = NewMessageChanged
                     , text = model.newMessage
                     , placeholder = Just (Input.placeholder [] (text Copy.messagePlaceholder))
                     , label = Input.labelHidden "Message"
                     }
-                , Ui.primaryButton { onPress = Just SendMessage, label = Copy.send }
-                ]
+        ]
