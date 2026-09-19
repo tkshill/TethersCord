@@ -10,6 +10,22 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **The Overcome loop and player moves, in the Worker** (roadmap section 26.2;
+  the client follows in 26.3, so this is not deployable on its own). Any player
+  presses **Overcome** (`/overcome/roll`) to draw two stones from the pool; the
+  facilitator can reroll for free, then **accepts** — the pool returns to two
+  Boon and two Bane, and a matched pair plants a session boon or bane — or
+  **rejects**, which discards the roll and changes nothing. Players raise
+  **Highlight**, **Complicate**, **Add Detail**, **Alter Fate** and **Use
+  Session Boon** as proposals (`/moves/*`); each is checked for cost when raised
+  and again when accepted, is paid only on approval, and logs both its proposal
+  and its resolution. Session boons and banes are marked **consumed** instead of
+  being deleted, and the facilitator can use, unconsume, edit and delete them.
+  Starting or ending a session no longer clears anything or tops the pool up.
+  Removed: the once-per-session ability limits, Gain Insight, Accept Compel,
+  the player Add boon proposal and `/stones/add-boon`, highlighted-boon odds
+  (`committedBoons`), and the Complicate payout to the suggester.
+  `migrateStoneState` reads pre-26.2 blobs. `RULES.md` records the rules.
 - **Move vocabulary rename** (roadmap section 26.1). The moves and session
   boons use one set of names in copy, code, wire strings and routes: Highlight
   (was Pledge), Complicate (was Suggest Compel), Alter (was Help Out; "Alter

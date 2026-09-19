@@ -35,49 +35,42 @@ export type PendingRoll = {
 };
 
 /**
- * Boon stones a character has highlighted into the next draw's odds
- * (`drawFromBag` adds one extra Boon per committed boon to the bag). One
- * entry per character with a non-zero highlight, keyed by slot. 23.1 retired the
- * roll/reroll/accept lifecycle that used to spend these from `fate` on
- * accept — what a highlight costs, if anything, going forward is an open
- * question (see ROADMAP.md 23).
+ * The Overcome in progress: one roll waiting on the facilitator to accept or
+ * reject it. `stones` is the current draw (a reroll replaces it), `rerolls`
+ * counts how many times it has been redrawn, and `alteredSlots` lists the
+ * characters whose Alter Fate has already been accepted this Overcome — each
+ * may succeed at one. `null` on the `GameState` means nothing is pending.
  */
-export type CommittedBoon = {
-  slot: number;
-  count: number;
+export type Overcome = {
+  rolledBy: string;
+  stones: StoneKind[];
+  rerolls: number;
+  alteredSlots: number[];
 };
 
 /**
- * Every player-initiated request the facilitator resolves through the one
- * accept / reject queue:
- * - `add-boon` — add a Boon to the shared pool.
- * - `highlight` — Highlight an Aspect: highlight (`delta` +1) or withdraw (-1) one of
- *   the proposer's own boons on the next roll.
- * - `alter`, `add-detail`, `gain-insight`, `complicate` — the
- *   once-per-session abilities.
- * - `accept-compel` — the move: take on a complication for 2 boons.
- * - `use-session-boon` — spend a session aspect (named by `sessionAspectId`) on the roll.
- *
- * `add-boon`, `highlight`, and (23.3) `use-session-boon` are disconnected from the
- * current client — the facilitator hand-edits the pool and session contexts
- * directly instead — but stay fully functional server-side, unreachable only
- * from the UI.
+ * The player moves the facilitator resolves through the one accept / reject
+ * queue (Overcome is not one — it needs no approval):
+ * - `highlight` — pay 1 boon to add a Boon to the pool.
+ * - `complicate` — suggest a complication for another character; on approval
+ *   that character's player gains 2 boons.
+ * - `add-detail` — pay 1 boon to establish a fact; on approval a session boon.
+ * - `alter` — Alter Fate: pay 2 boons to reroll the pending Overcome.
+ * - `use-session-boon` — spend a session boon (named by `sessionAspectId`),
+ *   adding a Boon to the pool.
  */
 export type ProposalKind =
-  | "add-boon"
   | "highlight"
-  | "alter"
-  | "add-detail"
-  | "gain-insight"
   | "complicate"
-  | "accept-compel"
+  | "add-detail"
+  | "alter"
   | "use-session-boon";
 
 /**
  * A player-initiated change to shared state, waiting on the facilitator. One per
- * click. `delta` is +1 / -1 for a highlight. `slot` is the proposer's claimed sheet
- * (null only for `add-boon`). `sessionAspectId` names the boon for `use-session-boon`;
- * `targetSlot` names the target character for `complicate`.
+ * click. `slot` is the proposer's claimed sheet. `sessionAspectId` names the
+ * boon for `use-session-boon`; `targetSlot` names the target character for
+ * `complicate`.
  */
 export type Proposal = {
   id: string;
@@ -85,26 +78,21 @@ export type Proposal = {
   proposerId: string;
   proposerName: string;
   slot: number | null;
-  delta: number;
   sessionAspectId: string | null;
   targetSlot: number | null;
+  /** `add-detail` only: the player's suggested wording, or null to ask the
+   * facilitator for one. */
+  text: string | null;
   createdAt: number;
 };
 
-/** Once-per-session abilities a player calls on, each gated by facilitator approval. */
-export type AbilityKind =
-  | "alter"
-  | "add-detail"
-  | "gain-insight"
-  | "complicate";
-
 /**
  * A session context owned by no character — a Boon or (23.3) a Bane, with a
- * note of the context it stands for. The facilitator creates one directly
- * (`POST /session-aspects`), or approves an Add Detail / Gain Insight
- * ability, which always produces a Boon. It waits in `gameState.sessionAspects`
- * until the facilitator deletes it — its only other lifecycle state — and is
- * discarded when the session ends.
+ * note of the context it stands for. It comes from an accepted Overcome that
+ * drew a matched pair, an accepted Add Detail (always a Boon), or the
+ * facilitator directly (`POST /session-aspects`). It stays in
+ * `gameState.sessionAspects` until the facilitator deletes it; spending it marks
+ * it `consumed` rather than removing it, and a session ending does not clear it.
  */
 export type SessionAspect = {
   id: string;
@@ -112,12 +100,9 @@ export type SessionAspect = {
   text: string;
   createdByName: string;
   createdAt: number;
-};
-
-/** Which once-per-session abilities a character has already spent this session. */
-export type UsedAbilities = {
-  slot: number;
-  kinds: AbilityKind[];
+  /** Set once the aspect has been spent into the pool. It is not deleted: it
+   * stays on the table, visibly consumed, and cannot be spent again. */
+  consumed: boolean;
 };
 
 /** The three fixed aspects a character is written around. */
@@ -192,9 +177,8 @@ export type GameState = {
   sessionId: string;
   messages: Message[];
   stonePool: StoneKind[];
-  committedBoons: CommittedBoon[];
+  overcome: Overcome | null;
   sessionAspects: SessionAspect[];
-  usedAbilities: UsedAbilities[];
   proposals: Proposal[];
   session: SessionState | null;
   sessionHistory: SessionSummary[];
@@ -213,22 +197,12 @@ export type UpdateFateInput = {
   delta: number;
 };
 
-export type HighlightInput = {
-  delta: number;
-};
-
 export type StartSessionInput = {
   goal: string;
 };
 
 export type UpdateSessionGoalInput = {
   goal: string;
-};
-
-export type UseAbilityInput = {
-  kind: AbilityKind;
-  /** Required for `complicate`: the slot of the target character. */
-  targetSlot?: number;
 };
 
 export type UseSessionBoonInput = {
@@ -242,8 +216,7 @@ export type AddOrRemoveStoneInput = {
 };
 
 /** `POST /session-aspects` (23.2, widened 23.3): the facilitator plants
- * a session context directly, picking its `kind` — an accepted Add Detail /
- * Gain Insight still only ever produces a Boon. */
+ * a session context directly, picking its `kind`. */
 export type AddSessionAspectInput = {
   kind: StoneKind;
   text: string;
@@ -256,7 +229,7 @@ export type EntityInput = {
 };
 
 export type ProposalDecisionInput = {
-  /** The facilitator's context note, when accepting an Add Detail / Gain Insight. */
+  /** The facilitator's wording, when accepting an Add Detail. */
   text?: string;
 };
 
