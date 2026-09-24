@@ -310,19 +310,6 @@ movesTitle =
     "Moves"
 
 
-{-| The Moves accordion's header note: the viewer's own boons, the currency the
-moves are paid in.
--}
-movesBoons : Int -> String
-movesBoons n =
-    case n of
-        1 ->
-            "1 boon"
-
-        _ ->
-            String.fromInt n ++ " boons"
-
-
 highlightBlurb : String
 highlightBlurb =
     "Pay 1 boon: an aspect shapes the outcome, and the pool gains a Boon."
@@ -542,6 +529,11 @@ sheetTabLabel =
     "Sheet"
 
 
+sheetTabTip : String
+sheetTabTip =
+    "Sheet, moves & session context"
+
+
 {-| The Facilitator tab's tooltip: how many proposals are waiting, so the count
 shows even while another tool is open. -}
 facilitatorTabTip : Int -> String
@@ -552,11 +544,6 @@ facilitatorTabTip n =
 
         _ ->
             "Facilitator controls — " ++ proposalsWaiting n
-
-
-movesTabTip : Int -> String
-movesTabTip boons =
-    "Moves — " ++ movesBoons boons
 
 
 castTabLabel : String
@@ -577,16 +564,6 @@ noCast =
 contextTabLabel : String
 contextTabLabel =
     "Context"
-
-
-contextTabTip : Int -> String
-contextTabTip n =
-    case n of
-        1 ->
-            "Session context — 1 aspect"
-
-        _ ->
-            "Session context — " ++ String.fromInt n ++ " aspects"
 
 
 guideTabLabel : String

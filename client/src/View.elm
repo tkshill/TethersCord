@@ -2,8 +2,8 @@ module View exposing (logDomId, view)
 
 {-| The Activity view (roadmap section 27, mockup 2a): a one-line status strip
 (`View.TopBar`) over two panels — a tool panel on the left (a row of glyph tabs
-showing one tool at a time: Sheet, Facilitator (facilitator only), Moves,
-Context, Cast, Guide, each its own `View.*` module) and, on the right, the event
+showing one tool at a time: Sheet (the character sheet, moves and session
+context stacked in one scroll), Facilitator (facilitator only), Cast, Guide) and, on the right, the event
 log with the composer pinned beneath it, so sending a message never depends on
 which tool is open. The left panel's width is draggable (roadmap 24). Each tool
 is handed a `ViewContext` computed once here.
@@ -140,8 +140,6 @@ toolPanel ctx model gs =
 
 {-| The tool actually shown: the selected one, unless this viewer has no such
 tool (the Facilitator tab is the facilitator's only), in which case the Sheet.
-Moves is open to both roles — the facilitator gets a read-only view of it (see
-`View.Moves`), so they can see what a player sees.
 -}
 effectiveTool : ViewContext -> ToolTab -> ToolTab
 effectiveTool ctx tab =
@@ -160,12 +158,6 @@ effectiveTool ctx tab =
 toolStrip : ViewContext -> ToolTab -> GameState -> Element Msg
 toolStrip ctx selected gs =
     let
-        myBoons =
-            gs.characters
-                |> List.filter (\c -> c.ownerId /= Nothing && c.ownerId == ctx.myId)
-                |> List.head
-                |> Maybe.map .fate
-
         tool tab glyph label tip =
             Ui.toolTab
                 { glyph = glyph
@@ -183,25 +175,14 @@ toolStrip ctx selected gs =
         , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
         , Border.color Ui.line
         ]
-        (tool SheetTab "◆" Copy.sheetTabLabel Copy.charactersTitle
+        (tool SheetTab "◆" Copy.sheetTabLabel Copy.sheetTabTip
             :: (if ctx.facilitator then
                     [ tool FacilitatorTab "⚑" Copy.facilitatorPanelTitle (Copy.facilitatorTabTip (List.length gs.proposals)) ]
 
                 else
                     []
                )
-            ++ [ tool MovesTab
-                    "▲"
-                    Copy.movesTitle
-                    (case myBoons of
-                        Just n ->
-                            Copy.movesTabTip n
-
-                        Nothing ->
-                            Copy.movesTitle
-                    )
-               , tool ContextTab "◇" Copy.contextTabLabel (Copy.contextTabTip (List.length gs.sessionAspects))
-               , tool CastTab "☺" Copy.castTabLabel Copy.castTabTip
+            ++ [ tool CastTab "☺" Copy.castTabLabel Copy.castTabTip
                , el [ Element.alignRight ] (tool GuideTab "?" Copy.guideTabLabel Copy.guideTabTip)
                ]
         )
@@ -211,17 +192,28 @@ toolBody : ViewContext -> Model -> GameState -> ToolTab -> Element Msg
 toolBody ctx model gs tab =
     case tab of
         SheetTab ->
-            View.Characters.view ctx
-                { selectedSlot = model.selectedSlot
-                , aspectExamplesOpen = model.aspectExamplesOpen
-                }
-                gs
+            -- The sheet, the moves it pays for and the session context they
+            -- act on, stacked so play needs no tab switching.
+            Ui.flat
+                [ View.Characters.view ctx
+                    { selectedSlot = model.selectedSlot
+                    , aspectExamplesOpen = model.aspectExamplesOpen
+                    }
+                    gs
+                , Ui.divider (String.toUpper Copy.movesTitle)
+                , View.Moves.view ctx { addDetailDraft = model.addDetailDraft, selectedSlot = model.selectedSlot } gs
+                , Ui.divider (String.toUpper Copy.contextTabLabel)
+                , View.SessionAspects.view ctx
+                    { sessionAspectDraft = model.newSessionAspectNote
+                    , sessionAspectKind = model.newSessionAspectKind
+                    , edits = model.sessionAspectEdits
+                    }
+                    gs
+                , View.Session.view ctx gs
+                ]
 
         FacilitatorTab ->
             View.FacilitatorPanel.view ctx { drafts = model.proposalDrafts } gs
-
-        MovesTab ->
-            View.Moves.view ctx { addDetailDraft = model.addDetailDraft, selectedSlot = model.selectedSlot } gs
 
         CastTab ->
             if not ctx.facilitator && List.isEmpty gs.npcs && List.isEmpty gs.locations then
@@ -232,17 +224,6 @@ toolBody ctx model gs tab =
                     [ View.Entities.view ctx Npc gs
                     , View.Entities.view ctx Location gs
                     ]
-
-        ContextTab ->
-            Ui.flat
-                [ View.SessionAspects.view ctx
-                    { sessionAspectDraft = model.newSessionAspectNote
-                    , sessionAspectKind = model.newSessionAspectKind
-                    , edits = model.sessionAspectEdits
-                    }
-                    gs
-                , View.Session.view ctx gs
-                ]
 
         GuideTab ->
             View.Guide.view

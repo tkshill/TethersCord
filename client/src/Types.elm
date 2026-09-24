@@ -483,15 +483,13 @@ type Connection
 
 {-| The left panel's tool strip (roadmap section 27, mockup 2a): one tool shown
 at a time under a row of glyph tabs. The facilitator's queue and pool edits
-(`FacilitatorTab`) are for the facilitator only; `MovesTab` is for a player who
-holds a sheet. The event log is not a tool — it fills the right panel.
+(`FacilitatorTab`) are for the facilitator only. `SheetTab` stacks the character
+sheet, the moves and the session context in one scroll. The event log is not a tool — it fills the right panel.
 -}
 type ToolTab
     = SheetTab
     | FacilitatorTab
-    | MovesTab
     | CastTab
-    | ContextTab
     | GuideTab
 
 

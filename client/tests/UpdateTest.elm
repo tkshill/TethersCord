@@ -306,8 +306,8 @@ suite =
                         |> Expect.equal ( { ready | selectedSlot = 2 }, Effect.None )
             , test "SelectTool switches the left panel's tool, no effect" <|
                 \_ ->
-                    Main.update (SelectTool ContextTab) ready
-                        |> Expect.equal ( { ready | toolTab = ContextTab }, Effect.None )
+                    Main.update (SelectTool CastTab) ready
+                        |> Expect.equal ( { ready | toolTab = CastTab }, Effect.None )
             , test "ToggleSessionControls flips the top-bar expander open and shut, no effect" <|
                 \_ ->
                     let
