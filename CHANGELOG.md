@@ -10,6 +10,12 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **Sheet, Moves and Context stacked in one tool**: the Sheet tab now shows the
+  character sheet, then the moves, then the session boons, banes and past
+  sessions in a single scroll, each section under a divider caption, so playing a
+  move no longer means switching away from the sheet. The separate Moves and
+  Context tabs are gone; the tool strip is Sheet, Facilitator (facilitator only),
+  Cast and Guide.
 - **Tool panel follow-ups to the two-panel UI**: the facilitator now gets a
   Moves tab too (read-only — a preview of whichever character is selected on
   the Sheet tab, buttons inert), so they can see what a player sees instead of
