@@ -558,6 +558,7 @@ msgAt id millis =
     , authorId = "u"
     , authorName = "U"
     , role = Types.Player
+    , kind = Types.Chat
     , content = id
     , createdAt = Time.millisToPosix millis
     }

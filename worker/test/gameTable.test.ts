@@ -72,6 +72,19 @@ describe("GameTable state machine", () => {
     });
   });
 
+  describe("message kinds", () => {
+    it("tags typed messages chat and mutation log lines event", async () => {
+      const table = "gt-message-kinds";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+
+      await call(table, "/message", { token: fac, body: { content: "hello" } });
+      await call(table, "/overcome/roll", { token: fac });
+
+      const state = await readState(table, fac);
+      expect(state.messages.map((m) => m.kind)).toEqual(["chat", "event"]);
+    });
+  });
+
   describe("the message window", () => {
     it("keeps the snapshot to the last 50 and serves older rows from /messages/history", async () => {
       const table = "gt-msg-window";

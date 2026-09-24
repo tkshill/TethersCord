@@ -12,6 +12,7 @@ module Types exposing
     , Flags
     , GameState
     , Message
+    , MessageKind(..)
     , Model
     , Msg(..)
     , MutationOutcome
@@ -25,6 +26,7 @@ module Types exposing
     , aspectBaneCount
     , aspectLabel
     , characterAtSlot
+    , decodeMessageKind
     , decodeRole
     , entitiesForKind
     , entityKindPath
@@ -88,11 +90,21 @@ type alias Auth =
     }
 
 
+{-| `Chat` is a line someone typed into the composer; `Event` is a line the
+table wrote when something happened (a roll, an accepted proposal, a session
+starting). The log styles them apart.
+-}
+type MessageKind
+    = Chat
+    | Event
+
+
 type alias Message =
     { id : String
     , authorId : String
     , authorName : String
     , role : Role
+    , kind : MessageKind
     , content : String
     , createdAt : Time.Posix
     }
@@ -597,4 +609,20 @@ decodeRole =
 
                     _ ->
                         Decode.fail "Unknown role"
+            )
+
+
+{-| An unknown kind reads as `Chat`, the styling every row had before kinds
+existed.
+-}
+decodeMessageKind : Decode.Decoder MessageKind
+decodeMessageKind =
+    Decode.string
+        |> Decode.map
+            (\s ->
+                if s == "event" then
+                    Event
+
+                else
+                    Chat
             )

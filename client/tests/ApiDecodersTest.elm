@@ -37,6 +37,11 @@ suite =
                 decoded
                     |> Result.map (.messages >> List.map (\m -> ( m.authorName, roleTag m.role )))
                     |> Expect.equal (Ok [ ( "Ada", "player" ), ( "Gm", "facilitator" ) ])
+        , test "reads a message kind, and a missing kind as chat" <|
+            \_ ->
+                decoded
+                    |> Result.map (.messages >> List.map .kind)
+                    |> Expect.equal (Ok [ Types.Chat, Types.Event ])
         , test "maps stone wire strings to the Stone type" <|
             \_ ->
                 decoded

@@ -136,7 +136,7 @@ snapshotJson =
         [ { "id": "m1", "authorId": "u1", "authorName": "Ada", "role": "player"
           , "content": "hello", "createdAt": 1700000000000 }
         , { "id": "m2", "authorId": "u2", "authorName": "Gm", "role": "facilitator"
-          , "content": "welcome", "createdAt": 1700000001000 }
+          , "kind": "event", "content": "welcome", "createdAt": 1700000001000 }
         ]
     , "stonePool": ["Boon", "Bane", "Boon"]
     , "overcome": { "rolledBy": "Ada", "stones": ["Boon", "Bane"], "rerolls": 1, "alteredSlots": [1] }

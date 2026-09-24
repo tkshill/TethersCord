@@ -10,6 +10,7 @@ surface. The composer is pinned beneath it by `View`.
 import Copy
 import Dict exposing (Dict)
 import Element exposing (Element, el, fill, height, none, px, spacing, text, width)
+import Element.Border
 import Element.Font as Font
 import Element.Lazy
 import Format
@@ -179,8 +180,34 @@ messageRow zone colors msg =
             , width (px 38)
             ]
             (text (Format.clock zone msg.createdAt))
-        , Element.paragraph [ spacing 4, Font.size 13 ]
-            [ el [ Font.semiBold, Font.color nameColor ] (text (msg.authorName ++ " "))
-            , text msg.content
-            ]
+        , case msg.kind of
+            Chat ->
+                Element.paragraph [ spacing 4, Font.size 13 ]
+                    [ el [ Font.semiBold, Font.color nameColor ] (text (msg.authorName ++ " "))
+                    , text msg.content
+                    ]
+
+            Event ->
+                eventLine msg
+        ]
+
+
+{-| A line the table wrote rather than one someone typed: muted, italic, a
+little smaller, behind a hairline rule, so it reads as a record of play instead
+of speech. The author is named after the content, in parentheses, since most
+event lines already lead with what happened.
+-}
+eventLine : Message -> Element msg
+eventLine msg =
+    Element.paragraph
+        [ spacing 4
+        , Font.size 12
+        , Font.italic
+        , Font.color Ui.inkSoft
+        , Element.paddingEach { top = 0, right = 0, bottom = 0, left = 8 }
+        , Element.Border.widthEach { top = 0, right = 0, bottom = 0, left = 2 }
+        , Element.Border.color Ui.line
+        ]
+        [ text msg.content
+        , el [ Font.size 11 ] (text ("  · " ++ msg.authorName))
         ]

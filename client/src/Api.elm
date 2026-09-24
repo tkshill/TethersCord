@@ -46,7 +46,7 @@ import Json.Encode as Encode
 import Kind
 import Roll exposing (Stone(..), stoneLabel)
 import Time
-import Types exposing (Auth, CharacterSheet, EntityKind, Flags, GameState, Overcome, Proposal, Session, SessionAspect, SessionSummary, TableEntity, decodeRole, entityKindPath)
+import Types exposing (Auth, CharacterSheet, EntityKind, Flags, GameState, Overcome, Proposal, Session, SessionAspect, SessionSummary, TableEntity, decodeMessageKind, decodeRole, entityKindPath)
 
 
 
@@ -403,11 +403,12 @@ postDeleteEntity flags auth kind entityId toMsg =
 
 decodeMessage : Decode.Decoder Types.Message
 decodeMessage =
-    Decode.map6 Types.Message
+    Decode.map7 Types.Message
         (Decode.field "id" Decode.string)
         (Decode.field "authorId" Decode.string)
         (Decode.field "authorName" Decode.string)
         (Decode.field "role" decodeRole)
+        (Decode.oneOf [ Decode.field "kind" decodeMessageKind, Decode.succeed Types.Chat ])
         (Decode.field "content" Decode.string)
         (Decode.field "createdAt" (Decode.map Time.millisToPosix Decode.int))
 
