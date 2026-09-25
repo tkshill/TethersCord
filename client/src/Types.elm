@@ -475,11 +475,11 @@ type alias Model =
     -- composer are not tools — they own the right panel outright.
     , toolTab : ToolTab
 
-    -- The left panel's width in pixels, dragged by the divider handle between
-    -- the two panels. `draggingDivider` is true for the duration of a drag,
-    -- gating the mouse-move/mouse-up subscriptions that track it
-    -- (`Main.subscriptions`).
-    , leftPanelWidth : Float
+    -- The left panel's share of the window width (0–1), dragged by the
+    -- divider handle between the two panels. `draggingDivider` is true for
+    -- the duration of a drag, gating the mouse-move/mouse-up subscriptions
+    -- that track it (`Main.subscriptions`).
+    , leftPanelShare : Float
     , draggingDivider : Bool
     }
 

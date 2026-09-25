@@ -58,25 +58,43 @@ fieldSaveDelay =
     1000
 
 
-{-| The left tool panel's width in pixels, and the range the draggable divider
-clamps it to so neither panel can be dragged away to nothing. Mockup 2a's 320
-read as too narrow next to the log; 480 splits the two panels roughly evenly at
-a typical window width instead (there is no tracked viewport width to split
-exactly).
+{-| The left tool panel's share of the window width, and the range the
+draggable divider clamps it to. The tool panel is the working surface, so it
+takes the larger side: three quarters by default, between half and four fifths
+while dragging, which leaves the message log a quarter (down to a fifth, up to
+a half) of the width.
 -}
-defaultLeftPanelWidth : Float
-defaultLeftPanelWidth =
-    600
+defaultLeftPanelShare : Float
+defaultLeftPanelShare =
+    0.75
 
 
-minLeftPanelWidth : Float
-minLeftPanelWidth =
-    260
+minLeftPanelShare : Float
+minLeftPanelShare =
+    0.5
 
 
-maxLeftPanelWidth : Float
-maxLeftPanelWidth =
-    720
+maxLeftPanelShare : Float
+maxLeftPanelShare =
+    0.8
+
+
+{-| A drag's pointer position as a share of the window width, read off the
+mousemove event itself (`clientX` over its window's `innerWidth`), so the
+divider tracks the pointer without the app keeping a viewport size.
+-}
+pointerShare : Decode.Decoder Float
+pointerShare =
+    Decode.map2
+        (\x w ->
+            if w > 0 then
+                x / w
+
+            else
+                defaultLeftPanelShare
+        )
+        (Decode.field "clientX" Decode.float)
+        (Decode.at [ "view", "innerWidth" ] Decode.float)
 
 
 connectionFromString : String -> Connection
@@ -144,7 +162,7 @@ init flags =
       , gameStateAttempts = 0
       , timeZone = Time.utc
       , toolTab = SheetTab
-      , leftPanelWidth = defaultLeftPanelWidth
+      , leftPanelShare = defaultLeftPanelShare
       , draggingDivider = False
       }
     , Effect.Batch [ Effect.Authorize, Effect.GetTimeZone ]
@@ -159,7 +177,7 @@ subscriptions model =
         , Ports.wsStatus WsStatusChanged
         , if model.draggingDivider then
             Sub.batch
-                [ Browser.Events.onMouseMove (Decode.map DividerDragged (Decode.field "movementX" Decode.float))
+                [ Browser.Events.onMouseMove (Decode.map DividerDragged pointerShare)
                 , Browser.Events.onMouseUp (Decode.succeed DividerDragEnded)
                 ]
 
@@ -559,10 +577,10 @@ update msg model =
         DividerDragStarted ->
             ( { model | draggingDivider = True }, Effect.None )
 
-        DividerDragged deltaX ->
+        DividerDragged share ->
             ( { model
-                | leftPanelWidth =
-                    clamp minLeftPanelWidth maxLeftPanelWidth (model.leftPanelWidth + deltaX)
+                | leftPanelShare =
+                    clamp minLeftPanelShare maxLeftPanelShare share
               }
             , Effect.None
             )
