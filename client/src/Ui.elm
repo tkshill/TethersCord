@@ -32,6 +32,7 @@ module Ui exposing
     , scrollArea
     , sectionTitle
     , shrinkable
+    , clipX
     , sm
     , speakerColor
     , tab
@@ -284,6 +285,17 @@ shrinkable =
     Element.htmlAttribute (Html.Attributes.style "min-height" "0")
 
 
+{-| Hide horizontal overflow on a vertical scroll region. `Element.scrollbarY`
+sets only `overflow-y: auto`, and CSS then computes `overflow-x` to `auto` as
+well, so any sideways spill gets a permanent horizontal scrollbar. A spaced
+`Element.wrappedRow` always spills: it lays out with negative margins that
+reach half its spacing past the right edge (the Sheet's slot tabs, for one).
+-}
+clipX : Attribute msg
+clipX =
+    Element.htmlAttribute (Html.Attributes.style "overflow-x" "hidden")
+
+
 {-| A vertical stack that fills its container and scrolls on its own once its
 content overflows — a tool panel's body. `shrinkable` is what lets it clip
 instead of growing.
@@ -295,6 +307,7 @@ scrollArea children =
         , width fill
         , spacing sm
         , Element.scrollbarY
+        , clipX
         , shrinkable
         ]
         children
