@@ -238,12 +238,12 @@ postWithdrawProposal flags auth proposalId toMsg =
     postEmpty flags auth ("/proposals/" ++ proposalId ++ "/withdraw") toMsg
 
 
-{-| Complicate: propose a complication for the character in `targetSlot`. Free;
-approved, that character's player gains two boons.
+{-| Complicate: propose a complication for the caller's own character. Free;
+approved, that character gains two boons.
 -}
-postComplicate : Flags -> Auth -> Int -> (Result Http.Error () -> msg) -> Cmd msg
-postComplicate flags auth targetSlot toMsg =
-    postJson flags auth "/moves/complicate" (Encode.object [ ( "targetSlot", Encode.int targetSlot ) ]) toMsg
+postComplicate : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
+postComplicate flags auth toMsg =
+    postEmpty flags auth "/moves/complicate" toMsg
 
 
 {-| Add Detail: propose establishing a fact, costing one boon on approval. `text`

@@ -212,12 +212,7 @@ describeProposal gs p =
             Copy.proposalAddDetail
 
         Kind.Complicate ->
-            Copy.proposalComplicateOn
-                (p.targetSlot
-                    |> Maybe.andThen (\s -> characterAtSlot s gs.characters)
-                    |> Maybe.map characterLabel
-                    |> Maybe.withDefault Copy.proposalComplicateFallback
-                )
+            Copy.proposalComplicate
 
         Kind.UseSessionBoon ->
             p.sessionAspectId

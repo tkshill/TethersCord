@@ -483,55 +483,42 @@ describe("Move: Highlight", () => {
 });
 
 describe("Move: Complicate", () => {
-  it("queues a proposal naming another character, and logs it", async () => {
+  it("queues a proposal for the caller's own character, and logs it", async () => {
     const table = "mv-cx-propose";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const ada = await seatPlayer(table, fac, 0, 0);
-    await seatPlayer(table, fac, 1, 0);
 
-    const res = await call(table, "/moves/complicate", {
-      token: ada.token,
-      body: { targetSlot: 1 },
-    });
+    const res = await call(table, "/moves/complicate", { token: ada.token });
     expect(res.status).toBe(204);
 
     const state = await readState(table, fac);
     expect(state.proposals[0]).toMatchObject({
       kind: "complicate",
       slot: 0,
-      targetSlot: 1,
+      targetSlot: null,
     });
     expect(state.messages.at(-1)?.content).toBe(
-      "Character 1 proposes Complicate on Character 2",
+      "Character 1 proposes Complicate",
     );
   });
 
-  it("needs a claimed sheet and a valid target that is not your own character", async () => {
+  it("needs a claimed sheet", async () => {
     const table = "mv-cx-validate";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
-    const ada = await seatPlayer(table, fac, 0, 0);
     const { token: unseated } = await seedAuth();
 
-    const post = (token: string, body: unknown) =>
-      call(table, "/moves/complicate", { token, body });
-    expect((await post(unseated, { targetSlot: 1 })).status).toBe(400);
-    expect((await post(ada.token, {})).status).toBe(400);
-    expect((await post(ada.token, { targetSlot: 0 })).status).toBe(400); // self
-    expect((await post(ada.token, { targetSlot: 3 })).status).toBe(400);
-    expect((await post(ada.token, { targetSlot: 1.5 })).status).toBe(400);
+    const res = await call(table, "/moves/complicate", { token: unseated });
+    expect(res.status).toBe(400);
     expect((await readState(table, fac)).proposals).toHaveLength(0);
   });
 
-  it("on accept pays the target character two boons and the suggester nothing", async () => {
+  it("on accept pays the proposer's character two boons", async () => {
     const table = "mv-cx-accept";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const ada = await seatPlayer(table, fac, 0, 1);
     await seatPlayer(table, fac, 1, 0);
 
-    await call(table, "/moves/complicate", {
-      token: ada.token,
-      body: { targetSlot: 1 },
-    });
+    await call(table, "/moves/complicate", { token: ada.token });
     const id = await firstProposalId(table, fac);
     expect(
       (await call(table, `/proposals/${id}/accept`, { token: fac })).status,
@@ -539,10 +526,10 @@ describe("Move: Complicate", () => {
 
     const state = await readState(table, fac);
     expect(state.proposals).toHaveLength(0);
-    expect(fateOf(state, 0)).toBe(1); // suggester unchanged
-    expect(fateOf(state, 1)).toBe(2);
+    expect(fateOf(state, 0)).toBe(3);
+    expect(fateOf(state, 1)).toBe(0);
     expect(state.messages.at(-1)?.content).toBe(
-      "Complicate accepted — Character 2 gains 2 boons (suggested by Character 1)",
+      "Complicate accepted — Character 1 gains 2 boons",
     );
   });
 
@@ -550,37 +537,29 @@ describe("Move: Complicate", () => {
     const table = "mv-cx-reject";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const ada = await seatPlayer(table, fac, 0, 0);
-    await seatPlayer(table, fac, 1, 0);
 
     for (let i = 0; i < 2; i++) {
-      await call(table, "/moves/complicate", {
-        token: ada.token,
-        body: { targetSlot: 1 },
-      });
+      await call(table, "/moves/complicate", { token: ada.token });
       const id = await firstProposalId(table, fac);
       await call(table, `/proposals/${id}/reject`, { token: fac });
     }
 
     const state = await readState(table, fac);
     expect(state.proposals).toHaveLength(0);
-    expect(fateOf(state, 1)).toBe(0);
+    expect(fateOf(state, 0)).toBe(0);
     expect(state.messages.at(-1)?.content).toBe(
       "Complicate rejected — Character 1",
     );
   });
 
-  it("drops the proposal if the target releases their sheet before it is resolved", async () => {
+  it("drops the proposal if the proposer releases their sheet before it is resolved", async () => {
     const table = "mv-cx-target-gone";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const ada = await seatPlayer(table, fac, 0, 0);
-    const bea = await seatPlayer(table, fac, 1, 0);
 
-    await call(table, "/moves/complicate", {
-      token: ada.token,
-      body: { targetSlot: 1 },
-    });
+    await call(table, "/moves/complicate", { token: ada.token });
     const id = await firstProposalId(table, fac);
-    await call(table, "/characters/1/release", { token: bea.token });
+    await call(table, "/characters/0/release", { token: ada.token });
 
     const res = await call(table, `/proposals/${id}/accept`, { token: fac });
     expect(res.status).not.toBe(204);

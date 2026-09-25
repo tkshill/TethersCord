@@ -125,8 +125,8 @@ type alias Overcome =
 
 
 {-| The character holding `slot`, if any. One shared slot lookup for `Main` (the
-state-merge helpers) and `View` (the panels that resolve a proposal's target,
-e.g. a Complicate).
+state-merge helpers) and `View` (the panels that resolve a proposal's
+character).
 -}
 characterAtSlot : Int -> List CharacterSheet -> Maybe CharacterSheet
 characterAtSlot slot characters =
@@ -135,9 +135,9 @@ characterAtSlot slot characters =
 
 {-| A player move waiting on the facilitator (Overcome is not one — it needs no
 approval). See `Kind.ProposalKind` for the kinds. `sessionAspectId` names the
-boon for `UseSessionBoon`; `targetSlot` names the target character for
-`Complicate`; `text` is an Add Detail's suggested wording, if the player gave
-one.
+boon for `UseSessionBoon`; `targetSlot` is set only on an older `Complicate`
+that named another character; `text` is an Add Detail's suggested wording, if
+the player gave one.
 -}
 type alias Proposal =
     { id : String
@@ -537,7 +537,7 @@ type Msg
     | AcceptOvercome
     | RejectOvercome
     | ProposeHighlight
-    | ProposeComplicate Int
+    | ProposeComplicate
     | ProposeAddDetail
     | ProposeAlter
     | ProposeUseSessionBoon String

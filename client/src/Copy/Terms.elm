@@ -122,7 +122,7 @@ boon =
     { term = "Boon"
     , short = "A favourable stone, and the currency a character spends on moves."
     , long =
-        "As a stone, the good result of a draw. As a resource, the boons on a character's sheet: spent on Highlight, Add Detail and Alter Fate, and gained when another player Complicates you. The facilitator can also grant or take them directly."
+        "As a stone, the good result of a draw. As a resource, the boons on a character's sheet: spent on Highlight, Add Detail and Alter Fate, and gained by Complicate. The facilitator can also grant or take them directly."
     }
 
 
@@ -182,9 +182,9 @@ highlight =
 complicate : Term
 complicate =
     { term = "Complicate"
-    , short = "Suggest a complication for another character; their player gains 2 boons."
+    , short = "Suggest a complication for your character; you gain 2 boons."
     , long =
-        "Suggest a way another character could do something dangerous, destructive, or derailing. It is free to propose. When it is accepted, that character's player gains two boons and you gain nothing. Whether their character goes along is handled at the table."
+        "Suggest a way your own character could do something dangerous, destructive, or derailing. It is free to propose. When the facilitator accepts it, your character gains two boons."
     }
 
 

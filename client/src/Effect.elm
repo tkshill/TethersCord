@@ -54,7 +54,7 @@ type Effect
     | PostReleaseSlot Auth Int
     | PostProposalDecision Auth String String (Maybe String)
     | PostWithdrawProposal Auth String
-    | PostComplicate Auth Int
+    | PostComplicate Auth
     | PostAddDetail Auth (Maybe String)
     | PostAlter Auth
     | PostUseSessionBoon Auth String
@@ -148,8 +148,8 @@ perform flags effect =
         PostWithdrawProposal auth id ->
             Api.postWithdrawProposal flags auth id (ProposalResolved id)
 
-        PostComplicate auth targetSlot ->
-            Api.postComplicate flags auth targetSlot moveRaised
+        PostComplicate auth ->
+            Api.postComplicate flags auth moveRaised
 
         PostAddDetail auth text ->
             Api.postAddDetail flags auth text moveRaised

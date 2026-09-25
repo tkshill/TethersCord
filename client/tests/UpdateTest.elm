@@ -386,11 +386,11 @@ suite =
                     , Main.update ProposeHighlight m |> Tuple.second
                     )
                         |> Expect.equal ( Effect.PostHighlight Fixtures.playerAuth, Effect.None )
-            , test "Complicate names its target" <|
+            , test "Complicate posts for the caller's own sheet" <|
                 \_ ->
-                    Main.update (ProposeComplicate 2) ready
+                    Main.update ProposeComplicate ready
                         |> Tuple.second
-                        |> Expect.equal (Effect.PostComplicate Fixtures.playerAuth 2)
+                        |> Expect.equal (Effect.PostComplicate Fixtures.playerAuth)
             , test "Add Detail sends the trimmed suggestion and clears the field" <|
                 \_ ->
                     Main.update ProposeAddDetail { ready | addDetailDraft = "  the door is barred  " }

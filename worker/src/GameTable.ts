@@ -68,8 +68,8 @@ const ADD_DETAIL_COST = 1;
 /** Boons a player pays for an Alter Fate, on approval. */
 const ALTER_COST = 2;
 
-/** Boons an approved Complicate pays the target character. The suggester gets none. */
-const COMPLICATE_TARGET_BOONS = 2;
+/** Boons an approved Complicate pays the proposer's character. */
+const COMPLICATE_BOONS = 2;
 
 /** A crypto.randomUUID() shape, for the `/proposals/:id/…` and
  * `/{npcs,locations}/:id/…` route patterns. */
@@ -276,7 +276,7 @@ export class GameTable implements DurableObject {
     }
 
     if (url.pathname === "/moves/complicate" && request.method === "POST") {
-      return this.withLock(() => this.handleComplicate(request, authInfo));
+      return this.withLock(() => this.handleComplicate(authInfo));
     }
 
     if (url.pathname === "/moves/use-session-boon" && request.method === "POST") {
@@ -922,16 +922,11 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * Complicate: the caller suggests a way another character could do something
-   * dangerous, destructive, or derailing. Free to propose; on approval the
-   * target character's player gains `COMPLICATE_TARGET_BOONS` boons and the
-   * suggester nothing.
+   * Complicate: the caller suggests a way their own character could do
+   * something dangerous, destructive, or derailing. Free to propose; on
+   * approval the caller's character gains `COMPLICATE_BOONS` boons.
    */
-  private async handleComplicate(
-    request: Request,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    const input = (await readJson(request)) as { targetSlot?: unknown } | null;
+  private async handleComplicate(authInfo: AuthInfo): Promise<Response> {
     const character = this.game.characters.find(
       (c) => c.ownerId === authInfo.discordUserId,
     );
@@ -939,34 +934,15 @@ export class GameTable implements DurableObject {
       return new Response("Claim a character sheet first", { status: 400 });
     }
 
-    const raw = input?.targetSlot;
-    if (
-      typeof raw !== "number" ||
-      !Number.isInteger(raw) ||
-      raw < 0 ||
-      raw >= CHARACTER_SLOT_COUNT
-    ) {
-      return new Response("A target character is required", { status: 400 });
-    }
-    if (raw === character.slot) {
-      return new Response("You cannot complicate your own character", {
-        status: 400,
-      });
-    }
-    const target = this.game.characters.find((c) => c.slot === raw);
-
     return this.addProposal(
       {
         kind: "complicate",
         proposerId: authInfo.discordUserId,
         proposerName: authInfo.username,
         slot: character.slot,
-        targetSlot: raw,
       },
       authInfo,
-      `${characterLabel(character)} proposes Complicate on ${
-        target ? characterLabel(target) : `Character ${raw + 1}`
-      }`,
+      `${characterLabel(character)} proposes Complicate`,
     );
   }
 
@@ -1195,30 +1171,27 @@ export class GameTable implements DurableObject {
         }
 
         case "complicate": {
-          const suggester =
-            proposal.slot === null
+          // Older proposals named another character in `targetSlot`; honour
+          // one still queued, otherwise the proposer's own sheet gains.
+          const recipientSlot = proposal.targetSlot ?? proposal.slot;
+          const recipient =
+            recipientSlot === null
               ? undefined
-              : state.characters.find((c) => c.slot === proposal.slot);
-          const target =
-            proposal.targetSlot === null
-              ? undefined
-              : state.characters.find((c) => c.slot === proposal.targetSlot);
-          if (!suggester || !target) {
+              : state.characters.find((c) => c.slot === recipientSlot);
+          if (!recipient) {
             return this.proposalTargetGone();
           }
           state = {
             ...state,
             characters: await this.bumpFate(
               state.characters,
-              target.slot,
-              COMPLICATE_TARGET_BOONS,
+              recipient.slot,
+              COMPLICATE_BOONS,
             ),
           };
           logLine = `Complicate accepted — ${characterLabel(
-            target,
-          )} gains ${COMPLICATE_TARGET_BOONS} boons (suggested by ${characterLabel(
-            suggester,
-          )})`;
+            recipient,
+          )} gains ${COMPLICATE_BOONS} boons`;
           break;
         }
 

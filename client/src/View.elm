@@ -3,7 +3,7 @@ module View exposing (logDomId, view)
 {-| The Activity view (roadmap section 27, mockup 2a): a one-line status strip
 (`View.TopBar`) over three equal columns — a tool panel on the left (a row of
 glyph tabs showing one tool at a time: Sheet, Facilitator (facilitator only),
-Cast, Guide); the Moves in the middle with the session context beneath them;
+Cast, Guide); the session context in the middle with the Moves pinned beneath;
 and, on the right, the event log with the composer pinned beneath it, so neither
 playing a move nor sending a message depends on which tool is open. Only the
 session context and the log scroll, being the two that grow over play. Each
@@ -218,9 +218,9 @@ toolBody ctx model gs tab =
             View.Guide.view
 
 
-{-| The middle column: the Moves at their natural height, then the session
-context (session boons and banes, past sessions) filling the rest and scrolling
-on its own.
+{-| The middle column: the session context (session boons and banes, past
+sessions) filling it and scrolling on its own, then the Moves pinned beneath at
+their natural height.
 -}
 movesPanel : ViewContext -> Model -> GameState -> Element Msg
 movesPanel ctx model gs =
@@ -231,8 +231,7 @@ movesPanel ctx model gs =
         , Element.paddingEach { top = 8, right = 10, bottom = 8, left = 10 }
         , spacing Ui.sm
         ]
-        [ View.Moves.view ctx { addDetailDraft = model.addDetailDraft, selectedSlot = model.selectedSlot } gs
-        , Ui.divider (String.toUpper Copy.contextTabLabel)
+        [ Ui.divider (String.toUpper Copy.contextTabLabel)
         , Ui.scrollArea
             [ View.SessionAspects.view ctx
                 { sessionAspectDraft = model.newSessionAspectNote
@@ -242,6 +241,8 @@ movesPanel ctx model gs =
                 gs
             , View.Session.view ctx gs
             ]
+        , Ui.divider (String.toUpper Copy.movesHeading)
+        , View.Moves.view ctx { addDetailDraft = model.addDetailDraft, selectedSlot = model.selectedSlot } gs
         ]
 
 

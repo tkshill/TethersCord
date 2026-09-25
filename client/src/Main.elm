@@ -456,8 +456,8 @@ update msg model =
         ProposeHighlight ->
             guard (RaisingMove Kind.Highlight) model Effect.PostHighlight
 
-        ProposeComplicate targetSlot ->
-            guard (RaisingMove Kind.Complicate) model (\auth -> Effect.PostComplicate auth targetSlot)
+        ProposeComplicate ->
+            guard (RaisingMove Kind.Complicate) model Effect.PostComplicate
 
         ProposeAddDetail ->
             let

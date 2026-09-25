@@ -8,8 +8,25 @@ version yet, so headings are dates.
 
 ## [Unreleased]
 
+### Changed
+
+- **Complicate is about your own character**: the move no longer names another
+  character. Proposing it suggests a complication for your own character, and
+  on approval that character gains two boons. One button instead of one per
+  other player. A Complicate queued before this change still pays the character
+  it named.
+- **Moves pinned to the bottom of the middle column**, under a "MOVES" divider
+  to match the context one; the session context scrolls above them.
+  Highlight, Complicate and Alter Fate share one line, with Add Detail and its
+  suggestion field side by side beneath. Alter Fate is always shown and is
+  pressable only while an Overcome is pending. A ghost button with no action
+  is now drawn muted.
+
 ### Fixed
 
+- **Character sheet fields wrap**: a long entry wraps and the field grows to
+  show it, instead of running past the column's edge. Line breaks become
+  spaces, so each field stays a single value.
 - **No stray horizontal scrollbar in the tool panel or the log**: vertical
   scroll regions now hide horizontal overflow. A spaced `wrappedRow` (the
   Sheet's slot tabs) spills a couple of pixels past its edge, and
