@@ -62,6 +62,7 @@ view ctx props gs =
                 , spacing 7
                 , Element.paddingXY 14 10
                 , Element.scrollbarY
+                , Ui.clipX
                 , Ui.shrinkable
                 , Element.htmlAttribute (Html.Attributes.id logDomId)
                 , Ui.onScrolledToBottom 32 LogScrolled

@@ -8,6 +8,13 @@ version yet, so headings are dates.
 
 ## [Unreleased]
 
+### Fixed
+
+- **No stray horizontal scrollbar in the tool panel or the log**: vertical
+  scroll regions now hide horizontal overflow. A spaced `wrappedRow` (the
+  Sheet's slot tabs) spills a couple of pixels past its edge, and
+  `scrollbarY` alone turned that into a permanent horizontal bar.
+
 ### Changed
 
 - **Tool panel takes the wide side**: the panel split is now a share of the
