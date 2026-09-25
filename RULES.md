@@ -90,16 +90,16 @@ approval, in case the player's boons changed while the proposal waited.
 | --- | --- | --- | --- |
 | **Highlight** | Player | 1 boon | One boon moves from the player to the pool. One boon per proposal. |
 | **Overcome** | Any player | none | Not a proposal. Draws two stones. See above. |
-| **Complicate** | Player, naming another character | none | The named character's player gains two boons. The suggester gains nothing. |
+| **Complicate** | Player | none | The player's own character gains two boons. |
 | **Add Detail** | Player | 1 boon | A session boon is created. The text comes from the player (it may be blank) and the facilitator can edit it before accepting. |
 | **Alter Fate** | Player, during a pending roll | 2 boons | The pending roll is rerolled. |
 
 - **Highlight** — note how an aspect of the scene will shape the outcome, and put
   a boon in the pool. Not allowed to be *resolved* in the middle of a pending
   roll (a table rule, above).
-- **Complicate** — suggest a way another character could do something
-  dangerous, destructive, or derailing. This is the only compel mechanic; the
-  word "compel" is retired. The other player's consent is handled at the table.
+- **Complicate** — suggest a way your own character could do something
+  dangerous, destructive, or derailing, and gain two boons for it. This is the
+  only compel mechanic; the word "compel" is retired.
 - **Add Detail** — establish something true about the scene. Either suggest the
   detail yourself, or ask the facilitator for one. The result is a session boon
   anyone can spend later.

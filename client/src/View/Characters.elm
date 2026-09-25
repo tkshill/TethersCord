@@ -217,16 +217,21 @@ ownerRow facilitator mine ch =
 {-| A labelled sheet field. `tipKey` names the glossary term whose gloss shows as
 a native tooltip over the field; `""` for a field that is not game vocabulary
 ("Name", "Notes").
+
+It is a one-line value, but drawn as a multiline input so a long entry wraps and
+the field grows to show it instead of running past the column's edge. A line
+break (Enter, or a paste) becomes a space, so the value stays one line.
 -}
 field : Bool -> CharacterSheet -> CharacterField -> String -> String -> String -> Element Msg
 field editable ch fieldTag tipKey label value =
     if editable then
-        Input.text
-            (inlineInputAttrs ++ tipAttrs tipKey ++ [ width fill, Ui.onBlur (CharacterFieldBlur ch.slot) ])
-            { onChange = CharacterFieldInput ch.slot fieldTag
+        Input.multiline
+            (inlineInputAttrs ++ tipAttrs tipKey ++ [ width fill, Ui.wrapAnywhere, Ui.onBlur (CharacterFieldBlur ch.slot) ])
+            { onChange = String.replace "\n" " " >> CharacterFieldInput ch.slot fieldTag
             , text = value
             , placeholder = Nothing
             , label = fieldLabel label
+            , spellcheck = True
             }
 
     else
@@ -237,7 +242,7 @@ notesField : Bool -> CharacterSheet -> Element Msg
 notesField editable ch =
     if editable then
         Input.multiline
-            (inputAttrs ++ [ height (px 64), width fill, Ui.onBlur (CharacterFieldBlur ch.slot) ])
+            (inputAttrs ++ [ height (px 64), width fill, Ui.wrapAnywhere, Ui.onBlur (CharacterFieldBlur ch.slot) ])
             { onChange = CharacterFieldInput ch.slot NotesField
             , text = ch.notes
             , placeholder = Nothing
@@ -255,7 +260,7 @@ readOnlyField tipKey label value =
         [ el [ width (px labelWidth), Element.alignTop, Font.size 10, Font.color Ui.inkSoft, Font.letterSpacing 0.5 ]
             (text (String.toUpper label))
         , Element.paragraph
-            [ Font.size 13, Element.paddingXY 4 2, Font.color Ui.inkSoft ]
+            [ width fill, Ui.wrapAnywhere, Font.size 13, Element.paddingXY 4 2, Font.color Ui.inkSoft ]
             [ text
                 (if String.trim value == "" then
                     "—"

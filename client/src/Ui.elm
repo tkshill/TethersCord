@@ -39,6 +39,7 @@ module Ui exposing
     , tint
     , toolTab
     , withTip
+    , wrapAnywhere
     , xl
     , xs
     )
@@ -337,6 +338,14 @@ oneLine attrs content =
         )
 
 
+{-| Let text break inside a long unbroken word (a URL, a run with no spaces), so
+a value wraps inside its column rather than pushing past the edge.
+-}
+wrapAnywhere : Attribute msg
+wrapAnywhere =
+    Element.htmlAttribute (Html.Attributes.style "overflow-wrap" "anywhere")
+
+
 {-| A tool's content: a plain stack with no surface of its own. The panel it
 sits in supplies the background and the edges, so the tools stay flat.
 -}
@@ -426,18 +435,29 @@ primaryButton config =
         { onPress = config.onPress, label = text config.label }
 
 
+{-| A bordered secondary button. With no `onPress` it is drawn muted and does
+not light up on hover, so an unavailable control reads as one.
+-}
 ghostButton : { onPress : Maybe msg, label : String } -> Element msg
 ghostButton config =
     Input.button
-        [ Background.color panel
-        , Font.color ink
-        , Font.size 12
-        , paddingXY_ 8 2
-        , Border.color line
-        , Border.width 1
-        , Border.rounded 4
-        , Element.mouseOver [ Border.color accent, Font.color accent ]
-        ]
+        ([ Background.color panel
+         , Font.size 12
+         , paddingXY_ 8 2
+         , Border.color line
+         , Border.width 1
+         , Border.rounded 4
+         ]
+            ++ (case config.onPress of
+                    Just _ ->
+                        [ Font.color ink
+                        , Element.mouseOver [ Border.color accent, Font.color accent ]
+                        ]
+
+                    Nothing ->
+                        [ Font.color inkSoft ]
+               )
+        )
         { onPress = config.onPress, label = text config.label }
 
 

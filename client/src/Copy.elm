@@ -273,14 +273,9 @@ proposalAddDetail =
     "Add Detail — pays 1 boon, makes a session boon"
 
 
-proposalComplicateOn : String -> String
-proposalComplicateOn who =
-    "Complicate " ++ who ++ " — they gain 2 boons"
-
-
-proposalComplicateFallback : String
-proposalComplicateFallback =
-    "another character"
+proposalComplicate : String
+proposalComplicate =
+    "Complicate — gains 2 boons"
 
 
 proposalUseSessionBoon : String -> String
@@ -303,6 +298,11 @@ proposalsWaiting n =
 
 
 -- MOVES CARD (View/Moves.elm)
+
+
+movesHeading : String
+movesHeading =
+    "Moves"
 
 
 highlightButton : String
@@ -350,19 +350,14 @@ useSessionBoonButton =
     "Use boon"
 
 
-complicateButton : String -> String
-complicateButton target =
-    "Complicate " ++ target
+complicateButton : String
+complicateButton =
+    "Complicate"
 
 
 noSessionBoons : String
 noSessionBoons =
     "No unspent session boons."
-
-
-noOtherPlayers : String
-noOtherPlayers =
-    "no other players"
 
 
 claimASheetForMoves : String

@@ -59,8 +59,8 @@ export type Overcome = {
  * The player moves the facilitator resolves through the one accept / reject
  * queue (Overcome is not one — it needs no approval):
  * - `highlight` — pay 1 boon to add a Boon to the pool.
- * - `complicate` — suggest a complication for another character; on approval
- *   that character's player gains 2 boons.
+ * - `complicate` — suggest a complication for your own character; on approval
+ *   it gains 2 boons.
  * - `add-detail` — pay 1 boon to establish a fact; on approval a session boon.
  * - `alter` — Alter Fate: pay 2 boons to reroll the pending Overcome.
  * - `use-session-boon` — spend a session boon (named by `sessionAspectId`),
@@ -76,8 +76,8 @@ export type ProposalKind =
 /**
  * A player-initiated change to shared state, waiting on the facilitator. One per
  * click. `slot` is the proposer's claimed sheet. `sessionAspectId` names the
- * boon for `use-session-boon`; `targetSlot` names the target character for
- * `complicate`.
+ * boon for `use-session-boon`. `targetSlot` is only set on an older
+ * `complicate`, which named another character; it is null otherwise.
  */
 export type Proposal = {
   id: string;
