@@ -119,8 +119,6 @@ model =
     , gameStateAttempts = 0
     , timeZone = Time.utc
     , toolTab = SheetTab
-    , leftPanelShare = 0.75
-    , draggingDivider = False
     }
 
 

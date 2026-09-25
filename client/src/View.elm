@@ -1,12 +1,13 @@
 module View exposing (logDomId, view)
 
 {-| The Activity view (roadmap section 27, mockup 2a): a one-line status strip
-(`View.TopBar`) over two panels — a tool panel on the left (a row of glyph tabs
-showing one tool at a time: Sheet (the character sheet, moves and session
-context stacked in one scroll), Facilitator (facilitator only), Cast, Guide) and, on the right, the event
-log with the composer pinned beneath it, so sending a message never depends on
-which tool is open. The left panel's width is draggable (roadmap 24). Each tool
-is handed a `ViewContext` computed once here.
+(`View.TopBar`) over three equal columns — a tool panel on the left (a row of
+glyph tabs showing one tool at a time: Sheet, Facilitator (facilitator only),
+Cast, Guide); the Moves in the middle with the session context beneath them;
+and, on the right, the event log with the composer pinned beneath it, so neither
+playing a move nor sending a message depends on which tool is open. Only the
+session context and the log scroll, being the two that grow over play. Each
+tool is handed a `ViewContext` computed once here.
 -}
 
 import Copy
@@ -71,8 +72,10 @@ view model =
                            ]
                 , columns =
                     [ toolPanel ctx model gs
-                    , Ui.dragHandle DividerDragStarted
-                    , rightPanel ctx model gs
+                    , Ui.columnRule
+                    , movesPanel ctx model gs
+                    , Ui.columnRule
+                    , logPanel ctx model gs
                     ]
                 }
 
@@ -119,7 +122,7 @@ toolPanel ctx model gs =
     in
     Element.column
         [ Element.height fill
-        , width (Element.fillPortion (panelPortion model.leftPanelShare))
+        , width fill
         , Ui.shrinkable
         ]
         [ toolStrip ctx selected gs
@@ -192,25 +195,11 @@ toolBody : ViewContext -> Model -> GameState -> ToolTab -> Element Msg
 toolBody ctx model gs tab =
     case tab of
         SheetTab ->
-            -- The sheet, the moves it pays for and the session context they
-            -- act on, stacked so play needs no tab switching.
-            Ui.flat
-                [ View.Characters.view ctx
-                    { selectedSlot = model.selectedSlot
-                    , aspectExamplesOpen = model.aspectExamplesOpen
-                    }
-                    gs
-                , Ui.divider (String.toUpper Copy.movesTitle)
-                , View.Moves.view ctx { addDetailDraft = model.addDetailDraft, selectedSlot = model.selectedSlot } gs
-                , Ui.divider (String.toUpper Copy.contextTabLabel)
-                , View.SessionAspects.view ctx
-                    { sessionAspectDraft = model.newSessionAspectNote
-                    , sessionAspectKind = model.newSessionAspectKind
-                    , edits = model.sessionAspectEdits
-                    }
-                    gs
-                , View.Session.view ctx gs
-                ]
+            View.Characters.view ctx
+                { selectedSlot = model.selectedSlot
+                , aspectExamplesOpen = model.aspectExamplesOpen
+                }
+                gs
 
         FacilitatorTab ->
             View.FacilitatorPanel.view ctx { drafts = model.proposalDrafts } gs
@@ -229,13 +218,40 @@ toolBody ctx model gs tab =
             View.Guide.view
 
 
-{-| The right panel: the event log filling it, the composer beneath.
+{-| The middle column: the Moves at their natural height, then the session
+context (session boons and banes, past sessions) filling the rest and scrolling
+on its own.
 -}
-rightPanel : ViewContext -> Model -> GameState -> Element Msg
-rightPanel ctx model gs =
+movesPanel : ViewContext -> Model -> GameState -> Element Msg
+movesPanel ctx model gs =
     Element.column
         [ Element.height fill
-        , width (Element.fillPortion (panelPortion (1 - model.leftPanelShare)))
+        , width fill
+        , Ui.shrinkable
+        , Element.paddingEach { top = 8, right = 10, bottom = 8, left = 10 }
+        , spacing Ui.sm
+        ]
+        [ View.Moves.view ctx { addDetailDraft = model.addDetailDraft, selectedSlot = model.selectedSlot } gs
+        , Ui.divider (String.toUpper Copy.contextTabLabel)
+        , Ui.scrollArea
+            [ View.SessionAspects.view ctx
+                { sessionAspectDraft = model.newSessionAspectNote
+                , sessionAspectKind = model.newSessionAspectKind
+                , edits = model.sessionAspectEdits
+                }
+                gs
+            , View.Session.view ctx gs
+            ]
+        ]
+
+
+{-| The right column: the event log filling it, the composer beneath.
+-}
+logPanel : ViewContext -> Model -> GameState -> Element Msg
+logPanel ctx model gs =
+    Element.column
+        [ Element.height fill
+        , width fill
         , Background.color Ui.panel
         , Ui.shrinkable
         ]
@@ -247,14 +263,6 @@ rightPanel ctx model gs =
             gs
         , composer model
         ]
-
-
-{-| A panel's share of the width as an elm-ui `fillPortion`, which only takes
-whole numbers: parts per thousand.
--}
-panelPortion : Float -> Int
-panelPortion share =
-    max 1 (round (share * 1000))
 
 
 connectionNote : Connection -> List (Element msg)

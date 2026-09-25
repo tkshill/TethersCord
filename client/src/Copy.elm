@@ -305,29 +305,9 @@ proposalsWaiting n =
 -- MOVES CARD (View/Moves.elm)
 
 
-movesTitle : String
-movesTitle =
-    "Moves"
-
-
-highlightBlurb : String
-highlightBlurb =
-    "Pay 1 boon: an aspect shapes the outcome, and the pool gains a Boon."
-
-
 highlightButton : String
 highlightButton =
     "Highlight"
-
-
-complicateBlurb : String
-complicateBlurb =
-    "Suggest a complication for another character. Their player gains 2 boons."
-
-
-addDetailBlurb : String
-addDetailBlurb =
-    "Pay 1 boon to establish something true about the scene: suggest it, or leave it blank and ask the facilitator."
 
 
 addDetailPlaceholder : String
@@ -338,11 +318,6 @@ addDetailPlaceholder =
 addDetailButton : String
 addDetailButton =
     "Add Detail"
-
-
-alterBlurb : String
-alterBlurb =
-    "Pay 2 boons to reroll the Overcome. Once per Overcome."
 
 
 alterButton : String
@@ -370,14 +345,14 @@ needsABoon =
     "You need a boon."
 
 
-useSessionBoonBlurb : String
-useSessionBoonBlurb =
-    "Spend a session boon: the pool gains a Boon."
+useSessionBoonButton : String
+useSessionBoonButton =
+    "Use boon"
 
 
-useButton : String
-useButton =
-    "Use"
+complicateButton : String -> String
+complicateButton target =
+    "Complicate " ++ target
 
 
 noSessionBoons : String
