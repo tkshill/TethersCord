@@ -10,6 +10,12 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **Table events stand apart from chat in the log**: lines the table writes when
+  something happens (a roll, a proposal and its resolution, a session starting)
+  now render muted, italic and a size smaller behind a hairline rule, with the
+  author trailing, so typed chat is easy to pick out. Messages carry a new `kind`
+  (`chat` / `event`, migration `0010_message_kind.sql`); rows written before it
+  default to `chat` and keep the old styling until the 30-day prune drops them.
 - **Sheet, Moves and Context stacked in one tool**: the Sheet tab now shows the
   character sheet, then the moves, then the session boons, banes and past
   sessions in a single scroll, each section under a divider caption, so playing a

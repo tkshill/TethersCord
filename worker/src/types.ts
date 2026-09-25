@@ -7,12 +7,19 @@ import type {
 
 export type Role = "facilitator" | "player";
 
+/**
+ * `chat` is a line a person typed into the composer; `event` is a line the table
+ * wrote when a mutation happened (a roll, an accepted proposal, a session start).
+ */
+export type MessageKind = "chat" | "event";
+
 export type Message = {
   id: string;
   sessionId: string;
   authorId: string;
   authorName: string;
   role: Role;
+  kind: MessageKind;
   content: string;
   createdAt: number;
 };

@@ -14,6 +14,7 @@ import type {
   SessionAspect,
   GameState,
   Message,
+  MessageKind,
   PostMessageInput,
   Proposal,
   ProposalDecisionInput,
@@ -558,7 +559,7 @@ export class GameTable implements DurableObject {
         this.env.DB.prepare(
           `
           SELECT id, session_id AS sessionId, author_id AS authorId,
-                 author_name AS authorName, role, content, created_at AS createdAt
+                 author_name AS authorName, role, kind, content, created_at AS createdAt
           FROM messages
           WHERE session_id = ?
           ORDER BY created_at DESC, id DESC
@@ -764,6 +765,7 @@ export class GameTable implements DurableObject {
       authorId: authInfo.discordUserId,
       authorName: authInfo.username,
       role: authInfo.role,
+      kind: "chat",
       content,
     });
   }
@@ -787,7 +789,7 @@ export class GameTable implements DurableObject {
     const rows = await this.env.DB.prepare(
       `
       SELECT id, session_id AS sessionId, author_id AS authorId,
-             author_name AS authorName, role, content, created_at AS createdAt
+             author_name AS authorName, role, kind, content, created_at AS createdAt
       FROM messages
       WHERE session_id = ? AND created_at < ?
       ORDER BY created_at DESC, id DESC
@@ -2018,14 +2020,15 @@ export class GameTable implements DurableObject {
       authorId: input.authorId,
       authorName: input.authorName,
       role: input.role,
+      kind: input.kind ?? "event",
       content: input.content,
       createdAt: Date.now(),
     };
 
     await this.env.DB.prepare(
       `
-      INSERT INTO messages (id, session_id, author_id, author_name, role, content, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO messages (id, session_id, author_id, author_name, role, kind, content, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
     )
       .bind(
@@ -2034,6 +2037,7 @@ export class GameTable implements DurableObject {
         msg.authorId,
         msg.authorName,
         msg.role,
+        msg.kind,
         msg.content,
         msg.createdAt,
       )
@@ -2050,6 +2054,8 @@ type AddMessageInput = {
   authorId: string;
   authorName: string;
   role: Role;
+  /** Defaults to `event`: only `handlePostMessage` writes `chat`. */
+  kind?: MessageKind;
   content: string;
 };
 
