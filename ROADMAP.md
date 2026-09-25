@@ -1866,6 +1866,53 @@ Where the mockup and the rules disagree, the rules win. Deliberate adaptations:
 - Game events in the log are not tinted as in the mockup: the Worker logs them as
   the acting user's own messages, with no system marker to key on.
 
+## 28. Heart and skull marks, labelled tool tabs — next
+
+Two small visual changes to the section-27 UI.
+
+### 28.1 Boons and banes as hearts and skulls
+
+The `+` / `−` marks read as arithmetic rather than as game pieces, and a run of
+them is hard to count at a glance. Replace them with a pictorial pair — hearts
+for boons, skulls for banes (exact glyphs open; see below).
+
+- [ ] Swap the glyph in `Ui.boonMarks` / `Ui.baneMarks` (`client/src/Ui.elm`).
+      That covers the pool in the status strip, the pending Overcome draw chip
+      (`View/TopBar.elm`), boons on the Sheet and aspect Banes
+      (`View/Characters.elm`).
+- [ ] Route the hand-written `+` / `−` in `View/SessionAspects.elm` (the
+      session boon / bane rows and the facilitator's add-aspect kind buttons)
+      through the same helpers so every mark changes together.
+- [ ] Check the log lines and `Copy.elm` strings for `+` / `−` shorthand that
+      should follow (for example the "(+1 / +2 boons)" style text), and the
+      glossary in `Copy/Terms.elm` if it describes the marks.
+- [ ] Keep the colour split (bane in the danger tone) so the two stay
+      distinguishable without relying on shape alone.
+- [ ] Verify the glyphs render inside the Discord Activity webview on desktop
+      and mobile, and that letter-spacing still leaves a run countable.
+
+### 28.2 Tool tabs always show their titles
+
+The left panel's tabs show only a glyph (`◆` / `⚑` / `☺` / `?`) until selected,
+so a player has to hover or guess. Show every tab's title all the time and drop
+the glyphs.
+
+- [ ] `Ui.toolTab` renders `label` for every tab, selected or not; the selected
+      tab keeps its wash and weight. Remove the `glyph` field and the fixed
+      26px unselected width.
+- [ ] Update the call site in `View.elm` and the `CLAUDE.md` description of
+      the tab row.
+- [ ] Confirm the four titles (Sheet, Facilitator, Cast, Guide) fit on one
+      line in the default panel width; shorten or let the row wrap if not.
+
+### Open questions
+
+- Which glyphs: emoji (❤ / 💀, colour set by the platform) or monochrome text
+  symbols (♥ / ☠, which take the palette's colour)? Monochrome fits the spare
+  look and the danger tint; emoji are more legible at 11–13px.
+- With labels always on, does the tab tooltip still earn its place, or can
+  `tip` go too?
+
 # Phase 3 — potential future plans
 
 Everything still open, moved out of the Phase 1 sections above so it sits in one
