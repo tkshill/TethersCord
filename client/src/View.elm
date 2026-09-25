@@ -119,7 +119,7 @@ toolPanel ctx model gs =
     in
     Element.column
         [ Element.height fill
-        , width (Element.px (round model.leftPanelWidth))
+        , width (Element.fillPortion (panelPortion model.leftPanelShare))
         , Ui.shrinkable
         ]
         [ toolStrip ctx selected gs
@@ -235,7 +235,7 @@ rightPanel : ViewContext -> Model -> GameState -> Element Msg
 rightPanel ctx model gs =
     Element.column
         [ Element.height fill
-        , width fill
+        , width (Element.fillPortion (panelPortion (1 - model.leftPanelShare)))
         , Background.color Ui.panel
         , Ui.shrinkable
         ]
@@ -247,6 +247,14 @@ rightPanel ctx model gs =
             gs
         , composer model
         ]
+
+
+{-| A panel's share of the width as an elm-ui `fillPortion`, which only takes
+whole numbers: parts per thousand.
+-}
+panelPortion : Float -> Int
+panelPortion share =
+    max 1 (round (share * 1000))
 
 
 connectionNote : Connection -> List (Element msg)

@@ -10,6 +10,10 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **Tool panel takes the wide side**: the panel split is now a share of the
+  window width instead of a pixel width. The tool panel defaults to three
+  quarters and drags between half and four fifths, leaving the message log a
+  quarter by default (a fifth at narrowest, half at widest).
 - **Table events stand apart from chat in the log**: lines the table writes when
   something happens (a roll, a proposal and its resolution, a session starting)
   now render muted, italic and a size smaller behind a hairline rule, with the
