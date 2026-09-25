@@ -225,14 +225,16 @@ break (Enter, or a paste) becomes a space, so the value stays one line.
 field : Bool -> CharacterSheet -> CharacterField -> String -> String -> String -> Element Msg
 field editable ch fieldTag tipKey label value =
     if editable then
-        Input.multiline
-            (inlineInputAttrs ++ tipAttrs tipKey ++ [ width fill, Ui.wrapAnywhere, Ui.onBlur (CharacterFieldBlur ch.slot) ])
-            { onChange = String.replace "\n" " " >> CharacterFieldInput ch.slot fieldTag
-            , text = value
-            , placeholder = Nothing
-            , label = fieldLabel label
-            , spellcheck = True
-            }
+        labelled label
+            (Input.multiline
+                (inlineInputAttrs ++ tipAttrs tipKey ++ [ width fill, Ui.onBlur (CharacterFieldBlur ch.slot) ])
+                { onChange = String.replace "\n" " " >> CharacterFieldInput ch.slot fieldTag
+                , text = value
+                , placeholder = Nothing
+                , label = Input.labelHidden label
+                , spellcheck = True
+                }
+            )
 
     else
         readOnlyField tipKey label value
@@ -241,24 +243,43 @@ field editable ch fieldTag tipKey label value =
 notesField : Bool -> CharacterSheet -> Element Msg
 notesField editable ch =
     if editable then
-        Input.multiline
-            (inputAttrs ++ [ height (px 64), width fill, Ui.wrapAnywhere, Ui.onBlur (CharacterFieldBlur ch.slot) ])
-            { onChange = CharacterFieldInput ch.slot NotesField
-            , text = ch.notes
-            , placeholder = Nothing
-            , label = fieldLabel "Notes"
-            , spellcheck = False
-            }
+        labelled "Notes"
+            (Input.multiline
+                (inputAttrs ++ [ height (px 64), width fill, Ui.onBlur (CharacterFieldBlur ch.slot) ])
+                { onChange = CharacterFieldInput ch.slot NotesField
+                , text = ch.notes
+                , placeholder = Nothing
+                , label = Input.labelHidden "Notes"
+                , spellcheck = False
+                }
+            )
 
     else
         readOnlyField "" "Notes" ch.notes
 
 
+{-| The label column beside an editable field. Not `Input.labelLeft`: that puts
+the input in a flex row where elm-ui's multiline wrapper takes `flex-basis:
+auto`, so it sizes to its text on one line and pushes past the column instead
+of wrapping. Here the input sits in a slot that may shrink to the space left.
+-}
+labelled : String -> Element Msg -> Element Msg
+labelled label input =
+    Element.row [ width fill, Ui.shrinkableWidth, spacing Ui.xs ]
+        [ el (Element.alignTop :: Element.paddingXY 0 4 :: labelStyle) (text (String.toUpper label))
+        , el [ width fill, Ui.shrinkableWidth ] input
+        ]
+
+
+labelStyle : List (Element.Attribute msg)
+labelStyle =
+    [ width (px labelWidth), Font.size 10, Font.color Ui.inkSoft, Font.letterSpacing 0.5 ]
+
+
 readOnlyField : String -> String -> String -> Element msg
 readOnlyField tipKey label value =
-    Element.row (spacing Ui.xs :: width fill :: tipAttrs tipKey)
-        [ el [ width (px labelWidth), Element.alignTop, Font.size 10, Font.color Ui.inkSoft, Font.letterSpacing 0.5 ]
-            (text (String.toUpper label))
+    Element.row (spacing Ui.xs :: width fill :: Ui.shrinkableWidth :: tipAttrs tipKey)
+        [ el (Element.alignTop :: labelStyle) (text (String.toUpper label))
         , Element.paragraph
             [ width fill, Ui.wrapAnywhere, Font.size 13, Element.paddingXY 4 2, Font.color Ui.inkSoft ]
             [ text
@@ -280,8 +301,7 @@ in the Moves tool.
 boonsBlock : Bool -> CharacterSheet -> Element Msg
 boonsBlock facilitator ch =
     Element.row [ width fill, spacing Ui.xs, Element.centerY ]
-        (el [ width (px labelWidth), Font.size 10, Font.color Ui.inkSoft, Font.letterSpacing 0.5 ]
-            (text (String.toUpper Copy.boonsLabel))
+        (el labelStyle (text (String.toUpper Copy.boonsLabel))
             :: (if ch.fate <= 0 then
                     el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.boonsNone)
 
@@ -304,9 +324,3 @@ grantControls facilitator ch =
 
     else
         []
-
-
-fieldLabel : String -> Input.Label msg
-fieldLabel label =
-    Input.labelLeft [ width (px labelWidth), Element.centerY, Font.size 10, Font.color Ui.inkSoft, Font.letterSpacing 0.5 ]
-        (text (String.toUpper label))

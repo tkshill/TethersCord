@@ -32,6 +32,7 @@ module Ui exposing
     , scrollArea
     , sectionTitle
     , shrinkable
+    , shrinkableWidth
     , clipX
     , sm
     , speakerColor
@@ -284,6 +285,15 @@ inside one (`View.Log`'s message list).
 shrinkable : Attribute msg
 shrinkable =
     Element.htmlAttribute (Html.Attributes.style "min-height" "0")
+
+
+{-| The width counterpart of `shrinkable` (`min-width: 0`): a `width fill` item
+in a row may shrink below its content's natural width, so text inside it wraps
+to the space it gets instead of pushing the row wider.
+-}
+shrinkableWidth : Attribute msg
+shrinkableWidth =
+    Element.htmlAttribute (Html.Attributes.style "min-width" "0")
 
 
 {-| Hide horizontal overflow on a vertical scroll region. `Element.scrollbarY`
