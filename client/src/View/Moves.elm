@@ -1,7 +1,7 @@
 module View.Moves exposing (view)
 
-{-| The Moves tool (roadmap section 27, the ▲ tab), shown once the viewer holds a sheet (roadmap 26.3): a real
-button for each player move — Highlight, Complicate, Add Detail, Alter Fate and
+{-| The Moves column (the middle of the three, above the session context), shown
+once the viewer holds a sheet (roadmap 26.3): a real button for each player move — Highlight, Complicate, Add Detail, Alter Fate and
 Use Session Boon. Each one queues a proposal for the facilitator; nothing lands
 until they accept it, and the cost of a move is paid only then (`RULES.md`).
 
@@ -19,7 +19,6 @@ player sees without being able to raise one on a player's behalf.
 import Action exposing (Action(..))
 import Copy
 import Element exposing (Element, el, fill, none, spacing, text, width)
-import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
 import Kind
@@ -113,24 +112,12 @@ selectedCharacter slot gs =
             List.head gs.characters
 
 
-{-| A move's block: its name (with the glossary tooltip) and a one-line blurb,
-then whatever controls it has.
+{-| A move's controls, stacked. No heading or blurb: each button is named for
+its move and carries the glossary tooltip.
 -}
-moveBlock : String -> String -> List (Element Msg) -> Element Msg
-moveBlock name blurb controls =
-    Element.column
-        [ spacing Ui.xs
-        , width fill
-        , Element.paddingEach { top = 0, right = 0, bottom = Ui.sm, left = 0 }
-        , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
-        , Border.color Ui.line
-        ]
-        (Element.paragraph [ Font.size 12 ]
-            [ tip name (el [ Font.semiBold ] (text name))
-            , el [ Font.color Ui.inkSoft ] (text ("  " ++ blurb))
-            ]
-            :: controls
-        )
+moveBlock : List (Element Msg) -> Element Msg
+moveBlock controls =
+    Element.column [ spacing Ui.xs, width fill ] controls
 
 
 {-| `Just msg` unless a control has a reason it is off (`whyNot`) or the viewer
@@ -150,16 +137,18 @@ movePress ctx action msg =
 moveButton : ViewContext -> Action -> Msg -> String -> Maybe String -> Element Msg
 moveButton ctx action msg label whyNot =
     Element.column [ spacing Ui.xs ]
-        [ Ui.ghostButton
-            { onPress =
-                case whyNot of
-                    Just _ ->
-                        Nothing
+        [ tip label
+            (Ui.ghostButton
+                { onPress =
+                    case whyNot of
+                        Just _ ->
+                            Nothing
 
-                    Nothing ->
-                        movePress ctx action msg
-            , label = label
-            }
+                        Nothing ->
+                            movePress ctx action msg
+                , label = label
+                }
+            )
         , case whyNot of
             Just reason ->
                 el [ Font.size 11, Font.color Ui.inkSoft ] (text reason)
@@ -176,8 +165,7 @@ pendingFor ctx gs kind =
 
 highlightRow : ViewContext -> GameState -> CharacterSheet -> Element Msg
 highlightRow ctx gs ch =
-    moveBlock "Highlight"
-        Copy.highlightBlurb
+    moveBlock
         [ Element.row [ spacing Ui.sm, Element.centerY ]
             (moveButton ctx
                 (RaisingMove Kind.Highlight)
@@ -203,8 +191,7 @@ complicateRow ctx gs ch =
             gs.characters
                 |> List.filter (\c -> c.slot /= ch.slot && c.ownerId /= Nothing)
     in
-    moveBlock "Complicate"
-        Copy.complicateBlurb
+    moveBlock
         [ if List.isEmpty targets then
             el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.noOtherPlayers)
 
@@ -212,10 +199,12 @@ complicateRow ctx gs ch =
             Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
                 (List.map
                     (\c ->
-                        Ui.ghostButton
-                            { onPress = movePress ctx (RaisingMove Kind.Complicate) (ProposeComplicate c.slot)
-                            , label = characterLabel c
-                            }
+                        tip "Complicate"
+                            (Ui.ghostButton
+                                { onPress = movePress ctx (RaisingMove Kind.Complicate) (ProposeComplicate c.slot)
+                                , label = Copy.complicateButton (characterLabel c)
+                                }
+                            )
                     )
                     targets
                     ++ pendingFor ctx gs Kind.Complicate
@@ -225,8 +214,7 @@ complicateRow ctx gs ch =
 
 addDetailRow : ViewContext -> Props -> GameState -> CharacterSheet -> Element Msg
 addDetailRow ctx props gs ch =
-    moveBlock "Add Detail"
-        Copy.addDetailBlurb
+    moveBlock
         [ Input.text
             (inputAttrs ++ [ width fill, Ui.onEnter ProposeAddDetail ])
             { onChange = AddDetailDraftChanged
@@ -275,8 +263,7 @@ alterRow ctx gs ch =
                     else
                         Nothing
             in
-            moveBlock "Alter Fate"
-                Copy.alterBlurb
+            moveBlock
                 [ Element.row [ spacing Ui.sm, Element.centerY ]
                     (moveButton ctx
                         (RaisingMove Kind.Alter)
@@ -297,8 +284,7 @@ useSessionBoonRow ctx gs =
             gs.sessionAspects
                 |> List.filter (\a -> a.kind == Boon && not a.consumed)
     in
-    moveBlock "Session boon"
-        Copy.useSessionBoonBlurb
+    moveBlock
         [ if List.isEmpty spendable then
             el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.noSessionBoons)
 
@@ -307,10 +293,12 @@ useSessionBoonRow ctx gs =
                 (List.map
                     (\a ->
                         Element.row [ spacing Ui.sm, Element.centerY, width fill ]
-                            [ Ui.ghostButton
-                                { onPress = movePress ctx (RaisingMove Kind.UseSessionBoon) (ProposeUseSessionBoon a.id)
-                                , label = Copy.useButton
-                                }
+                            [ tip "Session boon"
+                                (Ui.ghostButton
+                                    { onPress = movePress ctx (RaisingMove Kind.UseSessionBoon) (ProposeUseSessionBoon a.id)
+                                    , label = Copy.useSessionBoonButton
+                                    }
+                                )
                             , Element.paragraph [ Font.size 12 ] [ text a.text ]
                             ]
                     )

@@ -17,6 +17,13 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **Three-column layout**: the page is now three equal columns — the tool panel
+  (Sheet, Facilitator, Cast, Guide), then the Moves with the session context
+  beneath them, then the message log. Moves and the session context no longer
+  share the Sheet tab's scroll, so they stay in view whichever tool is open.
+  Only the session context and the log scroll. The Moves drop their headings
+  and blurbs (the buttons name the move; the glossary tooltip is on each), and
+  the draggable panel divider is gone.
 - **Tool panel takes the wide side**: the panel split is now a share of the
   window width instead of a pixel width. The tool panel defaults to three
   quarters and drags between half and four fifths, leaving the message log a

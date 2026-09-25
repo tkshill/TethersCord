@@ -12,7 +12,6 @@ that into a `Cmd` once, here at the boundary.
 import Action exposing (Action(..), Decision(..), Family(..))
 import Api
 import Browser
-import Browser.Events
 import Dict
 import Effect exposing (Effect)
 import Json.Decode as Decode
@@ -56,45 +55,6 @@ is flushed to the server as one write, rather than one per field blur.
 fieldSaveDelay : Float
 fieldSaveDelay =
     1000
-
-
-{-| The left tool panel's share of the window width, and the range the
-draggable divider clamps it to. The tool panel is the working surface, so it
-takes the larger side: three quarters by default, between half and four fifths
-while dragging, which leaves the message log a quarter (down to a fifth, up to
-a half) of the width.
--}
-defaultLeftPanelShare : Float
-defaultLeftPanelShare =
-    0.75
-
-
-minLeftPanelShare : Float
-minLeftPanelShare =
-    0.5
-
-
-maxLeftPanelShare : Float
-maxLeftPanelShare =
-    0.8
-
-
-{-| A drag's pointer position as a share of the window width, read off the
-mousemove event itself (`clientX` over its window's `innerWidth`), so the
-divider tracks the pointer without the app keeping a viewport size.
--}
-pointerShare : Decode.Decoder Float
-pointerShare =
-    Decode.map2
-        (\x w ->
-            if w > 0 then
-                x / w
-
-            else
-                defaultLeftPanelShare
-        )
-        (Decode.field "clientX" Decode.float)
-        (Decode.at [ "view", "innerWidth" ] Decode.float)
 
 
 connectionFromString : String -> Connection
@@ -162,27 +122,17 @@ init flags =
       , gameStateAttempts = 0
       , timeZone = Time.utc
       , toolTab = SheetTab
-      , leftPanelShare = defaultLeftPanelShare
-      , draggingDivider = False
       }
     , Effect.Batch [ Effect.Authorize, Effect.GetTimeZone ]
     )
 
 
 subscriptions : Model -> Sub Msg
-subscriptions model =
+subscriptions _ =
     Sub.batch
         [ Ports.fromDiscord FromDiscordRaw
         , Ports.wsGameState WsGameStateRaw
         , Ports.wsStatus WsStatusChanged
-        , if model.draggingDivider then
-            Sub.batch
-                [ Browser.Events.onMouseMove (Decode.map DividerDragged pointerShare)
-                , Browser.Events.onMouseUp (Decode.succeed DividerDragEnded)
-                ]
-
-          else
-            Sub.none
         ]
 
 
@@ -573,20 +523,6 @@ update msg model =
 
         SelectTool tab ->
             ( { model | toolTab = tab }, Effect.None )
-
-        DividerDragStarted ->
-            ( { model | draggingDivider = True }, Effect.None )
-
-        DividerDragged share ->
-            ( { model
-                | leftPanelShare =
-                    clamp minLeftPanelShare maxLeftPanelShare share
-              }
-            , Effect.None
-            )
-
-        DividerDragEnded ->
-            ( { model | draggingDivider = False }, Effect.None )
 
         ToggleAspectExamples slot aspect ->
             let

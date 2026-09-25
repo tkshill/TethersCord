@@ -6,7 +6,7 @@ module Ui exposing
     , confirmButton
     , danger
     , divider
-    , dragHandle
+    , columnRule
     , errorNote
     , facilitatorTint
     , flat
@@ -390,31 +390,11 @@ divider label =
         ]
 
 
-{-| The draggable handle between two resizable panels (roadmap section 24, kept
-by 27): a slim `cursor: col-resize` strip that reads as the hairline between the
-panels.
-`onStart` fires on mousedown; the caller tracks the mouse from there for as
-long as its own "is this dragging" flag stays true (`Main.subscriptions`),
-since a handle this size cannot itself receive the `mousemove` events once the
-pointer leaves it.
+{-| The hairline between two of `page`'s columns.
 -}
-dragHandle : msg -> Element msg
-dragHandle onStart =
-    el
-        [ width (Element.px 5)
-        , height fill
-        , Element.htmlAttribute (Html.Attributes.style "cursor" "col-resize")
-        , Element.htmlAttribute (Html.Events.on "mousedown" (Decode.succeed onStart))
-        ]
-        (el
-            [ Element.centerX
-            , Element.centerY
-            , width (Element.px 1)
-            , height fill
-            , Background.color line
-            ]
-            Element.none
-        )
+columnRule : Element msg
+columnRule =
+    el [ width (Element.px 1), height fill, Background.color line ] Element.none
 
 
 rule : Element msg
