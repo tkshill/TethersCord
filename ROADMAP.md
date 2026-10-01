@@ -1866,6 +1866,132 @@ Where the mockup and the rules disagree, the rules win. Deliberate adaptations:
 - Game events in the log are not tinted as in the mockup: the Worker logs them as
   the acting user's own messages, with no system marker to key on.
 
+## 28. Heart and skull marks, labelled tool tabs — next
+
+Two small visual changes to the section-27 UI.
+
+### 28.1 Boons and banes as hearts and skulls
+
+The `+` / `−` marks read as arithmetic rather than as game pieces, and a run of
+them is hard to count at a glance. Replace them with a pictorial pair — hearts
+for boons, skulls for banes (exact glyphs open; see below).
+
+- [ ] Swap the glyph in `Ui.boonMarks` / `Ui.baneMarks` (`client/src/Ui.elm`).
+      That covers the pool in the status strip, the pending Overcome draw chip
+      (`View/TopBar.elm`), boons on the Sheet and aspect Banes
+      (`View/Characters.elm`).
+- [ ] Route the hand-written `+` / `−` in `View/SessionAspects.elm` (the
+      session boon / bane rows and the facilitator's add-aspect kind buttons)
+      through the same helpers so every mark changes together.
+- [ ] Check the log lines and `Copy.elm` strings for `+` / `−` shorthand that
+      should follow (for example the "(+1 / +2 boons)" style text), and the
+      glossary in `Copy/Terms.elm` if it describes the marks.
+- [ ] Keep the colour split (bane in the danger tone) so the two stay
+      distinguishable without relying on shape alone.
+- [ ] Verify the glyphs render inside the Discord Activity webview on desktop
+      and mobile, and that letter-spacing still leaves a run countable.
+
+### 28.2 Tool tabs always show their titles
+
+The left panel's tabs show only a glyph (`◆` / `⚑` / `☺` / `?`) until selected,
+so a player has to hover or guess. Show every tab's title all the time and drop
+the glyphs.
+
+- [ ] `Ui.toolTab` renders `label` for every tab, selected or not; the selected
+      tab keeps its wash and weight. Remove the `glyph` field and the fixed
+      26px unselected width.
+- [ ] Update the call site in `View.elm` and the `CLAUDE.md` description of
+      the tab row.
+- [ ] Confirm the four titles (Sheet, Facilitator, Cast, Guide) fit on one
+      line in the default panel width; shorten or let the row wrap if not.
+
+### Open questions
+
+- Which glyphs: emoji (❤ / 💀, colour set by the platform) or monochrome text
+  symbols (♥ / ☠, which take the palette's colour)? Monochrome fits the spare
+  look and the danger tint; emoji are more legible at 11–13px.
+- With labels always on, does the tab tooltip still earn its place, or can
+  `tip` go too?
+
+## 29. Testing away from the live table — planned
+
+Every manual test so far has run against the deployed Worker, in the channel the
+campaign plays in, so test rolls and chat land in the live log and untested code
+reaches the players. Two separate problems, with separate fixes.
+
+### 29.1 A test channel — no code
+
+The table id is `guildId-channelId` (`resolveTableId` in `client/src/main.ts`),
+and every game table in D1 partitions on `session_id`, which is that id. A
+different channel is therefore a different `GameTable` Durable Object with its
+own messages, characters, pool, sessions, NPCs and locations.
+
+- [ ] Create a test channel (or a private test guild) and launch the Activity
+      there for anything that is not real play.
+- [ ] Note it in `CLAUDE.md` so it is the default place to try things.
+
+Only `facilitators` and `sessions_auth` are shared with the live table, which is
+harmless. This keeps test *data* out of the live log, but it still runs the
+production Worker against the production D1: it does not protect the players
+from untested code or a bad migration. That is 29.2.
+
+### 29.2 A staging Worker
+
+A second deployment with its own database, so a change can be exercised inside
+Discord before it reaches production.
+
+- [ ] Create a second Discord application ("TethersCord Dev"). An Activity's URL
+      mapping points at one host per application, so staging cannot share the
+      production application. It has its own client id and client secret.
+- [ ] Add `env.staging` to `wrangler.jsonc`: Worker name `tetherscord-staging`,
+      a new D1 database `ttrpg-activity-db-staging`, and the dev application's
+      `DISCORD_CLIENT_ID`. Named environments do not inherit `vars`,
+      `d1_databases` or `durable_objects`, so all three are declared again;
+      check whether `exports` needs the same. The Durable Object namespace
+      belongs to the Worker, so staging tables are separate without further
+      work.
+- [ ] Leave the hourly cron off staging unless it is being tested, to save
+      invocations on the Free tier.
+- [ ] Stop hardcoding the client id in `client/index.html`.
+      `client/scripts/build.mjs` copies the file verbatim; have it substitute
+      the id from an environment variable, defaulting to the production id, so a
+      staging build carries the dev application's id.
+- [ ] Scripts in the root `package.json`: `deploy:staging` (build with the dev
+      client id, then `wrangler deploy --env staging`) and `db:migrate:staging`.
+- [ ] `wrangler secret put DISCORD_CLIENT_SECRET --env staging`.
+- [ ] Point the dev application's URL mapping at the staging Worker and confirm
+      the whole auth flow, a roll and a proposal work end to end.
+- [ ] Document the flow in `CLAUDE.md`: migrate staging, deploy staging, test in
+      the dev application, then deploy production.
+
+A second Worker and a second D1 database both fit the Cloudflare Free tier.
+
+### 29.3 Local dev inside Discord — optional
+
+Deploying to staging for every change is slow. With the dev application from
+29.2 in place, `pnpm run dev` can be reached from Discord through a tunnel
+(`cloudflared tunnel --url http://localhost:8787`), with the dev application's
+URL mapping pointed at it. That runs the local D1 and a local Durable Object,
+with no deploy per change.
+
+- [ ] Try it once and record the steps. A quick tunnel's URL changes on every
+      run, so the mapping has to be updated each time unless a named tunnel is
+      set up.
+
+Only worth doing if the staging loop proves too slow in practice.
+
+### Sequencing
+
+29.1 now, since it needs nothing. 29.2 on its own branch. 29.3 after, if wanted.
+
+### Open questions
+
+- Does the dev application need its own `BOOTSTRAP_FACILITATOR_ID`, or is the
+  same Discord user the facilitator everywhere? (Same user is the likely
+  answer; the var is still declared per environment.)
+- Should staging get a copy of the live characters and NPCs to test against, or
+  start empty? Starting empty is simpler and nothing so far needs real data.
+
 # Phase 3 — potential future plans
 
 Everything still open, moved out of the Phase 1 sections above so it sits in one
