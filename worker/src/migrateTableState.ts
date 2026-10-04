@@ -1,7 +1,7 @@
 // worker/src/migrateTableState.ts
 //
 // The DO owns one blob of state D1 does not — the die, the pending Junction,
-// the proposal queue, context aspects and the session — under
+// context aspects, the moves still open to undo, and the session — under
 // `KEY_TABLE_STATE`. This module keeps the load-time compatibility handling
 // (missing fields added by later features, retired fields dropped, and the
 // names section 31 retired) out of the main flow, so it is easy to delete once
@@ -12,20 +12,20 @@
 // current names are in `CONTEXT.md`. Renamed by section 31.1:
 //   overcome        → junction
 //   sessionAspects  → contextAspects (and the older `floatingBoons`)
-//   sessionAspectId → contextAspectId, on a proposal (and the older `floatingId`)
-//   use-session-boon → use-context-boon, a proposal kind
 // Replaced by 31.2b (ADR 0001, the die ladder):
 //   stonePool (and the older per-session pool and carriedBanes) → dropped;
 //     a blob with no `die` starts at BASE_DIE
 //   a pending stone Junction (`stones`) → dropped, so nothing is pending
+// Replaced by 31.3 (ADR 0002, direct moves and undo):
+//   proposals → dropped; queued moves are not made, and nothing is undoable
+//   a context aspect with no `fromAspect` → null
 
 import { BASE_DIE, type Die, isDie } from "./rules/dice";
 import type {
   ContextAspect,
   Junction,
+  MoveRecord,
   Polarity,
-  Proposal,
-  ProposalKind,
   SessionState,
 } from "./types";
 
@@ -34,56 +34,21 @@ export type TableState = {
   die: Die;
   junction: Junction | null;
   contextAspects: ContextAspect[];
-  proposals: Proposal[];
+  moves: MoveRecord[];
   session: SessionState | null;
 };
 
 /** A context aspect as stored under its pre-31.1 name (`sessionAspects`) or
- * pre-26.1 name (`floatingBoons`), and before 23.3 widened it with `kind` —
- * every one on disk from before that point is implicitly a Boon. */
-export type LegacyContextAspect = Omit<ContextAspect, "kind" | "consumed"> & {
+ * pre-26.1 name (`floatingBoons`), before 23.3 widened it with `kind` — every
+ * one on disk from before that point is implicitly a Boon — and before 31.3
+ * added `fromAspect`. */
+export type LegacyContextAspect = Omit<
+  ContextAspect,
+  "kind" | "consumed" | "fromAspect"
+> & {
   kind?: Polarity;
   consumed?: boolean;
-};
-
-/** Proposal kinds and ability kinds as stored before 26.1 renamed the moves
- * (Pledge → Highlight, Suggest Compel → Complicate, Help Out → Alter), and
- * before 31.1 renamed session boons to context boons. */
-const LEGACY_MOVE_NAMES: Record<string, string> = {
-  pledge: "highlight",
-  "suggest-compel": "complicate",
-  "help-out": "alter",
-  "use-floating": "use-context-boon",
-  "use-session-boon": "use-context-boon",
-};
-
-/** Proposal kinds 26.2 removed. A proposal of one of these is dropped on load:
- * its move no longer exists, so it could never be resolved. */
-const RETIRED_PROPOSAL_KINDS: ReadonlySet<string> = new Set([
-  "add-boon",
-  "gain-insight",
-  "accept-compel",
-]);
-
-function migrateMoveName<T extends string>(kind: string): T {
-  return (LEGACY_MOVE_NAMES[kind] ?? kind) as T;
-}
-
-/** A `Proposal` as stored by earlier builds: legacy `kind` strings, and the
- * context-aspect reference under its pre-31.1 name `sessionAspectId` or its
- * pre-26.1 name `floatingId` (absent entirely before the moves work). */
-export type LegacyProposal = Omit<
-  Proposal,
-  "kind" | "contextAspectId" | "targetSlot" | "text"
-> & {
-  kind: string;
-  /** Retired (26.2): Highlight is always one boon. */
-  delta?: number;
-  floatingId?: string | null;
-  sessionAspectId?: string | null;
-  contextAspectId?: string | null;
-  targetSlot?: number | null;
-  text?: string | null;
+  fromAspect?: ContextAspect["fromAspect"];
 };
 
 export type LegacyTableState = {
@@ -109,7 +74,10 @@ export type LegacyTableState = {
   floatingBoons?: LegacyContextAspect[];
   /** Retired (26.2): moves are not once-per-session. Read and dropped. */
   usedAbilities?: unknown;
-  proposals?: LegacyProposal[];
+  /** Retired by 31.3: the approval queue. Read and dropped. */
+  proposals?: unknown;
+  /** Added by 31.3. */
+  moves?: MoveRecord[];
   session?:
     | (Pick<SessionState, "id" | "goal"> & {
         startedAt?: number;
@@ -146,7 +114,8 @@ function isDieJunction(value: unknown): value is Junction {
 /**
  * Fold a stored `KEY_TABLE_STATE` blob (or nothing, on a cold table) into the
  * current `TableState`: every field a later feature added is defaulted, and
- * every retired one — the stone pool, a stone draw left pending — is dropped.
+ * every retired one — the stone pool, a stone draw left pending, the proposal
+ * queue — is dropped.
  */
 export function migrateTableState(
   stored: LegacyTableState | undefined,
@@ -156,7 +125,7 @@ export function migrateTableState(
       die: BASE_DIE,
       junction: null,
       contextAspects: [],
-      proposals: [],
+      moves: [],
       session: null,
     };
   }
@@ -174,35 +143,13 @@ export function migrateTableState(
       stored.sessionAspects ??
       stored.floatingBoons ??
       []
-    ).map(
-      (f) => ({
-        ...f,
-        kind: f.kind ?? "Boon",
-        consumed: f.consumed ?? false,
-      }),
-    ),
-    // Proposals from before the moves work carry no context-aspect reference
-    // or `targetSlot`; from before 26.1 they carry legacy `kind` strings and
-    // call the reference `floatingId`, and before 31.1 `sessionAspectId`.
-    proposals: (stored.proposals ?? [])
-      .filter((p) => !RETIRED_PROPOSAL_KINDS.has(p.kind))
-      .map(
-        ({
-          floatingId,
-          sessionAspectId,
-          contextAspectId,
-          kind,
-          delta: _delta,
-          ...p
-        }) => ({
-          ...p,
-          kind: migrateMoveName<ProposalKind>(kind),
-          contextAspectId:
-            contextAspectId ?? sessionAspectId ?? floatingId ?? null,
-          targetSlot: p.targetSlot ?? null,
-          text: p.text ?? null,
-        }),
-      ),
+    ).map((f) => ({
+      ...f,
+      kind: f.kind ?? "Boon",
+      consumed: f.consumed ?? false,
+      fromAspect: f.fromAspect ?? null,
+    })),
+    moves: stored.moves ?? [],
     // `startedAt` arrived with 31.2a; an older running session has 0, which
     // `GameTable` backfills from its `game_sessions` row on load.
     session: stored.session

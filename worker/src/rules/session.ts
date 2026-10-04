@@ -2,7 +2,7 @@
 //
 // Sessions do nothing special (RULES.md, "Sessions and the goal"): starting one
 // records the goal, ending one moves it into the history. Neither touches the
-// pool, proposals, context aspects or a pending Junction.
+// die, context aspects, open moves or a pending Junction.
 
 import { applied, entry, refuse, unchanged } from "./result";
 import type { CommandOf as Of, Deps, Result, Table } from "./types";

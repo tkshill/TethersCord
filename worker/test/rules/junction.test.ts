@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type Applied, type Result, logText, transition } from "../../src/rules";
-import type { ContextAspect, Junction, Proposal } from "../../src/types";
-import { alice, as, facilitator, scripted, table } from "./fixtures";
+import type { Junction } from "../../src/types";
+import { alice, as, aspect, facilitator, moveRecord, scripted, table } from "./fixtures";
 
 function ok(result: Result): Applied {
   if (!result.ok) throw new Error(`refused ${result.status}: ${result.reason}`);
@@ -16,23 +16,6 @@ function refusal(result: Result): { status: number; reason: string } {
 function pending(over: Partial<Junction> = {}): Junction {
   return { rolledBy: "Alice", die: 10, face: 7, outcome: "flow", rerolls: 0, alteredSlots: [], ...over };
 }
-
-function aspect(over: Partial<ContextAspect> = {}): ContextAspect {
-  return { id: "a", kind: "Boon", text: "Rope", createdByName: "Gm", createdAt: 1, consumed: false, ...over };
-}
-
-const alterProposal: Proposal = {
-  id: "alt",
-  kind: "alter",
-  proposerId: "alice",
-  proposerName: "Alice",
-  slot: 0,
-  contextAspectId: null,
-  targetSlot: null,
-  text: null,
-  createdAt: 1,
-};
-const highlightProposal: Proposal = { ...alterProposal, id: "hl", kind: "highlight" };
 
 describe("rolling a Junction", () => {
   it("lets any player roll the current die, leaving the die where it is", () => {
@@ -93,7 +76,7 @@ describe("accepting a Junction", () => {
       scripted({ now: 5 }),
     ));
     expect(flow.next.contextAspects).toEqual([
-      { id: "id-1", kind: "Boon", text: "Critical Flow from Alice's Junction", createdByName: "Alice", createdAt: 5, consumed: false },
+      { id: "id-1", kind: "Boon", text: "Critical Flow from Alice's Junction", createdByName: "Alice", createdAt: 5, consumed: false, fromAspect: null },
     ]);
     const friction = ok(transition(
       table({ junction: pending({ face: 1, outcome: "critical-friction" }) }),
@@ -112,12 +95,13 @@ describe("accepting a Junction", () => {
     }
   });
 
-  it("withdraws a queued Alter, and only that", () => {
-    const t = table({ junction: pending(), proposals: [alterProposal, highlightProposal] });
+  it("closes every undo window when it ends, as rolling does", () => {
+    const t = table({ junction: pending(), moves: [moveRecord({ kind: "alter" })] });
     for (const type of ["junction/accept", "junction/reject"] as const) {
-      const r = ok(transition(t, as(facilitator, { type }), scripted()));
-      expect(r.next.proposals.map((p) => p.id)).toEqual(["hl"]);
+      expect(ok(transition(t, as(facilitator, { type }), scripted())).next.moves).toEqual([]);
     }
+    const open = table({ moves: [moveRecord()] });
+    expect(ok(transition(open, as(alice, { type: "junction/roll" }), scripted({ faces: [5] }))).next.moves).toEqual([]);
   });
 
   it("needs a pending Junction", () => {
@@ -164,49 +148,6 @@ describe("the facilitator stepping the die", () => {
   });
 });
 
-describe("the facilitator using a context aspect", () => {
-  it("steps up for a boon and down for a bane, marking it consumed", () => {
-    const boon = ok(transition(table({ contextAspects: [aspect()] }), as(facilitator, { type: "context/use", id: "a" }), scripted()));
-    expect(boon.next.die).toBe(12);
-    expect(boon.next.contextAspects[0].consumed).toBe(true);
-    expect(boon.log.map((e) => e.event)).toEqual([
-      { type: "context-aspect-used", kind: "Boon", text: "Rope", from: 10, to: 12 },
-    ]);
-    const bane = ok(transition(
-      table({ contextAspects: [aspect({ kind: "Bane" })] }),
-      as(facilitator, { type: "context/use", id: "a" }),
-      scripted(),
-    ));
-    expect(bane.next.die).toBe(8);
-  });
-
-  it("refuses a consumed one, one at the end of the ladder (spending nothing), and an unknown one", () => {
-    expect(refusal(transition(
-      table({ contextAspects: [aspect({ consumed: true })] }),
-      as(facilitator, { type: "context/use", id: "a" }),
-      scripted(),
-    ))).toEqual({ status: 409, reason: "That context boon is already consumed" });
-    expect(refusal(transition(
-      table({ die: 6, contextAspects: [aspect({ kind: "Bane" })] }),
-      as(facilitator, { type: "context/use", id: "a" }),
-      scripted(),
-    ))).toEqual({ status: 409, reason: "The die is already at d6" });
-    expect(refusal(transition(table(), as(facilitator, { type: "context/use", id: "a" }), scripted())).status).toBe(404);
-  });
-
-  it("unconsumes one without touching the die, and refuses one not consumed", () => {
-    const r = ok(transition(
-      table({ die: 12, contextAspects: [aspect({ consumed: true })] }),
-      as(facilitator, { type: "context/unconsume", id: "a" }),
-      scripted(),
-    ));
-    expect(r.next.contextAspects[0].consumed).toBe(false);
-    expect(r.next.die).toBe(12);
-    expect(refusal(transition(table({ contextAspects: [aspect()] }), as(facilitator, { type: "context/unconsume", id: "a" }), scripted())))
-      .toEqual({ status: 409, reason: "That context boon is not consumed" });
-  });
-});
-
 it("keeps every Junction and die command but the roll facilitator-only", () => {
   const t = table({ junction: pending(), contextAspects: [aspect()] });
   for (const body of [
@@ -214,8 +155,6 @@ it("keeps every Junction and die command but the roll facilitator-only", () => {
     { type: "junction/accept" },
     { type: "junction/reject" },
     { type: "die/step", direction: "up" },
-    { type: "context/use", id: "a" },
-    { type: "context/unconsume", id: "a" },
   ] as const) {
     expect(refusal(transition(t, as(alice, body), scripted())).status).toBe(403);
   }
@@ -232,8 +171,5 @@ describe("logText for the Junction and the die", () => {
       .toBe("Junction accepted — Critical Flow — 15 on d16 (context boon added) — d16 → d10");
     expect(logText({ type: "junction-rejected" })).toBe("Junction rejected — the roll is discarded");
     expect(logText({ type: "die-stepped", direction: "down", from: 10, to: 8 })).toBe("Die stepped down — d10 → d8");
-    expect(logText({ type: "context-aspect-used", kind: "Bane", text: "Smoke", from: 10, to: 8 }))
-      .toBe("Context bane used — Smoke — d10 → d8");
-    expect(logText({ type: "context-aspect-unconsumed", kind: "Boon", text: "Rope" })).toBe("Context boon unconsumed — Rope");
   });
 });

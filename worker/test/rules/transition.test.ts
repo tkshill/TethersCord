@@ -7,8 +7,7 @@ import {
   SESSION_HISTORY_LIMIT,
   transition,
 } from "../../src/rules";
-import type { Proposal } from "../../src/types";
-import { alice, as, bob, facilitator, scripted, sheet, table } from "./fixtures";
+import { alice, as, bob, facilitator, moveRecord, scripted, sheet, table } from "./fixtures";
 
 function ok(result: Result): Applied {
   if (!result.ok) throw new Error(`refused ${result.status}: ${result.reason}`);
@@ -18,21 +17,6 @@ function ok(result: Result): Applied {
 function refusal(result: Result): { status: number; reason: string } {
   if (result.ok) throw new Error("expected a refusal");
   return { status: result.status, reason: result.reason };
-}
-
-function proposal(over: Partial<Proposal>): Proposal {
-  return {
-    id: "p",
-    kind: "highlight",
-    proposerId: "x",
-    proposerName: "X",
-    slot: 0,
-    contextAspectId: null,
-    targetSlot: null,
-    text: null,
-    createdAt: 1,
-    ...over,
-  };
 }
 
 describe("transition", () => {
@@ -166,29 +150,29 @@ describe("transition", () => {
         .toBe(404);
     });
 
-    it("claims a sheet, releasing the caller's old one and dropping proposals on both", () => {
+    it("claims a sheet, releasing the caller's old one and closing undo on both", () => {
       const t = table({
         characters: [sheet({ slot: 0, ownerId: "alice" }), sheet({ slot: 1 }), sheet({ slot: 2, ownerId: "bob" })],
-        proposals: [proposal({ id: "a", slot: 0 }), proposal({ id: "b", slot: 1 }), proposal({ id: "c", slot: 2 })],
+        moves: [moveRecord({ id: "a", slot: 0 }), moveRecord({ id: "b", slot: 1 }), moveRecord({ id: "c", slot: 2 })],
       });
       const r = ok(transition(t, as(alice, { type: "sheet/claim", slot: 1 }), scripted()));
       expect(r.next.characters.map((c) => c.ownerId)).toEqual([null, "alice", "bob"]);
-      expect(r.next.proposals.map((p) => p.id)).toEqual(["c"]);
+      expect(r.next.moves.map((m) => m.id)).toEqual(["c"]);
     });
 
     it("treats re-claiming your own sheet as no change, and refuses someone else's", () => {
-      const t = table({ characters: [sheet({ slot: 0, ownerId: "alice" })], proposals: [proposal({})] });
+      const t = table({ characters: [sheet({ slot: 0, ownerId: "alice" })], moves: [moveRecord()] });
       expect(ok(transition(t, as(alice, { type: "sheet/claim", slot: 0 }), scripted())).next).toBe(t);
       expect(refusal(transition(t, as(bob, { type: "sheet/claim", slot: 0 }), scripted())))
         .toEqual({ status: 409, reason: "Sheet already claimed" });
     });
 
     it("releases for the owner or the facilitator only", () => {
-      const t = table({ characters: [sheet({ slot: 0, ownerId: "alice" })], proposals: [proposal({})] });
+      const t = table({ characters: [sheet({ slot: 0, ownerId: "alice" })], moves: [moveRecord()] });
       for (const by of [alice, facilitator]) {
         const r = ok(transition(t, as(by, { type: "sheet/release", slot: 0 }), scripted()));
         expect(r.next.characters[0].ownerId).toBeNull();
-        expect(r.next.proposals).toEqual([]);
+        expect(r.next.moves).toEqual([]);
       }
       expect(refusal(transition(t, as(bob, { type: "sheet/release", slot: 0 }), scripted())).status).toBe(403);
       const free = table();
@@ -236,7 +220,7 @@ describe("transition", () => {
         transition(table(), as(facilitator, { type: "context/add", kind: "Bane", text: " Smoke " }), scripted()),
       );
       expect(r.next.contextAspects).toEqual([
-        { id: "id-1", kind: "Bane", text: "Smoke", createdByName: "Gm", createdAt: 1000, consumed: false },
+        { id: "id-1", kind: "Bane", text: "Smoke", createdByName: "Gm", createdAt: 1000, consumed: false, fromAspect: null },
       ]);
       expect(r.log.map((e) => e.event)).toEqual([{ type: "context-aspect-added", kind: "Bane", text: "Smoke" }]);
     });
@@ -249,7 +233,7 @@ describe("transition", () => {
     });
 
     it("rewords silently and deletes with a log line; 404s an unknown one", () => {
-      const aspect = { id: "a", kind: "Boon" as const, text: "Rope", createdByName: "Gm", createdAt: 1, consumed: true };
+      const aspect = { id: "a", kind: "Boon" as const, text: "Rope", createdByName: "Gm", createdAt: 1, consumed: true, fromAspect: null };
       const t = table({ contextAspects: [aspect] });
       const reworded = ok(transition(t, as(facilitator, { type: "context/update", id: "a", text: "Long rope" }), scripted()));
       expect(reworded.next.contextAspects[0]).toEqual({ ...aspect, text: "Long rope" });

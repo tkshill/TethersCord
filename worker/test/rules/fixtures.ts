@@ -2,7 +2,7 @@
 // dependencies, so a test states only what it is about.
 
 import type { Actor, Command, CommandBody, Deps, Table } from "../../src/rules";
-import type { CharacterSheet } from "../../src/types";
+import type { CharacterSheet, ContextAspect, MoveRecord } from "../../src/types";
 
 export const facilitator: Actor = { userId: "gm", name: "Gm", role: "facilitator" };
 export const alice: Actor = { userId: "alice", name: "Alice", role: "player" };
@@ -33,7 +33,7 @@ export function table(over: Partial<Table> = {}): Table {
     die: 10,
     junction: null,
     contextAspects: [],
-    proposals: [],
+    moves: [],
     session: null,
     sessionHistory: [],
     characters: [sheet({ slot: 0 }), sheet({ slot: 1 }), sheet({ slot: 2 })],
@@ -43,10 +43,15 @@ export function table(over: Partial<Table> = {}): Table {
   };
 }
 
-/** A fixed clock at `now`, ids `id-1`, `id-2`, …, and rolls taken in order
- * from `faces` (a test that rolls more than it scripted fails loudly). */
+/** A fixed clock at `now`, ids `<prefix>1`, `<prefix>2`, … (`id-` by
+ * default), and rolls taken in order from `faces` (a test that rolls more than
+ * it scripted fails loudly). */
 export function scripted(
-  { now = 1000, faces = [] }: { now?: number; faces?: number[] } = {},
+  {
+    now = 1000,
+    faces = [],
+    prefix = "id-",
+  }: { now?: number; faces?: number[]; prefix?: string } = {},
 ): Deps {
   let next = 0;
   const queue = [...faces];
@@ -57,10 +62,38 @@ export function scripted(
       return face;
     },
     now: () => now,
-    newId: () => `id-${++next}`,
+    newId: () => `${prefix}${++next}`,
   };
 }
 
 export function as(by: Actor, body: CommandBody): Command {
   return { ...body, by } as Command;
+}
+
+export function aspect(over: Partial<ContextAspect> = {}): ContextAspect {
+  return {
+    id: "a",
+    kind: "Boon",
+    text: "Rope",
+    createdByName: "Gm",
+    createdAt: 1,
+    consumed: false,
+    fromAspect: null,
+    ...over,
+  };
+}
+
+/** An open move, for tests about what closes or keeps undo windows. */
+export function moveRecord(over: Partial<MoveRecord> = {}): MoveRecord {
+  return {
+    id: "m",
+    kind: "highlight",
+    actorId: "alice",
+    actorName: "Alice",
+    slot: 0,
+    aspect: "desire",
+    effects: [],
+    messageId: "msg",
+    ...over,
+  };
 }

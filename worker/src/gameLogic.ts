@@ -9,7 +9,7 @@ import type {
   AspectName,
   CharacterSheet,
   GameState,
-  ProposalKind,
+  MoveKind,
 } from "./types";
 
 export const ASPECT_NAMES: readonly AspectName[] = [
@@ -30,19 +30,19 @@ export function randomInt(maxExclusive: number): number {
   return buf[0] % maxExclusive;
 }
 
-/** The player-facing name of a move, for the log. */
-export function moveName(kind: ProposalKind): string {
+/** The player-facing name of a move, for the log (CONTEXT.md, "Moves"). */
+export function moveName(kind: MoveKind): string {
   switch (kind) {
     case "highlight":
       return "Highlight";
+    case "highlight-context":
+      return "Highlight Context";
     case "complicate":
       return "Complicate";
-    case "add-detail":
-      return "Add Detail";
+    case "create":
+      return "Create";
     case "alter":
-      return "Alter Fate";
-    case "use-context-boon":
-      return "Use Context Boon";
+      return "Alter";
   }
 }
 
@@ -53,18 +53,13 @@ export function characterLabel(character: CharacterSheet): string {
 }
 
 /**
- * Drop any proposal that points at `slot` (as the proposer's own slot or as a
- * `complicate` target). Called when a sheet changes hands, so an accepted
- * proposal cannot spend or target the wrong character's boons.
+ * Close the undo window on every move made from `slot`. Called when a sheet
+ * changes hands, so an undo cannot refund or take boons from whoever holds it
+ * next.
  */
-export function clearSlotPendingState<T extends Pick<GameState, "proposals">>(
+export function clearSlotPendingState<T extends Pick<GameState, "moves">>(
   state: T,
   slot: number,
 ): T {
-  return {
-    ...state,
-    proposals: state.proposals.filter(
-      (p) => p.slot !== slot && p.targetSlot !== slot,
-    ),
-  };
+  return { ...state, moves: state.moves.filter((m) => m.slot !== slot) };
 }

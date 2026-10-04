@@ -5,37 +5,24 @@ import type {
   DurableObjectState,
 } from "@cloudflare/workers-types";
 import type {
+  AspectName,
   CharacterSheet,
   CharacterSheetFields,
-  ContextAspect,
   EntityKind,
   Env,
   GameState,
   Message,
-  MessageKind,
-  Proposal,
-  ProposalDecisionInput,
   Role,
   SessionSummary,
-  Polarity,
   TableEntity,
-  UseContextBoonInput,
 } from "./types";
-import {
-  characterLabel,
-  moveName,
-  randomInt,
-} from "./gameLogic";
+import { ASPECT_NAMES, randomInt } from "./gameLogic";
 import {
   type LegacyTableState,
   type TableState,
   migrateTableState,
 } from "./migrateTableState";
-import {
-  type CharacterRow,
-  rowToCharacterSheet,
-  setFate,
-} from "./characters";
+import { type CharacterRow, rowToCharacterSheet } from "./characters";
 import { entityTable, persistDiff, toStatements } from "./persist";
 import {
   type Command,
@@ -46,25 +33,11 @@ import {
   SESSION_HISTORY_LIMIT,
   transition,
 } from "./rules";
-import { type Die, rollDie, step } from "./rules/dice";
-import { dieChange, rollText } from "./rules/log";
 
 const CHARACTER_SLOT_COUNT = 3;
 
-/** Boons a player pays for a Highlight, on approval. */
-const HIGHLIGHT_COST = 1;
-
-/** Boons a player pays for an Add Detail, on approval. */
-const ADD_DETAIL_COST = 1;
-
-/** Boons a player pays for an Alter Fate, on approval. */
-const ALTER_COST = 2;
-
-/** Boons an approved Complicate pays the proposer's character. */
-const COMPLICATE_BOONS = 2;
-
-/** A crypto.randomUUID() shape, for the `/proposals/:id/…` and
- * `/{npcs,locations}/:id/…` route patterns. */
+/** A crypto.randomUUID() shape, for the `/moves/:id/…`,
+ * `/context-aspects/:id/…` and `/{npcs,locations}/:id/…` route patterns. */
 const UUID = "[0-9a-fA-F-]{36}";
 
 /**
@@ -214,12 +187,31 @@ const COMMAND_ROUTES: CommandRoute[] = [
     parse: ([, id]) => ({ type: "context/delete", id }),
   },
   {
-    path: new RegExp(`^/context-aspects/(${UUID})/use$`),
-    parse: ([, id]) => ({ type: "context/use", id }),
+    path: /^\/moves\/highlight$/,
+    parse: (_, body) => ({ type: "move/highlight", aspect: aspectName(body?.aspect) }),
   },
   {
-    path: new RegExp(`^/context-aspects/(${UUID})/unconsume$`),
-    parse: ([, id]) => ({ type: "context/unconsume", id }),
+    path: /^\/moves\/highlight-context$/,
+    parse: (_, body) => ({
+      type: "move/highlight-context",
+      id: typeof body?.contextAspectId === "string" ? body.contextAspectId : "",
+    }),
+  },
+  {
+    path: /^\/moves\/complicate$/,
+    parse: (_, body) => ({ type: "move/complicate", aspect: aspectName(body?.aspect) }),
+  },
+  {
+    path: /^\/moves\/create$/,
+    parse: (_, body) => ({
+      type: "move/create",
+      text: boundedString(body?.text, MAX_GOAL_LENGTH),
+    }),
+  },
+  { path: /^\/moves\/alter$/, parse: () => ({ type: "move/alter" }) },
+  {
+    path: new RegExp(`^/moves/(${UUID})/undo$`),
+    parse: ([, id]) => ({ type: "move/undo", id }),
   },
   { path: /^\/junction\/roll$/, parse: () => ({ type: "junction/roll" }) },
   { path: /^\/junction\/reroll$/, parse: () => ({ type: "junction/reroll" }) },
@@ -373,54 +365,6 @@ export class GameTable implements DurableObject {
       }
     }
 
-    // The proposal routes below still run on the legacy `commit` path until
-    // 31.3 replaces them with direct moves and undo.
-
-    if (url.pathname === "/moves/highlight" && request.method === "POST") {
-      return this.withLock(() => this.handleHighlight(authInfo));
-    }
-
-    const proposalMatch = url.pathname.match(
-      new RegExp(`^/proposals/(${UUID})/(accept|reject|withdraw)$`),
-    );
-    if (proposalMatch && request.method === "POST") {
-      const [, proposalId, action] = proposalMatch;
-      // A proposer withdraws their own; the facilitator accepts or rejects
-      // anyone's.
-      if (action === "withdraw") {
-        return this.withLock(() =>
-          this.handleWithdrawProposal(proposalId, authInfo),
-        );
-      }
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() =>
-          this.handleProposalDecision(
-            proposalId,
-            action as "accept" | "reject",
-            authInfo,
-            request,
-          ),
-        )
-      );
-    }
-
-    if (url.pathname === "/moves/alter" && request.method === "POST") {
-      return this.withLock(() => this.handleAlter(authInfo));
-    }
-
-    if (url.pathname === "/moves/add-detail" && request.method === "POST") {
-      return this.withLock(() => this.handleAddDetail(request, authInfo));
-    }
-
-    if (url.pathname === "/moves/complicate" && request.method === "POST") {
-      return this.withLock(() => this.handleComplicate(authInfo));
-    }
-
-    if (url.pathname === "/moves/use-context-boon" && request.method === "POST") {
-      return this.withLock(() => this.handleUseContextBoon(request, authInfo));
-    }
-
     return new Response("Not found", { status: 404 });
   }
 
@@ -528,26 +472,6 @@ export class GameTable implements DurableObject {
     }
   }
 
-  /**
-   * The trailer every mutating handler shares: install the new state, persist
-   * the table-state slice (a byte-identical slice is skipped, so this is cheap even on
-   * a character- or entity-only change), append a log line if one was given,
-   * broadcast, and return the 204 ack. A handler's own diff is then just the
-   * `next` it builds.
-   */
-  private async commit(
-    next: GameState,
-    logLine?: AddMessageInput,
-  ): Promise<Response> {
-    this.gameState = next;
-    await this.saveTableState(next);
-    if (logLine) {
-      await this.appendMessage(logLine);
-    }
-    this.broadcast(this.game);
-    return ackResponse();
-  }
-
   private ensureLoaded(sessionId: string): Promise<string> {
     if (!this.initPromise) {
       this.initPromise = this.loadInitialState(sessionId).catch((error) => {
@@ -606,7 +530,7 @@ export class GameTable implements DurableObject {
       die: tableState.die,
       junction: tableState.junction,
       contextAspects: tableState.contextAspects,
-      proposals: tableState.proposals,
+      moves: tableState.moves,
       session: await this.backfillSessionStart(tableState.session),
       sessionHistory,
       characters,
@@ -624,7 +548,7 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * The die, the pending Junction, proposals, context aspects and the session
+   * The die, the pending Junction, context aspects, open moves and the session
    * are the only state this Durable Object genuinely owns, so they live in its
    * own storage. Keeping it in memory loses it every time the
    * DO hibernates, which is roughly ten seconds after a table goes quiet.
@@ -653,7 +577,7 @@ export class GameTable implements DurableObject {
       die: state.die,
       junction: state.junction,
       contextAspects: state.contextAspects,
-      proposals: state.proposals,
+      moves: state.moves,
       session: state.session,
     };
   }
@@ -820,550 +744,7 @@ export class GameTable implements DurableObject {
     const messages = rows.results ? [...rows.results].reverse() : [];
     return jsonResponse({ messages });
   }
-
-  /**
-   * Highlight: the caller proposes to pay one of their own boons to step the
-   * die up. It costs 1 boon, so it cannot be proposed without one, nor at the
-   * top of the ladder; the cost is paid only when the facilitator accepts.
-   */
-  private async handleHighlight(authInfo: AuthInfo): Promise<Response> {
-    const character = this.game.characters.find(
-      (c) => c.ownerId === authInfo.discordUserId,
-    );
-    if (!character) {
-      return new Response("Claim a character sheet first", { status: 400 });
-    }
-    if (character.fate < HIGHLIGHT_COST) {
-      return new Response("You need a boon to Highlight", { status: 400 });
-    }
-    if (!step(this.game.die, "up")) return dieAtEnd(this.game.die);
-
-    return this.addProposal(
-      {
-        kind: "highlight",
-        proposerId: authInfo.discordUserId,
-        proposerName: authInfo.username,
-        slot: character.slot,
-      },
-      authInfo,
-      `${characterLabel(character)} proposes Highlight`,
-    );
-  }
-
-  /**
-   * Alter Fate: the caller proposes to pay boons to reroll the pending
-   * Junction. Only possible while one is pending (after at least one roll),
-   * once per player per Junction, and one proposal at a time. Costs
-   * `ALTER_COST` boons, paid on approval; a rejection costs nothing and does
-   * not use up the attempt.
-   */
-  private async handleAlter(authInfo: AuthInfo): Promise<Response> {
-    const junction = this.game.junction;
-    if (!junction) {
-      return new Response("Alter Fate needs a pending Junction", {
-        status: 409,
-      });
-    }
-    const character = this.game.characters.find(
-      (c) => c.ownerId === authInfo.discordUserId,
-    );
-    if (!character) {
-      return new Response("Claim a character sheet first", { status: 400 });
-    }
-    if (character.fate < ALTER_COST) {
-      return new Response("You need two boons to Alter Fate", { status: 400 });
-    }
-    if (junction.alteredSlots.includes(character.slot)) {
-      return new Response("You have already altered fate this Junction", {
-        status: 409,
-      });
-    }
-    if (this.game.proposals.some((p) => p.kind === "alter")) {
-      return new Response("An Alter Fate is already proposed", { status: 409 });
-    }
-
-    return this.addProposal(
-      {
-        kind: "alter",
-        proposerId: authInfo.discordUserId,
-        proposerName: authInfo.username,
-        slot: character.slot,
-      },
-      authInfo,
-      `${characterLabel(character)} proposes Alter Fate`,
-    );
-  }
-
-  /**
-   * Add Detail: the caller proposes to establish something true about the scene,
-   * either suggesting the wording or leaving it for the facilitator. It costs 1
-   * boon, paid on approval; an accepted one plants a context boon.
-   */
-  private async handleAddDetail(
-    request: Request,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    const input = (await readJson(request)) as { text?: unknown } | null;
-    const character = this.game.characters.find(
-      (c) => c.ownerId === authInfo.discordUserId,
-    );
-    if (!character) {
-      return new Response("Claim a character sheet first", { status: 400 });
-    }
-    if (character.fate < ADD_DETAIL_COST) {
-      return new Response("You need a boon to Add Detail", { status: 400 });
-    }
-    const text = boundedString(input?.text, MAX_GOAL_LENGTH).trim() || null;
-
-    return this.addProposal(
-      {
-        kind: "add-detail",
-        proposerId: authInfo.discordUserId,
-        proposerName: authInfo.username,
-        slot: character.slot,
-        text,
-      },
-      authInfo,
-      `${characterLabel(character)} proposes Add Detail`,
-    );
-  }
-
-  /**
-   * Complicate: the caller suggests a way their own character could do
-   * something dangerous, destructive, or derailing. Free to propose; on
-   * approval the caller's character gains `COMPLICATE_BOONS` boons.
-   */
-  private async handleComplicate(authInfo: AuthInfo): Promise<Response> {
-    const character = this.game.characters.find(
-      (c) => c.ownerId === authInfo.discordUserId,
-    );
-    if (!character) {
-      return new Response("Claim a character sheet first", { status: 400 });
-    }
-
-    return this.addProposal(
-      {
-        kind: "complicate",
-        proposerId: authInfo.discordUserId,
-        proposerName: authInfo.username,
-        slot: character.slot,
-      },
-      authInfo,
-      `${characterLabel(character)} proposes Complicate`,
-    );
-  }
-
-  /**
-   * Use Context Boon: the caller proposes to spend an unconsumed context boon.
-   * It costs nothing; on approval the boon is marked consumed and the die
-   * steps up. Context banes are the facilitator's to use directly, so a
-   * player cannot propose one.
-   */
-  private async handleUseContextBoon(
-    request: Request,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    const input = (await readJson(request)) as UseContextBoonInput | null;
-    const contextAspectId =
-      typeof input?.contextAspectId === "string" ? input.contextAspectId : "";
-    if (!contextAspectId) {
-      return new Response("contextAspectId is required", { status: 400 });
-    }
-
-    const character = this.game.characters.find(
-      (c) => c.ownerId === authInfo.discordUserId,
-    );
-    if (!character) {
-      return new Response("Claim a character sheet first", { status: 400 });
-    }
-    const aspect = this.game.contextAspects.find(
-      (f) => f.id === contextAspectId,
-    );
-    if (!aspect) {
-      return new Response("No such context boon", { status: 404 });
-    }
-    if (aspect.kind !== "Boon") {
-      return new Response("Only the facilitator can use a context bane", {
-        status: 400,
-      });
-    }
-    if (aspect.consumed) {
-      return new Response("That context boon is already consumed", {
-        status: 409,
-      });
-    }
-    if (!step(this.game.die, "up")) return dieAtEnd(this.game.die);
-    if (
-      this.game.proposals.some(
-        (p) =>
-          p.kind === "use-context-boon" && p.contextAspectId === contextAspectId,
-      )
-    ) {
-      return new Response("That context boon is already proposed", {
-        status: 409,
-      });
-    }
-
-    return this.addProposal(
-      {
-        kind: "use-context-boon",
-        proposerId: authInfo.discordUserId,
-        proposerName: authInfo.username,
-        slot: character.slot,
-        contextAspectId,
-      },
-      authInfo,
-      `${characterLabel(character)} proposes Use Context Boon`,
-    );
-  }
-
-  private async addProposal(
-    fields: Omit<
-      Proposal,
-      "id" | "createdAt" | "contextAspectId" | "targetSlot" | "text"
-    > & {
-      contextAspectId?: string | null;
-      targetSlot?: number | null;
-      text?: string | null;
-    },
-    authInfo?: AuthInfo,
-    logLine?: string,
-  ): Promise<Response> {
-    const {
-      contextAspectId = null,
-      targetSlot = null,
-      text = null,
-      ...rest
-    } = fields;
-    const proposal: Proposal = {
-      ...rest,
-      contextAspectId,
-      targetSlot,
-      text,
-      id: crypto.randomUUID(),
-      createdAt: Date.now(),
-    };
-    return this.commit(
-      { ...this.game, proposals: [...this.game.proposals, proposal] },
-      authInfo && logLine ? authoredLine(authInfo, logLine) : undefined,
-    );
-  }
-
-  /**
-   * Facilitator resolves one proposal. Accept applies its effect (clamped to
-   * current state); reject just drops it. Either way it leaves the queue. Some
-   * accepts can still be refused — Alter Fate with no roll to affect, an
-   * Add Detail / Gain Insight with no context note — in which case the
-   * proposal stays put for another try.
-   */
-  private async handleProposalDecision(
-    proposalId: string,
-    decision: "accept" | "reject",
-    authInfo: AuthInfo,
-    request: Request,
-  ): Promise<Response> {
-    const proposal = this.game.proposals.find((p) => p.id === proposalId);
-    if (!proposal) {
-      return new Response("No such proposal", { status: 404 });
-    }
-
-    let state: GameState = {
-      ...this.game,
-      proposals: this.game.proposals.filter((p) => p.id !== proposalId),
-    };
-    let logLine = "";
-
-    if (decision === "accept") {
-      switch (proposal.kind) {
-        case "highlight": {
-          const proposerSheet =
-            proposal.slot === null
-              ? undefined
-              : state.characters.find((c) => c.slot === proposal.slot);
-          if (!proposerSheet) {
-            return this.proposalTargetGone();
-          }
-          if (proposerSheet.fate < HIGHLIGHT_COST) {
-            return this.notEnoughBoons();
-          }
-          const to = step(state.die, "up");
-          if (!to) return dieAtEnd(state.die);
-          state = {
-            ...state,
-            characters: await this.bumpFate(
-              state.characters,
-              proposerSheet.slot,
-              -HIGHLIGHT_COST,
-            ),
-            die: to,
-          };
-          logLine = `Highlight accepted — ${characterLabel(
-            proposerSheet,
-          )} pays ${HIGHLIGHT_COST} boon — ${dieChange(this.game.die, to)}`;
-          break;
-        }
-
-        case "alter": {
-          const junction = state.junction;
-          if (!junction) {
-            return new Response("No Junction is pending", { status: 409 });
-          }
-          const proposerSheet =
-            proposal.slot === null
-              ? undefined
-              : state.characters.find((c) => c.slot === proposal.slot);
-          if (!proposerSheet) {
-            return this.proposalTargetGone();
-          }
-          if (proposerSheet.fate < ALTER_COST) {
-            return this.notEnoughBoons();
-          }
-          const roll = rollDie(junction.die, this.deps.roll);
-          state = {
-            ...state,
-            characters: await this.bumpFate(
-              state.characters,
-              proposerSheet.slot,
-              -ALTER_COST,
-            ),
-            junction: {
-              ...junction,
-              ...roll,
-              rerolls: junction.rerolls + 1,
-              alteredSlots: [...junction.alteredSlots, proposerSheet.slot],
-            },
-          };
-          logLine = `Alter Fate accepted — ${characterLabel(
-            proposerSheet,
-          )} pays ${ALTER_COST} boons, rerolled: ${rollText(roll)}`;
-          break;
-        }
-
-        case "add-detail": {
-          const proposerSheet =
-            proposal.slot === null
-              ? undefined
-              : state.characters.find((c) => c.slot === proposal.slot);
-          if (!proposerSheet) {
-            return this.proposalTargetGone();
-          }
-          if (proposerSheet.fate < ADD_DETAIL_COST) {
-            return this.notEnoughBoons();
-          }
-          // The facilitator's field arrives pre-filled with the player's
-          // suggestion and stays editable; blank falls back, then to a default.
-          const body = (await readJson(request)) as ProposalDecisionInput | null;
-          const text =
-            boundedString(body?.text, MAX_GOAL_LENGTH).trim() ||
-            proposal.text ||
-            `Detail from ${proposal.proposerName}`;
-          const aspect: ContextAspect = {
-            id: crypto.randomUUID(),
-            kind: "Boon",
-            text,
-            createdByName: proposal.proposerName,
-            createdAt: Date.now(),
-            consumed: false,
-          };
-          state = {
-            ...state,
-            characters: await this.bumpFate(
-              state.characters,
-              proposerSheet.slot,
-              -ADD_DETAIL_COST,
-            ),
-            contextAspects: [...state.contextAspects, aspect],
-          };
-          logLine = `Add Detail accepted — ${characterLabel(
-            proposerSheet,
-          )} pays ${ADD_DETAIL_COST} boon: ${text}`;
-          break;
-        }
-
-        case "complicate": {
-          // Older proposals named another character in `targetSlot`; honour
-          // one still queued, otherwise the proposer's own sheet gains.
-          const recipientSlot = proposal.targetSlot ?? proposal.slot;
-          const recipient =
-            recipientSlot === null
-              ? undefined
-              : state.characters.find((c) => c.slot === recipientSlot);
-          if (!recipient) {
-            return this.proposalTargetGone();
-          }
-          state = {
-            ...state,
-            characters: await this.bumpFate(
-              state.characters,
-              recipient.slot,
-              COMPLICATE_BOONS,
-            ),
-          };
-          logLine = `Complicate accepted — ${characterLabel(
-            recipient,
-          )} gains ${COMPLICATE_BOONS} boons`;
-          break;
-        }
-
-        case "use-context-boon": {
-          const aspect = state.contextAspects.find(
-            (f) => f.id === proposal.contextAspectId,
-          );
-          const proposerSheet =
-            proposal.slot === null
-              ? undefined
-              : state.characters.find((c) => c.slot === proposal.slot);
-          if (!aspect || !proposerSheet) {
-            return this.proposalTargetGone();
-          }
-          if (aspect.consumed) {
-            return new Response("That context boon is already consumed", {
-              status: 409,
-            });
-          }
-          const to = step(state.die, "up");
-          if (!to) return dieAtEnd(state.die);
-          state = {
-            ...state,
-            die: to,
-            contextAspects: state.contextAspects.map((f) =>
-              f.id === aspect.id ? { ...f, consumed: true } : f,
-            ),
-          };
-          logLine = `Use Context Boon accepted — ${characterLabel(
-            proposerSheet,
-          )} spends ${aspect.text} — ${dieChange(this.game.die, to)}`;
-          break;
-        }
-      }
-    }
-
-    if (decision === "reject") {
-      const proposerSheet =
-        proposal.slot === null
-          ? undefined
-          : state.characters.find((c) => c.slot === proposal.slot);
-      logLine = `${moveName(proposal.kind)} rejected — ${
-        proposerSheet ? characterLabel(proposerSheet) : proposal.proposerName
-      }`;
-    }
-
-    return this.commit(state, logLine ? authoredLine(authInfo, logLine) : undefined);
-  }
-
-  /** An accepted proposal the proposer can no longer pay for. It stays queued. */
-  private notEnoughBoons(): Response {
-    return new Response("Not enough boons to pay for that move", {
-      status: 409,
-    });
-  }
-
-  /**
-   * An accepted proposal whose character / context aspect has since gone (a
-   * released or reslotted sheet). Return an error and leave the proposal
-   * queued rather than dropping it with no effect and no log line.
-   */
-  private proposalTargetGone(): Response {
-    return new Response("That proposal's target no longer exists", {
-      status: 409,
-    });
-  }
-
-  /** A proposer pulls back their own still-pending proposal. */
-  private async handleWithdrawProposal(
-    proposalId: string,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    const proposal = this.game.proposals.find((p) => p.id === proposalId);
-    if (!proposal) {
-      return new Response("No such proposal", { status: 404 });
-    }
-    if (proposal.proposerId !== authInfo.discordUserId) {
-      return new Response("Not your proposal", { status: 403 });
-    }
-
-    return this.commit(
-      {
-        ...this.game,
-        proposals: this.game.proposals.filter((p) => p.id !== proposalId),
-      },
-      {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: `${proposal.proposerName} withdrew a proposal`,
-      },
-    );
-  }
-
-  /**
-   * Add `amount` boons to one character's `fate` in D1, and return the character
-   * list with that change folded in. `amount` may be negative; `fate` floors at
-   * zero.
-   */
-  private async bumpFate(
-    characters: CharacterSheet[],
-    slot: number,
-    amount: number,
-  ): Promise<CharacterSheet[]> {
-    const character = characters.find((c) => c.slot === slot);
-    if (!character || amount === 0) return characters;
-
-    const fate = Math.max(0, character.fate + amount);
-    await setFate(this.env.DB, character.id, fate, Date.now());
-    return characters.map((c) => (c.slot === slot ? { ...c, fate } : c));
-  }
-
-  /** Facilitator-only: rewrite one context aspect's text. Silent, like a typo fix. */
-  /** Facilitator rewrites the running session's goal. */
-  /** Release a sheet. Allowed for the sheet's owner or the facilitator. */
-  /** Add a blank NPC / location row, ready for the facilitator to fill in. */
-  /** Persists the message, then folds it into the current in-memory state. */
-  private async appendMessage(input: AddMessageInput): Promise<void> {
-    const msg: Message = {
-      id: crypto.randomUUID(),
-      sessionId: this.game.sessionId,
-      authorId: input.authorId,
-      authorName: input.authorName,
-      role: input.role,
-      kind: input.kind ?? "event",
-      content: input.content,
-      createdAt: Date.now(),
-    };
-
-    await this.env.DB.prepare(
-      `
-      INSERT INTO messages (id, session_id, author_id, author_name, role, kind, content, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-    )
-      .bind(
-        msg.id,
-        msg.sessionId,
-        msg.authorId,
-        msg.authorName,
-        msg.role,
-        msg.kind,
-        msg.content,
-        msg.createdAt,
-      )
-      .run();
-
-    this.gameState = {
-      ...this.game,
-      messages: capMessages([...this.game.messages, msg]),
-    };
-  }
 }
-
-type AddMessageInput = {
-  authorId: string;
-  authorName: string;
-  role: Role;
-  /** Defaults to `event`: only `handlePostMessage` writes `chat`. */
-  kind?: MessageKind;
-  content: string;
-};
 
 function capMessages(messages: Message[]): Message[] {
   return messages.length > MESSAGE_WINDOW
@@ -1384,6 +765,11 @@ async function readJson(request: Request): Promise<Body> {
 
 function boundedString(value: unknown, max: number): string {
   return typeof value === "string" ? value.slice(0, max) : "";
+}
+
+/** A character aspect's name, or `null` for anything else. */
+function aspectName(value: unknown): AspectName | null {
+  return ASPECT_NAMES.includes(value as AspectName) ? (value as AspectName) : null;
 }
 
 /** The sheet's free-text fields present as strings in `body`, each bounded. */
@@ -1436,29 +822,6 @@ type AuthInfo = {
  * Gate for routes only the facilitator may call. Returns a 403 to short-circuit
  * the route, or `undefined` to let it run: `facilitatorOnly(authInfo) ?? run()`.
  */
-/** A message-log entry authored by `authInfo`, for `commit`'s log line. */
-function authoredLine(authInfo: AuthInfo, content: string): AddMessageInput {
-  return {
-    authorId: authInfo.discordUserId,
-    authorName: authInfo.username,
-    role: authInfo.role,
-    content,
-  };
-}
-
-/** A legacy proposal that would step the die past the end of the ladder. A
- * proposal refused on accept stays queued. */
-function dieAtEnd(die: Die): Response {
-  return new Response(`The die is already at d${die}`, { status: 409 });
-}
-
-function facilitatorOnly(authInfo: AuthInfo): Response | undefined {
-  if (authInfo.role !== "facilitator") {
-    return new Response("Facilitator only", { status: 403 });
-  }
-  return undefined;
-}
-
 function parseTokenFromProtocol(header: string | null): string | null {
   if (!header) return null;
 

@@ -5,6 +5,7 @@
 // returns. Nothing here touches storage, D1 or the socket.
 
 import type {
+  AspectName,
   CharacterSheetFields,
   EntityKind,
   GameState,
@@ -70,8 +71,12 @@ export type CommandBody =
   | { type: "context/add"; kind: Polarity | null; text: string }
   | { type: "context/update"; id: string; text: string }
   | { type: "context/delete"; id: string }
-  | { type: "context/use"; id: string }
-  | { type: "context/unconsume"; id: string }
+  | { type: "move/highlight"; aspect: AspectName | null }
+  | { type: "move/highlight-context"; id: string }
+  | { type: "move/complicate"; aspect: AspectName | null }
+  | { type: "move/create"; text: string }
+  | { type: "move/alter" }
+  | { type: "move/undo"; id: string }
   | { type: "junction/roll" }
   | { type: "junction/reroll" }
   | { type: "junction/accept" }

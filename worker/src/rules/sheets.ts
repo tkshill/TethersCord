@@ -57,8 +57,8 @@ export function claimSheet(table: Table, command: Of<"sheet/claim">): Result {
   if (target.ownerId && target.ownerId !== userId) {
     return refuse(409, "Sheet already claimed");
   }
-  // Re-claiming a sheet the caller already holds is a no-op — don't wipe that
-  // slot's own proposals.
+  // Re-claiming a sheet the caller already holds is a no-op — don't close
+  // that slot's own undo windows.
   if (target.ownerId === userId) return unchanged(table);
 
   const priorSlots = table.characters
@@ -73,8 +73,8 @@ export function claimSheet(table: Table, command: Of<"sheet/claim">): Result {
       return c;
     }),
   };
-  // Any sheet whose owner just changed must not keep proposals made by
-  // whoever held it before.
+  // Any sheet whose owner just changed must not keep moves its previous
+  // holder could undo.
   for (const changed of [target.slot, ...priorSlots]) {
     next = clearSlotPendingState(next, changed);
   }
