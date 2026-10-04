@@ -7,7 +7,7 @@ describe("migrateTableState", () => {
       die: 10,
       junction: null,
       contextAspects: [],
-      proposals: [],
+      moves: [],
       session: null,
     });
   });
@@ -49,69 +49,52 @@ describe("migrateTableState", () => {
     }
   });
 
-  it("defaults every context aspect and proposal field a later feature added", () => {
+  it("defaults every context aspect field a later feature added", () => {
     const s = migrateTableState({
-      proposals: [
-        // biome-ignore lint: legacy proposal shape has no contextAspectId / targetSlot / text
-        { id: "p", kind: "highlight", proposerId: "u", proposerName: "U", slot: 0, createdAt: 1 } as never,
-      ],
-      // biome-ignore lint: a pre-23.3 aspect has no kind
+      // biome-ignore lint: a pre-23.3 aspect has no kind, consumed or fromAspect
       floatingBoons: [{ id: "f", text: "a note", createdByName: "Gm", createdAt: 1 } as never],
     });
-    expect(s.proposals[0]).toMatchObject({ contextAspectId: null, targetSlot: null, text: null });
     // Every aspect on disk before 23.3 is implicitly a Boon.
-    expect(s.contextAspects[0]).toMatchObject({ kind: "Boon", text: "a note", consumed: false });
-  });
-
-  it("reads the pre-26.1 move names and floating-boon fields under their new names", () => {
-    const s = migrateTableState({
-      floatingBoons: [{ id: "f", kind: "Bane", text: "n", createdByName: "Gm" } as never],
-      proposals: [
-        { id: "a", kind: "pledge", proposerId: "u", proposerName: "U", slot: 1, delta: 1, createdAt: 1 },
-        { id: "b", kind: "suggest-compel", proposerId: "u", proposerName: "U", slot: 1, delta: 0, targetSlot: 2, createdAt: 1 },
-        { id: "c", kind: "help-out", proposerId: "u", proposerName: "U", slot: 1, delta: 0, createdAt: 1 },
-        { id: "d", kind: "use-floating", proposerId: "u", proposerName: "U", slot: 1, delta: 0, floatingId: "f", createdAt: 1 },
-      ] as never,
-    });
-    expect(s.proposals.map((p) => p.kind)).toEqual(["highlight", "complicate", "alter", "use-context-boon"]);
-    expect(s.proposals[3]).toMatchObject({ contextAspectId: "f" });
-    expect(s.proposals[3]).not.toHaveProperty("floatingId");
     expect(s.contextAspects).toEqual([
-      { id: "f", kind: "Bane", text: "n", createdByName: "Gm", consumed: false },
+      { id: "f", kind: "Boon", text: "a note", createdByName: "Gm", createdAt: 1, consumed: false, fromAspect: null },
     ]);
   });
 
-  it("drops state retired by 26.2: once-per-session flags, highlighted boons, and proposals of retired kinds", () => {
+  it("drops the proposal queue (31.3) and keeps the moves open to undo", () => {
+    const move = {
+      id: "m",
+      kind: "highlight",
+      actorId: "u",
+      actorName: "U",
+      slot: 0,
+      aspect: "desire",
+      effects: [{ type: "die", direction: "up" }],
+      messageId: "x",
+    };
+    const s = migrateTableState({
+      proposals: [{ id: "p", kind: "pledge", proposerId: "u", proposerName: "U", slot: 0, createdAt: 1 }],
+      moves: [move as never],
+    });
+    expect(s).not.toHaveProperty("proposals");
+    expect(s.moves).toEqual([move]);
+  });
+
+  it("drops state retired by 26.2: once-per-session flags and highlighted boons", () => {
     const s = migrateTableState({
       committedBoons: [{ slot: 0, count: 2 }],
       usedAbilities: [{ slot: 0, kinds: ["add-detail"] }],
-      proposals: [
-        { id: "a", kind: "add-boon", proposerId: "u", proposerName: "U", slot: null, delta: 1, createdAt: 1 },
-        { id: "b", kind: "gain-insight", proposerId: "u", proposerName: "U", slot: 0, delta: 0, createdAt: 1 },
-        { id: "c", kind: "accept-compel", proposerId: "u", proposerName: "U", slot: 0, delta: 2, createdAt: 1 },
-        { id: "d", kind: "pledge", proposerId: "u", proposerName: "U", slot: 0, delta: 3, createdAt: 1 },
-        { id: "e", kind: "add-detail", proposerId: "u", proposerName: "U", slot: 0, delta: 0, createdAt: 1 },
-      ] as never,
     });
     expect(s).not.toHaveProperty("committedBoons");
     expect(s).not.toHaveProperty("usedAbilities");
-    expect(s.proposals.map((p) => p.kind)).toEqual(["highlight", "add-detail"]);
-    expect(s.proposals[0]).not.toHaveProperty("delta");
-    expect(s.proposals[1]).toMatchObject({ text: null });
   });
 
-  it("reads the context-aspect names section 31.1 retired under their new names", () => {
+  it("reads the context aspects section 31.1 renamed under their new name", () => {
     const s = migrateTableState({
       sessionAspects: [{ id: "f", kind: "Boon", text: "n", createdByName: "Gm", createdAt: 1, consumed: true }],
-      proposals: [
-        { id: "a", kind: "use-session-boon", proposerId: "u", proposerName: "U", slot: 0, sessionAspectId: "f", targetSlot: null, text: null, createdAt: 1 },
-      ],
     });
     expect(s.contextAspects).toEqual([
-      { id: "f", kind: "Boon", text: "n", createdByName: "Gm", createdAt: 1, consumed: true },
+      { id: "f", kind: "Boon", text: "n", createdByName: "Gm", createdAt: 1, consumed: true, fromAspect: null },
     ]);
-    expect(s.proposals[0]).toMatchObject({ kind: "use-context-boon", contextAspectId: "f" });
-    expect(s.proposals[0]).not.toHaveProperty("sessionAspectId");
     expect(s).not.toHaveProperty("sessionAspects");
   });
 

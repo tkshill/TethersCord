@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   characterLabel,
   clearSlotPendingState,
+  moveName,
   randomInt,
 } from "../src/gameLogic";
 import type { CharacterSheet, GameState } from "../src/types";
@@ -29,7 +30,7 @@ function state(over: Partial<GameState> = {}): GameState {
     sessionId: "t",
     messages: [],
     die: 10,
-    proposals: [],
+    moves: [],
     session: null,
     characters: [],
     sessionHistory: [],
@@ -42,16 +43,16 @@ function state(over: Partial<GameState> = {}): GameState {
 }
 
 describe("clearSlotPendingState", () => {
-  it("drops any proposal pointing at the slot, as its proposer or as its target", () => {
-    const base = { proposerId: "u", proposerName: "U", contextAspectId: null, text: null };
+  it("closes undo on every move made from the slot", () => {
+    const move = { kind: "highlight" as const, actorId: "u", actorName: "U", aspect: null, effects: [], messageId: "x" };
     const s = state({
-      proposals: [
-        { ...base, id: "a", kind: "highlight", slot: 0, targetSlot: null, createdAt: 1 },
-        { ...base, id: "b", kind: "complicate", slot: 2, targetSlot: 0, createdAt: 2 },
-        { ...base, id: "c", kind: "highlight", slot: 1, targetSlot: null, createdAt: 3 },
+      moves: [
+        { ...move, id: "a", slot: 0 },
+        { ...move, id: "b", slot: null },
+        { ...move, id: "c", slot: 1 },
       ],
     });
-    expect(clearSlotPendingState(s, 0).proposals.map((p) => p.id)).toEqual(["c"]);
+    expect(clearSlotPendingState(s, 0).moves.map((m) => m.id)).toEqual(["b", "c"]);
   });
 });
 
@@ -59,6 +60,11 @@ describe("small helpers", () => {
   it("characterLabel falls back to a 1-based slot number", () => {
     expect(characterLabel(sheet({ slot: 2, name: "  " }))).toBe("Character 3");
     expect(characterLabel(sheet({ name: "Bea" }))).toBe("Bea");
+  });
+
+  it("moveName gives each move its glossary name", () => {
+    expect(["highlight", "highlight-context", "complicate", "create", "alter"].map((k) => moveName(k as never)))
+      .toEqual(["Highlight", "Highlight Context", "Complicate", "Create", "Alter"]);
   });
 
   it("randomInt stays in [0, max)", () => {

@@ -1,11 +1,8 @@
 // worker/src/characters.ts
 //
-// The `characters` D1 row shape and its mapping to a `CharacterSheet`. Rules
-// core commands write sheets through `persist.ts`; `setFate` serves only the
-// proposal accepts still on `GameTable`'s legacy path, and goes with them in
-// 31.3.
+// The `characters` D1 row shape and its mapping to a `CharacterSheet`. Every
+// sheet write goes through `persist.ts`.
 
-import type { D1Database } from "@cloudflare/workers-types";
 import type { CharacterSheet } from "./types";
 
 export type CharacterRow = {
@@ -44,17 +41,4 @@ export function rowToCharacterSheet(row: CharacterRow): CharacterSheet {
     },
     ownerId: row.discord_user_id,
   };
-}
-
-/** Set a sheet's boon count outright, for a legacy proposal accept. */
-export async function setFate(
-  db: D1Database,
-  id: string,
-  fate: number,
-  now: number,
-): Promise<void> {
-  await db
-    .prepare(`UPDATE characters SET fate = ?, updated_at = ? WHERE id = ?`)
-    .bind(fate, now, id)
-    .run();
 }

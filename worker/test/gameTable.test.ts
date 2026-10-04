@@ -1,58 +1,8 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { call, claim, readState, seedAuth } from "./helpers";
-
-async function firstProposalId(table: string, token: string): Promise<string> {
-  const state = await readState(table, token);
-  const id = state.proposals[0]?.id;
-  if (!id) throw new Error("no proposal queued");
-  return id;
-}
+import { call, readState, seedAuth } from "./helpers";
 
 describe("GameTable state machine", () => {
-  describe("the proposal queue", () => {
-    it("queues a player's proposal without changing shared state, then applies it on accept", async () => {
-      const table = "gt-propose-accept";
-      const { token: fac } = await seedAuth(undefined, { facilitator: true });
-      const { token: player } = await seedAuth();
-      await claim(table, player, 0);
-      await call(table, "/characters/0/fate", { token: fac, body: { delta: 1 } });
-
-      expect((await call(table, "/moves/highlight", { token: player })).status).toBe(
-        204,
-      );
-      let state = await readState(table, fac);
-      expect(state.proposals).toHaveLength(1);
-      expect(state.die).toBe(10); // untouched while pending
-
-      const id = state.proposals[0].id;
-      expect(
-        (await call(table, `/proposals/${id}/accept`, { token: fac })).status,
-      ).toBe(204);
-
-      state = await readState(table, fac);
-      expect(state.proposals).toHaveLength(0);
-      expect(state.die).toBe(12);
-    });
-
-    it("403s a player resolving a proposal", async () => {
-      const table = "gt-propose-player-resolve";
-      const { token: fac } = await seedAuth(undefined, { facilitator: true });
-      const { token: player } = await seedAuth();
-      await claim(table, player, 0);
-      await call(table, "/characters/0/fate", { token: fac, body: { delta: 1 } });
-      await call(table, "/moves/highlight", { token: player });
-
-      const id = await firstProposalId(table, fac);
-      expect(
-        (await call(table, `/proposals/${id}/accept`, { token: player })).status,
-      ).toBe(403);
-      expect(
-        (await call(table, `/proposals/${id}/reject`, { token: player })).status,
-      ).toBe(403);
-    });
-  });
-
   describe("table-state write economy", () => {
     it("a chat post between two die steps does not disturb the persisted table state", async () => {
       const table = "gt-stone-write-skip";
@@ -221,32 +171,6 @@ describe("GameTable state machine", () => {
         "Goal updated — Second cut",
         "Session ended — Second cut",
       ]);
-    });
-  });
-
-  describe("claim / release cleanup", () => {
-    it("drops a slot's proposals when the sheet is released, and keeps everyone else's", async () => {
-      const table = "gt-release-cleanup";
-      const { token: fac } = await seedAuth(undefined, { facilitator: true });
-      const { token: a } = await seedAuth();
-      const { token: b } = await seedAuth();
-
-      await claim(table, a, 0);
-      await claim(table, b, 1);
-      await call(table, "/characters/0/fate", { token: fac, body: { delta: 3 } });
-      await call(table, "/characters/1/fate", { token: fac, body: { delta: 3 } });
-
-      // Each player has an open Highlight the facilitator hasn't resolved.
-      await call(table, "/moves/highlight", { token: a });
-      await call(table, "/moves/highlight", { token: b });
-
-      let state = await readState(table, fac);
-      expect(state.proposals.map((p) => p.slot).sort()).toEqual([0, 1]);
-
-      await call(table, "/characters/0/release", { token: a });
-
-      state = await readState(table, fac);
-      expect(state.proposals.map((p) => p.slot)).toEqual([1]); // slot 0's gone
     });
   });
 
@@ -434,33 +358,6 @@ describe("GameTable state machine", () => {
     });
   });
 
-  describe("proposal withdraw", () => {
-    it("lets the proposer withdraw, but no one else", async () => {
-      const table = "gt-withdraw";
-      const { token: fac } = await seedAuth(undefined, { facilitator: true });
-      const { token: ada } = await seedAuth();
-      const { token: bea } = await seedAuth();
-      await claim(table, ada, 0);
-      await call(table, "/characters/0/fate", { token: fac, body: { delta: 1 } });
-
-      await call(table, "/moves/highlight", { token: ada });
-      const id = await firstProposalId(table, fac);
-
-      const byOther = await call(table, `/proposals/${id}/withdraw`, { token: bea });
-      expect(byOther.status).toBe(403);
-      const byFac = await call(table, `/proposals/${id}/withdraw`, { token: fac });
-      expect(byFac.status).toBe(403);
-
-      const byProposer = await call(table, `/proposals/${id}/withdraw`, {
-        token: ada,
-      });
-      expect(byProposer.status).toBe(204);
-
-      const state = await readState(table, fac);
-      expect(state.proposals).toHaveLength(0);
-      expect(state.die).toBe(10); // never applied
-    });
-  });
 });
 
 describe("the die across sessions (integration)", () => {

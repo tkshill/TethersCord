@@ -10,6 +10,17 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **Moves act at once and the facilitator undoes them, instead of approving
+  them** (roadmap 31.3, ADR 0002). In the Worker, Highlight, Highlight
+  Context, Complicate, Create and Alter (`/moves/*`) take effect when made,
+  and `/moves/:id/undo` reverses one move's own effects for the facilitator
+  or the player who made it. Every move except Alter is refused once a
+  Junction is rolled, and rolling closes undo on them. Complicate now also
+  adds a blank context bane for the facilitator to word. The proposal queue,
+  its routes, and the facilitator's context aspect use and unconsume are
+  gone; Highlight Context covers them. Queued proposals are dropped on load.
+  The client follows in 31.4.
+
 - **The die ladder replaces the stone pool in the Worker** (roadmap 31.2,
   ADR 0001). A Junction rolls one die — d10 at the base, stepped along
   d6, d8, d10, d12, d16, d20 — and reads Critical Friction, Friction, Flow

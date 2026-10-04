@@ -5,15 +5,12 @@
 // table and its log lines, or a refusal. It never awaits, writes, or reads the
 // clock or randomness except through `deps`; `GameTable` persists the result.
 //
-// Not yet here (roadmap 31.3): the proposal queue, which still runs on
-// `GameTable`'s legacy `commit` path until direct moves replace it.
+// Every mutation the Worker supports goes through here.
 
 import {
   addContextAspect,
   deleteContextAspect,
-  unconsumeContextAspect,
   updateContextAspect,
-  useContextAspect,
 } from "./context";
 import { createEntity, deleteEntity, updateEntity } from "./entities";
 import {
@@ -23,6 +20,14 @@ import {
   rollJunction,
   stepDie,
 } from "./junction";
+import {
+  alter,
+  complicate,
+  create,
+  highlight,
+  highlightContext,
+  undo,
+} from "./moves";
 import { applied, entry, refuse } from "./result";
 import { endSession, startSession, updateGoal } from "./session";
 import { adjustBoons, claimSheet, releaseSheet, updateSheet } from "./sheets";
@@ -58,8 +63,6 @@ const FACILITATOR_ONLY: ReadonlySet<CommandType> = new Set<CommandType>([
   "context/add",
   "context/update",
   "context/delete",
-  "context/use",
-  "context/unconsume",
   "junction/reroll",
   "junction/accept",
   "junction/reject",
@@ -105,10 +108,18 @@ export function transition(table: Table, command: Command, deps: Deps): Result {
       return updateContextAspect(table, command);
     case "context/delete":
       return deleteContextAspect(table, command, deps);
-    case "context/use":
-      return useContextAspect(table, command, deps);
-    case "context/unconsume":
-      return unconsumeContextAspect(table, command, deps);
+    case "move/highlight":
+      return highlight(table, command, deps);
+    case "move/highlight-context":
+      return highlightContext(table, command, deps);
+    case "move/complicate":
+      return complicate(table, command, deps);
+    case "move/create":
+      return create(table, command, deps);
+    case "move/alter":
+      return alter(table, command, deps);
+    case "move/undo":
+      return undo(table, command, deps);
     case "junction/roll":
       return rollJunction(table, command, deps);
     case "junction/reroll":

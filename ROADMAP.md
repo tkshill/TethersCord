@@ -2326,23 +2326,31 @@ shape (ADR 0003).
       still decodes the stone wire shape and does not run against this
       Worker until 31.4.
 
-#### 31.3 Worker — direct moves and undo
+#### 31.3 Worker — direct moves and undo — done
 
-- [ ] `/moves/{highlight,highlight-context,complicate,create,alter}` act
+- [x] `/moves/{highlight,highlight-context,complicate,create,alter}` act
       immediately for any player, with costs
       checked once (400) and ladder ends refused (409). Highlight and
       Complicate carry the aspect.
-- [ ] The Junction gate: every move except Alter 409s while a Junction is
+- [x] The Junction gate: every move except Alter 409s while a Junction is
       pending.
-- [ ] `gameState.moves`, `/moves/:id/undo` (facilitator, or the move's own
+- [x] `gameState.moves`, `/moves/:id/undo` (facilitator, or the move's own
       player), the window closing on roll, Alter's on accept or reject.
-- [ ] Moves return their effects as data; undo applies the inverse,
+- [x] Moves return their effects as data; undo applies the inverse,
       clamped (ADR 0003). `commit`, `appendMessage` and the `characters.ts`
       write wrappers are deleted with the last handler that used them.
-- [ ] Delete `Proposal`, `ProposalKind`, `handleProposalDecision`, the
+- [x] Delete `Proposal`, `ProposalKind`, `handleProposalDecision`, the
       proposal and withdraw routes, `/context-aspects/:id/unconsume` (undo
       covers it — confirm in review), and their tests. Migration drops stored
       proposals.
+- [x] Settled in 31.3: the facilitator's `/context-aspects/:id/use` is gone
+      too — Highlight Context is open to anyone, the facilitator included, so
+      it is the one way to use a context aspect, and undo replaces
+      unconsume. Undoing an Alter restores the earlier roll only if no later
+      reroll replaced it (it always refunds and frees the Alter). A sheet
+      changing hands closes undo on its slot's moves. A Complicate's bane
+      carries `fromAspect: { slot, aspect }` on the wire. `GameTable.ts` is
+      ~880 lines (from ~2150 before 31.2a). Suites: client 97, worker 137.
 
 #### 31.4 Client domain and wire
 

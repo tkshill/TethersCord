@@ -4,13 +4,13 @@ import type {
   D1Database,
   DurableObjectNamespace,
 } from "@cloudflare/workers-types";
-import type { Die, Outcome } from "./rules/dice";
+import type { Die, Direction, Outcome, Roll } from "./rules/dice";
 
 export type Role = "facilitator" | "player";
 
 /**
  * `chat` is a line a person typed into the composer; `event` is a line the table
- * wrote when a mutation happened (a roll, an accepted proposal, a session start).
+ * wrote when a mutation happened (a roll, a move, a session start).
  */
 export type MessageKind = "chat" | "event";
 
@@ -49,49 +49,57 @@ export type Junction = {
   alteredSlots: number[];
 };
 
-/**
- * The player moves the facilitator resolves through the one accept / reject
- * queue (Junction is not one — it needs no approval):
- * - `highlight` — pay 1 boon to step the die up.
- * - `complicate` — suggest a complication for your own character; on approval
- *   it gains 2 boons.
- * - `add-detail` — pay 1 boon to establish a fact; on approval a context boon.
- * - `alter` — Alter Fate: pay 2 boons to reroll the pending Junction.
- * - `use-context-boon` — spend a context boon (named by `contextAspectId`),
- *   stepping the die up.
- * (31.3 replaces the queue with direct moves and undo.)
- */
-export type ProposalKind =
+/** The five moves (RULES.md "Moves"). Rolling a Junction is not one. */
+export type MoveKind =
   | "highlight"
+  | "highlight-context"
   | "complicate"
-  | "add-detail"
-  | "alter"
-  | "use-context-boon";
+  | "create"
+  | "alter";
 
 /**
- * A player-initiated change to shared state, waiting on the facilitator. One per
- * click. `slot` is the proposer's claimed sheet. `contextAspectId` names the
- * boon for `use-context-boon`. `targetSlot` is only set on an older
- * `complicate`, which named another character; it is null otherwise.
+ * One thing a move did to the table, as data. A move records its effects so
+ * that undo can apply their inverse (ADR 0002, ADR 0003) — reversing that
+ * move and nothing else, so moves made since survive.
  */
-export type Proposal = {
+export type MoveEffect =
+  | { type: "die"; direction: Direction }
+  | { type: "boons"; slot: number; delta: number }
+  | { type: "aspect-added"; aspect: ContextAspect }
+  | { type: "aspect-consumed"; id: string }
+  | {
+      type: "rerolled";
+      slot: number;
+      previous: Roll;
+      next: Roll;
+      /** The Junction's reroll count with this Alter applied; a higher count
+       * at undo means a later reroll replaced it. */
+      rerolls: number;
+    };
+
+/**
+ * A move that can still be undone. Held in `gameState.moves` (Durable Object
+ * state, never D1) until its window closes: when a Junction is rolled, or for
+ * an Alter when its Junction is accepted or rejected. `messageId` is the move's
+ * log line, so the client can put the undo link on it.
+ */
+export type MoveRecord = {
   id: string;
-  kind: ProposalKind;
-  proposerId: string;
-  proposerName: string;
+  kind: MoveKind;
+  actorId: string;
+  actorName: string;
+  /** The mover's sheet, or null for a Highlight Context made without one. */
   slot: number | null;
-  contextAspectId: string | null;
-  targetSlot: number | null;
-  /** `add-detail` only: the player's suggested wording, or null to ask the
-   * facilitator for one. */
-  text: string | null;
-  createdAt: number;
+  /** The character aspect a Highlight or Complicate drew on. */
+  aspect: AspectName | null;
+  effects: MoveEffect[];
+  messageId: string;
 };
 
 /**
  * An aspect of the situation owned by no character — a context boon or a
  * context bane. It comes from an accepted Critical Flow (a boon) or Critical
- * Friction (a bane), an accepted Add Detail (always a boon), or the
+ * Friction (a bane), a Create (a boon), a Complicate (a bane), or the
  * facilitator directly (`POST /context-aspects`). It stays in
  * `gameState.contextAspects` until the facilitator deletes it; spending it marks
  * it `consumed` rather than removing it, and a session ending does not clear it.
@@ -105,6 +113,8 @@ export type ContextAspect = {
   /** Set once the aspect has stepped the die. It is not deleted: it
    * stays on the table, visibly consumed, and cannot be spent again. */
   consumed: boolean;
+  /** The character aspect a Complicate drew this bane from, or null. */
+  fromAspect: { slot: number; aspect: AspectName } | null;
 };
 
 /** The three fixed aspects a character is written around. */
@@ -185,21 +195,13 @@ export type GameState = {
   die: Die;
   junction: Junction | null;
   contextAspects: ContextAspect[];
-  proposals: Proposal[];
+  /** Moves that can still be undone, oldest first. */
+  moves: MoveRecord[];
   session: SessionState | null;
   sessionHistory: SessionSummary[];
   characters: CharacterSheet[];
   npcs: TableEntity[];
   locations: TableEntity[];
-};
-
-export type UseContextBoonInput = {
-  contextAspectId: string;
-};
-
-export type ProposalDecisionInput = {
-  /** The facilitator's wording, when accepting an Add Detail. */
-  text?: string;
 };
 
 export type BackendAuthResult = {

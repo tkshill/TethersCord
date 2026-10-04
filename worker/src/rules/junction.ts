@@ -19,11 +19,6 @@ function criticalPolarity(outcome: Outcome): Polarity | null {
   return null;
 }
 
-/** A queued Alter only means something during the Junction it was raised for. */
-function withoutAlters(table: Table): Table["proposals"] {
-  return table.proposals.filter((p) => p.kind !== "alter");
-}
-
 export function rollJunction(
   table: Table,
   command: Of<"junction/roll">,
@@ -34,7 +29,12 @@ export function rollJunction(
   const roll = rollDie(table.die, deps.roll);
   const rolledBy = command.by.name;
   return applied(
-    { ...table, junction: { rolledBy, ...roll, rerolls: 0, alteredSlots: [] } },
+    {
+      ...table,
+      junction: { rolledBy, ...roll, rerolls: 0, alteredSlots: [] },
+      // Rolling ends preparation: nothing made before it can be undone.
+      moves: [],
+    },
     [entry(command, deps, { type: "junction-rolled", rolledBy, roll })],
   );
 }
@@ -76,6 +76,7 @@ export function acceptJunction(
           createdByName: junction.rolledBy,
           createdAt: deps.now(),
           consumed: false,
+          fromAspect: null,
         },
       ]
     : [];
@@ -86,7 +87,8 @@ export function acceptJunction(
       ...table,
       die: BASE_DIE,
       junction: null,
-      proposals: withoutAlters(table),
+      // An Alter can be undone only until its Junction ends.
+      moves: [],
       contextAspects: [...table.contextAspects, ...aspects],
     },
     [
@@ -109,7 +111,7 @@ export function rejectJunction(
   if (!table.junction) return refuse(409, "No Junction is pending");
 
   return applied(
-    { ...table, junction: null, proposals: withoutAlters(table) },
+    { ...table, junction: null, moves: [] },
     [entry(command, deps, { type: "junction-rejected" })],
   );
 }
