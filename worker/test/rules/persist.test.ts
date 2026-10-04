@@ -17,7 +17,7 @@ const message: Message = {
 describe("persistDiff", () => {
   it("writes nothing when the D1-mirrored parts are unchanged", () => {
     const t = table();
-    expect(persistDiff(t, { ...t, stonePool: ["Boon"], junction: null }, [])).toEqual([]);
+    expect(persistDiff(t, { ...t, die: 12, junction: null }, [])).toEqual([]);
   });
 
   it("writes a sheet whenever any stored field changes", () => {

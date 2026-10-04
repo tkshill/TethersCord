@@ -5,7 +5,6 @@ import type {
   DurableObjectState,
 } from "@cloudflare/workers-types";
 import type {
-  AddOrRemoveStoneInput,
   CharacterSheet,
   CharacterSheetFields,
   ContextAspect,
@@ -18,18 +17,14 @@ import type {
   ProposalDecisionInput,
   Role,
   SessionSummary,
-  StoneKind,
+  Polarity,
   TableEntity,
   UseContextBoonInput,
 } from "./types";
 import {
   characterLabel,
-  describeStones,
   moveName,
-  pairKind,
-  pickTwoRandom,
   randomInt,
-  removeStones,
 } from "./gameLogic";
 import {
   type LegacyTableState,
@@ -51,11 +46,8 @@ import {
   SESSION_HISTORY_LIMIT,
   transition,
 } from "./rules";
-
-// The shape the shared pool starts in, and returns to whenever a Junction is
-// accepted. Between accepts the pool only changes through moves and the
-// facilitator's direct edits; a roll only ever reads it.
-const INITIAL_STONE_POOL: readonly StoneKind[] = ["Boon", "Bane", "Boon", "Bane"];
+import { type Die, rollDie, step } from "./rules/dice";
+import { dieChange, rollText } from "./rules/log";
 
 const CHARACTER_SLOT_COUNT = 3;
 
@@ -221,6 +213,25 @@ const COMMAND_ROUTES: CommandRoute[] = [
     path: new RegExp(`^/context-aspects/(${UUID})/delete$`),
     parse: ([, id]) => ({ type: "context/delete", id }),
   },
+  {
+    path: new RegExp(`^/context-aspects/(${UUID})/use$`),
+    parse: ([, id]) => ({ type: "context/use", id }),
+  },
+  {
+    path: new RegExp(`^/context-aspects/(${UUID})/unconsume$`),
+    parse: ([, id]) => ({ type: "context/unconsume", id }),
+  },
+  { path: /^\/junction\/roll$/, parse: () => ({ type: "junction/roll" }) },
+  { path: /^\/junction\/reroll$/, parse: () => ({ type: "junction/reroll" }) },
+  { path: /^\/junction\/accept$/, parse: () => ({ type: "junction/accept" }) },
+  { path: /^\/junction\/reject$/, parse: () => ({ type: "junction/reject" }) },
+  {
+    path: /^\/die\/step-(up|down)$/,
+    parse: ([, direction]) => ({
+      type: "die/step",
+      direction: direction as "up" | "down",
+    }),
+  },
 ];
 
 export class GameTable implements DurableObject {
@@ -362,8 +373,8 @@ export class GameTable implements DurableObject {
       }
     }
 
-    // The routes below still run on the legacy `commit` path. 31.2b moves the
-    // Junction and the pool into the rules core; 31.3 deletes the proposals.
+    // The proposal routes below still run on the legacy `commit` path until
+    // 31.3 replaces them with direct moves and undo.
 
     if (url.pathname === "/moves/highlight" && request.method === "POST") {
       return this.withLock(() => this.handleHighlight(authInfo));
@@ -408,60 +419,6 @@ export class GameTable implements DurableObject {
 
     if (url.pathname === "/moves/use-context-boon" && request.method === "POST") {
       return this.withLock(() => this.handleUseContextBoon(request, authInfo));
-    }
-
-    if (url.pathname === "/junction/roll" && request.method === "POST") {
-      return this.withLock(() => this.handleJunctionRoll(authInfo));
-    }
-
-    if (url.pathname === "/junction/accept" && request.method === "POST") {
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleJunctionAccept(authInfo))
-      );
-    }
-
-    if (url.pathname === "/junction/reject" && request.method === "POST") {
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleJunctionReject(authInfo))
-      );
-    }
-
-    if (url.pathname === "/junction/reroll" && request.method === "POST") {
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleJunctionReroll(authInfo))
-      );
-    }
-
-    if (url.pathname === "/stones/add" && request.method === "POST") {
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleAddStone(request))
-      );
-    }
-
-    if (url.pathname === "/stones/remove" && request.method === "POST") {
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleRemoveStone(request))
-      );
-    }
-
-    const contextAspectMatch = url.pathname.match(
-      new RegExp(`^/context-aspects/(${UUID})/(use|unconsume)$`),
-    );
-    if (contextAspectMatch && request.method === "POST") {
-      const [, contextAspectId, action] = contextAspectMatch;
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() =>
-          action === "use"
-            ? this.handleUseContextAspect(contextAspectId, authInfo)
-            : this.handleUnconsumeContextAspect(contextAspectId, authInfo),
-        )
-      );
     }
 
     return new Response("Not found", { status: 404 });
@@ -618,7 +575,7 @@ export class GameTable implements DurableObject {
 
     // These six reads are independent — different tables plus the KEY_TABLE_STATE
     // blob — so they run concurrently. Meaningful on the Free-tier cold path.
-    const [messageRows, characters, stones, sessionHistory, npcs, locations] =
+    const [messageRows, characters, tableState, sessionHistory, npcs, locations] =
       await Promise.all([
         this.env.DB.prepare(
           `
@@ -646,11 +603,11 @@ export class GameTable implements DurableObject {
     this.gameState = {
       sessionId,
       messages,
-      stonePool: stones.stonePool,
-      junction: stones.junction,
-      contextAspects: stones.contextAspects,
-      proposals: stones.proposals,
-      session: await this.backfillSessionStart(stones.session),
+      die: tableState.die,
+      junction: tableState.junction,
+      contextAspects: tableState.contextAspects,
+      proposals: tableState.proposals,
+      session: await this.backfillSessionStart(tableState.session),
       sessionHistory,
       characters,
       npcs,
@@ -667,13 +624,14 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * The stone pool is the only state this Durable Object genuinely owns, so
-   * it lives in its own storage. Keeping it in memory loses it every time the
+   * The die, the pending Junction, proposals, context aspects and the session
+   * are the only state this Durable Object genuinely owns, so they live in its
+   * own storage. Keeping it in memory loses it every time the
    * DO hibernates, which is roughly ten seconds after a table goes quiet.
    */
   private async loadTableState(): Promise<TableState> {
     const stored = await this.state.storage.get<LegacyTableState>(KEY_TABLE_STATE);
-    const migrated = migrateTableState(stored, INITIAL_STONE_POOL);
+    const migrated = migrateTableState(stored);
     // A cold table writes the base blob once; a stored one is left as-is and
     // persisted by the first mutation that actually changes it.
     if (!stored) {
@@ -692,7 +650,7 @@ export class GameTable implements DurableObject {
 
   private tableSlice(state: GameState): TableState {
     return {
-      stonePool: state.stonePool,
+      die: state.die,
       junction: state.junction,
       contextAspects: state.contextAspects,
       proposals: state.proposals,
@@ -864,9 +822,9 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * Highlight: the caller proposes to move one of their own boons into the
-   * shared pool. It costs 1 boon, so it cannot be proposed without one; the
-   * cost is paid only when the facilitator accepts.
+   * Highlight: the caller proposes to pay one of their own boons to step the
+   * die up. It costs 1 boon, so it cannot be proposed without one, nor at the
+   * top of the ladder; the cost is paid only when the facilitator accepts.
    */
   private async handleHighlight(authInfo: AuthInfo): Promise<Response> {
     const character = this.game.characters.find(
@@ -878,6 +836,7 @@ export class GameTable implements DurableObject {
     if (character.fate < HIGHLIGHT_COST) {
       return new Response("You need a boon to Highlight", { status: 400 });
     }
+    if (!step(this.game.die, "up")) return dieAtEnd(this.game.die);
 
     return this.addProposal(
       {
@@ -996,8 +955,8 @@ export class GameTable implements DurableObject {
 
   /**
    * Use Context Boon: the caller proposes to spend an unconsumed context boon.
-   * It costs nothing; on approval the boon is marked consumed and a Boon
-   * enters the pool. Context banes are the facilitator's to use directly, so a
+   * It costs nothing; on approval the boon is marked consumed and the die
+   * steps up. Context banes are the facilitator's to use directly, so a
    * player cannot propose one.
    */
   private async handleUseContextBoon(
@@ -1033,6 +992,7 @@ export class GameTable implements DurableObject {
         status: 409,
       });
     }
+    if (!step(this.game.die, "up")) return dieAtEnd(this.game.die);
     if (
       this.game.proposals.some(
         (p) =>
@@ -1126,6 +1086,8 @@ export class GameTable implements DurableObject {
           if (proposerSheet.fate < HIGHLIGHT_COST) {
             return this.notEnoughBoons();
           }
+          const to = step(state.die, "up");
+          if (!to) return dieAtEnd(state.die);
           state = {
             ...state,
             characters: await this.bumpFate(
@@ -1133,11 +1095,11 @@ export class GameTable implements DurableObject {
               proposerSheet.slot,
               -HIGHLIGHT_COST,
             ),
-            stonePool: [...state.stonePool, "Boon"],
+            die: to,
           };
           logLine = `Highlight accepted — ${characterLabel(
             proposerSheet,
-          )} pays ${HIGHLIGHT_COST} boon, the pool gains a Boon`;
+          )} pays ${HIGHLIGHT_COST} boon — ${dieChange(this.game.die, to)}`;
           break;
         }
 
@@ -1156,7 +1118,7 @@ export class GameTable implements DurableObject {
           if (proposerSheet.fate < ALTER_COST) {
             return this.notEnoughBoons();
           }
-          const { chosen } = pickTwoRandom(state.stonePool);
+          const roll = rollDie(junction.die, this.deps.roll);
           state = {
             ...state,
             characters: await this.bumpFate(
@@ -1166,14 +1128,14 @@ export class GameTable implements DurableObject {
             ),
             junction: {
               ...junction,
-              stones: chosen,
+              ...roll,
               rerolls: junction.rerolls + 1,
               alteredSlots: [...junction.alteredSlots, proposerSheet.slot],
             },
           };
           logLine = `Alter Fate accepted — ${characterLabel(
             proposerSheet,
-          )} pays ${ALTER_COST} boons, rerolled: ${describeStones(chosen)}`;
+          )} pays ${ALTER_COST} boons, rerolled: ${rollText(roll)}`;
           break;
         }
 
@@ -1259,16 +1221,18 @@ export class GameTable implements DurableObject {
               status: 409,
             });
           }
+          const to = step(state.die, "up");
+          if (!to) return dieAtEnd(state.die);
           state = {
             ...state,
-            stonePool: [...state.stonePool, "Boon"],
+            die: to,
             contextAspects: state.contextAspects.map((f) =>
               f.id === aspect.id ? { ...f, consumed: true } : f,
             ),
           };
           logLine = `Use Context Boon accepted — ${characterLabel(
             proposerSheet,
-          )} spends ${aspect.text}; the pool gains a Boon`;
+          )} spends ${aspect.text} — ${dieChange(this.game.die, to)}`;
           break;
         }
       }
@@ -1350,246 +1314,7 @@ export class GameTable implements DurableObject {
     return characters.map((c) => (c.slot === slot ? { ...c, fate } : c));
   }
 
-  /**
-   * Junction (26.2): any player presses it, no approval needed. Draws two
-   * stones from the pool without touching the pool, and leaves the result
-   * pending until the facilitator accepts or rejects it. One at a time.
-   */
-  private async handleJunctionRoll(authInfo: AuthInfo): Promise<Response> {
-    if (this.game.junction) {
-      return new Response("A Junction is already pending", { status: 409 });
-    }
-
-    const { chosen } = pickTwoRandom(this.game.stonePool);
-    return this.commit(
-      {
-        ...this.game,
-        junction: {
-          rolledBy: authInfo.username,
-          stones: chosen,
-          rerolls: 0,
-          alteredSlots: [],
-        },
-      },
-      {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: `Junction — ${authInfo.username} rolled: ${describeStones(chosen)}`,
-      },
-    );
-  }
-
-  /**
-   * The facilitator accepts the pending Junction. The pool returns to its
-   * starting shape whatever was added to it, and a matched pair plants a
-   * context boon (two Boons) or context bane (two Banes) for the facilitator to
-   * word later; a mixed draw plants nothing.
-   */
-  private async handleJunctionAccept(authInfo: AuthInfo): Promise<Response> {
-    const junction = this.game.junction;
-    if (!junction) {
-      return new Response("No Junction is pending", { status: 409 });
-    }
-
-    const kind = pairKind(junction.stones);
-    const contextAspects = kind
-      ? [
-          ...this.game.contextAspects,
-          {
-            id: crypto.randomUUID(),
-            kind,
-            text: `${kind} from ${junction.rolledBy}'s Junction`,
-            createdByName: junction.rolledBy,
-            createdAt: Date.now(),
-            consumed: false,
-          },
-        ]
-      : this.game.contextAspects;
-    const added = kind ? ` (context ${kind.toLowerCase()} added)` : "";
-
-    return this.commit(
-      {
-        ...this.game,
-        junction: null,
-        // A queued Alter Fate is only meaningful during the Junction it was
-        // raised for.
-        proposals: this.game.proposals.filter((p) => p.kind !== "alter"),
-        stonePool: [...INITIAL_STONE_POOL],
-        contextAspects,
-      },
-      {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: `Junction accepted — ${describeStones(junction.stones)}${added}`,
-      },
-    );
-  }
-
-  /**
-   * The facilitator rejects the pending Junction: the roll is discarded and
-   * nothing else changes — the pool keeps whatever was added to it, and no
-   * context aspect is created — so the table can roll again.
-   */
-  private async handleJunctionReject(authInfo: AuthInfo): Promise<Response> {
-    if (!this.game.junction) {
-      return new Response("No Junction is pending", { status: 409 });
-    }
-
-    return this.commit(
-      {
-        ...this.game,
-        junction: null,
-        proposals: this.game.proposals.filter((p) => p.kind !== "alter"),
-      },
-      {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: "Junction rejected — the roll is discarded",
-      },
-    );
-  }
-
-  /**
-   * The facilitator's own reroll of the pending Junction: free and immediate,
-   * with no proposal. Players reroll only through Alter Fate.
-   */
-  private async handleJunctionReroll(authInfo: AuthInfo): Promise<Response> {
-    const junction = this.game.junction;
-    if (!junction) {
-      return new Response("No Junction is pending", { status: 409 });
-    }
-
-    const { chosen } = pickTwoRandom(this.game.stonePool);
-    return this.commit(
-      {
-        ...this.game,
-        junction: { ...junction, stones: chosen, rerolls: junction.rerolls + 1 },
-      },
-      {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: `Reroll — ${describeStones(chosen)}`,
-      },
-    );
-  }
-
-  /**
-   * Facilitator-only (23.2): add one stone directly to the shared pool, no
-   * proposal needed. Independent of a draw and of every other free-standing
-   * resource action — the interface makes no attempt to link this to
-   * anything. Silent like the facilitator's direct `add-boon`: a hand-edit to
-   * the pool, not a narrated table event.
-   */
-  private async handleAddStone(request: Request): Promise<Response> {
-    const input = (await readJson(request)) as AddOrRemoveStoneInput | null;
-    const kind = input?.kind;
-    if (kind !== "Boon" && kind !== "Bane") {
-      return new Response("kind must be Boon or Bane", { status: 400 });
-    }
-
-    return this.commit({
-      ...this.game,
-      stonePool: [...this.game.stonePool, kind],
-    });
-  }
-
-  /**
-   * Facilitator-only (23.2): remove one stone of `kind` directly from the
-   * shared pool. 400s when the pool holds none of that kind, rather than
-   * silently broadcasting a pool that never actually changed.
-   */
-  private async handleRemoveStone(request: Request): Promise<Response> {
-    const input = (await readJson(request)) as AddOrRemoveStoneInput | null;
-    const kind = input?.kind;
-    if (kind !== "Boon" && kind !== "Bane") {
-      return new Response("kind must be Boon or Bane", { status: 400 });
-    }
-    if (!this.game.stonePool.includes(kind)) {
-      return new Response(`The pool has no ${kind} to remove`, {
-        status: 400,
-      });
-    }
-
-    return this.commit({
-      ...this.game,
-      stonePool: removeStones(this.game.stonePool, [kind]),
-    });
-  }
-
   /** Facilitator-only: rewrite one context aspect's text. Silent, like a typo fix. */
-  /**
-   * Facilitator-only: spend a context aspect into the pool directly, no
-   * approval. The pool gains a stone of the aspect's kind and the aspect is
-   * marked consumed — kept, visibly, so it cannot be spent twice.
-   */
-  private async handleUseContextAspect(
-    contextAspectId: string,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    const aspect = this.game.contextAspects.find((f) => f.id === contextAspectId);
-    if (!aspect) {
-      return new Response("No such context boon", { status: 404 });
-    }
-    if (aspect.consumed) {
-      return new Response("That context boon is already consumed", {
-        status: 409,
-      });
-    }
-
-    return this.commit(
-      {
-        ...this.game,
-        stonePool: [...this.game.stonePool, aspect.kind],
-        contextAspects: this.game.contextAspects.map((f) =>
-          f.id === contextAspectId ? { ...f, consumed: true } : f,
-        ),
-      },
-      {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: `Context ${aspect.kind.toLowerCase()} used — ${aspect.text}`,
-      },
-    );
-  }
-
-  /**
-   * Facilitator-only: clear a consumed mark. A correction for a table
-   * miscommunication (a stone was spent that should not have been), not part of
-   * the game — so it does not touch the pool.
-   */
-  private async handleUnconsumeContextAspect(
-    contextAspectId: string,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    const aspect = this.game.contextAspects.find((f) => f.id === contextAspectId);
-    if (!aspect) {
-      return new Response("No such context boon", { status: 404 });
-    }
-    if (!aspect.consumed) {
-      return new Response("That context boon is not consumed", { status: 409 });
-    }
-
-    return this.commit(
-      {
-        ...this.game,
-        contextAspects: this.game.contextAspects.map((f) =>
-          f.id === contextAspectId ? { ...f, consumed: false } : f,
-        ),
-      },
-      {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: `Context ${aspect.kind.toLowerCase()} unconsumed — ${aspect.text}`,
-      },
-    );
-  }
-
   /** Facilitator rewrites the running session's goal. */
   /** Release a sheet. Allowed for the sheet's owner or the facilitator. */
   /** Add a blank NPC / location row, ready for the facilitator to fill in. */
@@ -1719,6 +1444,12 @@ function authoredLine(authInfo: AuthInfo, content: string): AddMessageInput {
     role: authInfo.role,
     content,
   };
+}
+
+/** A legacy proposal that would step the die past the end of the ladder. A
+ * proposal refused on accept stays queued. */
+function dieAtEnd(die: Die): Response {
+  return new Response(`The die is already at d${die}`, { status: 409 });
 }
 
 function facilitatorOnly(authInfo: AuthInfo): Response | undefined {

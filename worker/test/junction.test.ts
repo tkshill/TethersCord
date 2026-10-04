@@ -1,241 +1,118 @@
+import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import type { GameTable } from "../src/GameTable";
 import { call, claim, readState, seedAuth } from "./helpers";
 
-// The Junction loop (roadmap section 26.2): prepare the pool, one player
-// rolls, optional Alter Fate rerolls, the facilitator accepts or rejects.
-// Tests act through the routes and observe through the broadcast snapshot and
-// the message log. The draw is random, so a test that needs a known result
-// shapes the pool first through the facilitator's `/stones/{add,remove}`:
-// `[Boon, Boon]` can only ever draw a pair of Boons.
+// The Junction loop through the routes (31.2b): roll the die, reroll, accept
+// or reject, and the facilitator's direct die steps and context aspect use.
+// These are wiring tests — status codes, the broadcast state, the log and what
+// is stored. The rules themselves (every outcome, every refusal) are tested
+// against `transition` in test/rules/junction.test.ts; a test here that needs
+// a known face scripts the table's dice with `scriptRolls`.
 
-/** Leave the pool with exactly these stones (base pool is 2 Boon, 2 Bane). */
-async function shapePool(
-  table: string,
-  fac: string,
-  boons: number,
-  banes: number,
-): Promise<void> {
-  const state = await readState(table, fac);
-  const have = {
-    Boon: state.stonePool.filter((s) => s === "Boon").length,
-    Bane: state.stonePool.filter((s) => s === "Bane").length,
-  };
-  for (const [kind, want] of [
-    ["Boon", boons],
-    ["Bane", banes],
-  ] as const) {
-    for (let i = have[kind]; i < want; i++) {
-      await call(table, "/stones/add", { token: fac, body: { kind } });
-    }
-    for (let i = have[kind]; i > want; i--) {
-      await call(table, "/stones/remove", { token: fac, body: { kind } });
-    }
-  }
+/** Make the table's next rolls show `faces`, in order. */
+async function scriptRolls(table: string, faces: number[]): Promise<void> {
+  const stub = env.GAME_TABLE.get(env.GAME_TABLE.idFromName(table));
+  await runInDurableObject(stub, (instance: GameTable) => {
+    const deps = (instance as unknown as { deps: { roll: (sides: number) => number } }).deps;
+    const queue = [...faces];
+    (instance as unknown as { deps: object }).deps = {
+      ...deps,
+      roll: () => {
+        const face = queue.shift();
+        if (face === undefined) throw new Error("unscripted roll");
+        return face;
+      },
+    };
+  });
 }
 
-describe("Junction: rolling", () => {
-  it("lets any player roll: two stones are drawn, the pool is untouched, and the roll is logged", async () => {
-    const table = "oc-roll";
+/** The table-state blob as stored, to check the die survives hibernation. */
+async function storedTableState(table: string): Promise<Record<string, unknown>> {
+  const stub = env.GAME_TABLE.get(env.GAME_TABLE.idFromName(table));
+  return runInDurableObject(stub, async (_: GameTable, state) => {
+    return (await state.storage.get("stones")) as Record<string, unknown>;
+  });
+}
+
+describe("Junction routes", () => {
+  it("lets any player roll the current die and broadcasts the pending roll", async () => {
+    const table = "jn-roll";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const { token: player, username } = await seedAuth();
+    await readState(table, fac);
+    await scriptRolls(table, [7]);
 
-    const before = await readState(table, fac);
-    const res = await call(table, "/junction/roll", { token: player });
-    expect(res.status).toBe(204);
-
+    expect((await call(table, "/junction/roll", { token: player })).status).toBe(204);
     const state = await readState(table, fac);
-    expect(state.stonePool).toEqual(before.stonePool);
-    expect(state.junction).toMatchObject({
+    expect(state.die).toBe(10);
+    expect(state.junction).toEqual({
       rolledBy: username,
+      die: 10,
+      face: 7,
+      outcome: "flow",
       rerolls: 0,
       alteredSlots: [],
     });
-    expect(state.junction?.stones).toHaveLength(2);
-    expect(state.messages.at(-1)?.content).toMatch(
-      new RegExp(`^Junction — ${username} rolled: (Boon|Bane), (Boon|Bane)$`),
-    );
+    expect(state.messages.at(-1)?.content).toBe(`Junction — ${username} rolled: Flow — 7 on d10`);
+    expect((await call(table, "/junction/roll", { token: player })).status).toBe(409);
   });
 
-  it("refuses a second roll while one is pending", async () => {
-    const table = "oc-roll-twice";
-    const { token: fac } = await seedAuth(undefined, { facilitator: true });
-    const { token: player } = await seedAuth();
+  it("runs the loop: step, roll, reroll, accept — the die resets and a critical adds a context aspect", async () => {
+    const table = "jn-loop";
+    const { token: fac, username: gm } = await seedAuth(undefined, { facilitator: true });
+    await readState(table, fac);
+    await scriptRolls(table, [3, 12]);
 
-    expect((await call(table, "/junction/roll", { token: player })).status).toBe(
-      204,
-    );
-    const first = (await readState(table, fac)).junction;
+    expect((await call(table, "/die/step-up", { token: fac })).status).toBe(204);
+    await call(table, "/junction/roll", { token: fac });
+    await call(table, "/junction/reroll", { token: fac });
+    expect((await call(table, "/junction/accept", { token: fac })).status).toBe(204);
 
-    const second = await call(table, "/junction/roll", { token: fac });
-    expect(second.status).toBe(409);
-    expect((await readState(table, fac)).junction).toEqual(first);
+    const state = await readState(table, fac);
+    expect(state.die).toBe(10);
+    expect(state.junction).toBeNull();
+    expect(state.contextAspects).toMatchObject([
+      { kind: "Boon", text: `Critical Flow from ${gm}'s Junction`, consumed: false },
+    ]);
+    expect(state.messages.map((m) => m.content)).toEqual([
+      "Die stepped up — d10 → d12",
+      `Junction — ${gm} rolled: Friction — 3 on d12`,
+      "Reroll — Critical Flow — 12 on d12",
+      "Junction accepted — Critical Flow — 12 on d12 (context boon added) — d12 → d10",
+    ]);
+    expect(await storedTableState(table)).toMatchObject({ die: 10, junction: null });
   });
-});
 
-describe("Junction: accepting", () => {
-  it("resets the pool to two Boon and two Bane and clears the pending roll", async () => {
-    const table = "oc-accept-reset";
+  it("rejects a roll, leaving the die where it was", async () => {
+    const table = "jn-reject";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
-    const { token: player } = await seedAuth();
-
-    await shapePool(table, fac, 5, 1);
-    await call(table, "/junction/roll", { token: player });
-
-    const res = await call(table, "/junction/accept", { token: fac });
-    expect(res.status).toBe(204);
+    await call(table, "/die/step-down", { token: fac });
+    await call(table, "/junction/roll", { token: fac });
+    expect((await call(table, "/junction/reject", { token: fac })).status).toBe(204);
 
     const state = await readState(table, fac);
     expect(state.junction).toBeNull();
-    expect(state.stonePool.filter((s) => s === "Boon")).toHaveLength(2);
-    expect(state.stonePool.filter((s) => s === "Bane")).toHaveLength(2);
+    expect(state.die).toBe(8);
+    expect(state.messages.at(-1)?.content).toBe("Junction rejected — the roll is discarded");
+    expect(await storedTableState(table)).toMatchObject({ die: 8 });
   });
 
-  it("creates a context boon, credited to the roller, when two Boons were drawn", async () => {
-    const table = "oc-accept-boon-pair";
-    const { token: fac } = await seedAuth(undefined, { facilitator: true });
-    const { token: player, username } = await seedAuth();
-
-    await shapePool(table, fac, 4, 0);
-    await call(table, "/junction/roll", { token: player });
-    await call(table, "/junction/accept", { token: fac });
-
-    const state = await readState(table, fac);
-    expect(state.contextAspects).toHaveLength(1);
-    expect(state.contextAspects[0]).toMatchObject({
-      kind: "Boon",
-      createdByName: username,
-      consumed: false,
-    });
-    expect(state.contextAspects[0].text).not.toBe("");
-    expect(state.messages.at(-1)?.content).toBe(
-      "Junction accepted — Boon, Boon (context boon added)",
-    );
-  });
-
-  it("creates a context bane when two Banes were drawn", async () => {
-    const table = "oc-accept-bane-pair";
+  it("keeps reroll, accept, reject and the die steps facilitator-only, and maps refusals", async () => {
+    const table = "jn-gates";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const { token: player } = await seedAuth();
-
-    await shapePool(table, fac, 0, 4);
-    await call(table, "/junction/roll", { token: player });
-    await call(table, "/junction/accept", { token: fac });
-
-    const state = await readState(table, fac);
-    expect(state.contextAspects).toHaveLength(1);
-    expect(state.contextAspects[0]).toMatchObject({ kind: "Bane" });
-    expect(state.messages.at(-1)?.content).toBe(
-      "Junction accepted — Bane, Bane (context bane added)",
-    );
-  });
-
-  it("creates nothing when the draw was mixed", async () => {
-    const table = "oc-accept-mixed";
-    const { token: fac } = await seedAuth(undefined, { facilitator: true });
-    const { token: player } = await seedAuth();
-
-    await shapePool(table, fac, 1, 1);
-    await call(table, "/junction/roll", { token: player });
-    await call(table, "/junction/accept", { token: fac });
-
-    const state = await readState(table, fac);
-    expect(state.contextAspects).toHaveLength(0);
-    expect(state.messages.at(-1)?.content).toMatch(
-      /^Junction accepted — (Boon, Bane|Bane, Boon)$/,
-    );
-  });
-
-  it("is facilitator-only, and 409s when nothing is pending", async () => {
-    const table = "oc-accept-gates";
-    const { token: fac } = await seedAuth(undefined, { facilitator: true });
-    const { token: player } = await seedAuth();
-
-    expect((await call(table, "/junction/accept", { token: fac })).status).toBe(
-      409,
-    );
-    await call(table, "/junction/roll", { token: player });
-    expect(
-      (await call(table, "/junction/accept", { token: player })).status,
-    ).toBe(403);
-    expect((await readState(table, fac)).junction).not.toBeNull();
-  });
-});
-
-describe("Junction: rejecting", () => {
-  it("discards the pending roll and changes nothing else", async () => {
-    const table = "oc-reject";
-    const { token: fac } = await seedAuth(undefined, { facilitator: true });
-    const { token: player } = await seedAuth();
-
-    await shapePool(table, fac, 4, 0);
-    await call(table, "/junction/roll", { token: player });
-    const before = await readState(table, fac);
-
-    const res = await call(table, "/junction/reject", { token: fac });
-    expect(res.status).toBe(204);
-
-    const state = await readState(table, fac);
-    expect(state.junction).toBeNull();
-    expect(state.stonePool).toEqual(before.stonePool); // not reset
-    expect(state.contextAspects).toHaveLength(0); // a pair creates nothing on reject
-    expect(state.messages.at(-1)?.content).toBe(
-      "Junction rejected — the roll is discarded",
-    );
-
-    // The table can roll again.
-    expect((await call(table, "/junction/roll", { token: player })).status).toBe(
-      204,
-    );
-  });
-
-  it("is facilitator-only, and 409s when nothing is pending", async () => {
-    const table = "oc-reject-gates";
-    const { token: fac } = await seedAuth(undefined, { facilitator: true });
-    const { token: player } = await seedAuth();
-
-    expect((await call(table, "/junction/reject", { token: fac })).status).toBe(
-      409,
-    );
-    await call(table, "/junction/roll", { token: player });
-    expect(
-      (await call(table, "/junction/reject", { token: player })).status,
-    ).toBe(403);
-  });
-});
-
-describe("Junction: the facilitator's free reroll", () => {
-  it("redraws from the pool, counts the reroll, and logs it", async () => {
-    const table = "oc-reroll";
-    const { token: fac } = await seedAuth(undefined, { facilitator: true });
-    const { token: player } = await seedAuth();
-
-    await shapePool(table, fac, 4, 0);
-    await call(table, "/junction/roll", { token: player });
-    const before = await readState(table, fac);
-
-    const res = await call(table, "/junction/reroll", { token: fac });
-    expect(res.status).toBe(204);
-
-    const state = await readState(table, fac);
-    expect(state.junction?.rerolls).toBe(1);
-    expect(state.junction?.stones).toEqual(["Boon", "Boon"]);
-    expect(state.junction?.rolledBy).toBe(before.junction?.rolledBy);
-    expect(state.stonePool).toEqual(before.stonePool);
-    expect(state.messages.at(-1)?.content).toBe("Reroll — Boon, Boon");
-  });
-
-  it("is facilitator-only, and 409s when nothing is pending", async () => {
-    const table = "oc-reroll-gates";
-    const { token: fac } = await seedAuth(undefined, { facilitator: true });
-    const { token: player } = await seedAuth();
-
-    expect((await call(table, "/junction/reroll", { token: fac })).status).toBe(
-      409,
-    );
-    await call(table, "/junction/roll", { token: player });
-    expect(
-      (await call(table, "/junction/reroll", { token: player })).status,
-    ).toBe(403);
+    for (const path of ["/junction/reroll", "/junction/accept", "/junction/reject", "/die/step-up", "/die/step-down"]) {
+      expect((await call(table, path, { token: player })).status).toBe(403);
+    }
+    for (const path of ["/junction/reroll", "/junction/accept", "/junction/reject"]) {
+      expect((await call(table, path, { token: fac })).status).toBe(409);
+    }
+    for (let i = 0; i < 2; i++) await call(table, "/die/step-down", { token: fac });
+    const atBottom = await call(table, "/die/step-down", { token: fac });
+    expect(atBottom.status).toBe(409);
+    expect(await atBottom.text()).toBe("The die is already at d6");
+    expect((await call(table, "/stones/add", { token: fac, body: { kind: "Boon" } })).status).toBe(404);
   });
 });
 
@@ -253,55 +130,33 @@ describe("Context boons and banes", () => {
     return found.id;
   }
 
-  it("lets the facilitator use one directly: the pool gains that kind, and it is marked consumed rather than deleted", async () => {
+  it("lets the facilitator use one directly: the die steps its way, and it is marked consumed rather than deleted", async () => {
     const table = "sa-use-bane";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
 
     const id = await plant(table, fac, "Bane", "the guard suspects");
-    const res = await call(table, `/context-aspects/${id}/use`, { token: fac });
-    expect(res.status).toBe(204);
+    expect((await call(table, `/context-aspects/${id}/use`, { token: fac })).status).toBe(204);
 
     const state = await readState(table, fac);
-    expect(state.stonePool.filter((s) => s === "Bane")).toHaveLength(3);
+    expect(state.die).toBe(8);
     expect(state.contextAspects).toHaveLength(1);
     expect(state.contextAspects[0]).toMatchObject({ id, consumed: true });
-    expect(state.messages.at(-1)?.content).toBe(
-      "Context bane used — the guard suspects",
-    );
+    expect(state.messages.at(-1)?.content).toBe("Context bane used — the guard suspects — d10 → d8");
+    expect((await call(table, `/context-aspects/${id}/use`, { token: fac })).status).toBe(409);
   });
 
-  it("refuses to use a consumed one a second time", async () => {
-    const table = "sa-use-twice";
-    const { token: fac } = await seedAuth(undefined, { facilitator: true });
-
-    const id = await plant(table, fac, "Boon");
-    await call(table, `/context-aspects/${id}/use`, { token: fac });
-    const again = await call(table, `/context-aspects/${id}/use`, { token: fac });
-    expect(again.status).toBe(409);
-
-    const state = await readState(table, fac);
-    expect(state.stonePool.filter((s) => s === "Boon")).toHaveLength(3); // once only
-  });
-
-  it("lets the facilitator unconsume one to correct a mistake, without touching the pool", async () => {
+  it("lets the facilitator unconsume one to correct a mistake, without touching the die", async () => {
     const table = "sa-unconsume";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
 
     const id = await plant(table, fac, "Boon");
     await call(table, `/context-aspects/${id}/use`, { token: fac });
-    const res = await call(table, `/context-aspects/${id}/unconsume`, {
-      token: fac,
-    });
-    expect(res.status).toBe(204);
+    expect((await call(table, `/context-aspects/${id}/unconsume`, { token: fac })).status).toBe(204);
 
     const state = await readState(table, fac);
     expect(state.contextAspects[0].consumed).toBe(false);
-    expect(state.stonePool.filter((s) => s === "Boon")).toHaveLength(3);
-
-    const notConsumed = await call(table, `/context-aspects/${id}/unconsume`, {
-      token: fac,
-    });
-    expect(notConsumed.status).toBe(409);
+    expect(state.die).toBe(12);
+    expect((await call(table, `/context-aspects/${id}/unconsume`, { token: fac })).status).toBe(409);
   });
 
   it("lets the facilitator rewrite the text of one, and refuses a blank", async () => {
@@ -314,9 +169,7 @@ describe("Context boons and banes", () => {
       body: { text: "second wording" },
     });
     expect(res.status).toBe(204);
-    expect((await readState(table, fac)).contextAspects[0].text).toBe(
-      "second wording",
-    );
+    expect((await readState(table, fac)).contextAspects[0].text).toBe("second wording");
 
     const blank = await call(table, `/context-aspects/${id}/update`, {
       token: fac,
@@ -391,13 +244,13 @@ describe("Move: Highlight", () => {
     expect(state.proposals).toHaveLength(1);
     expect(state.proposals[0]).toMatchObject({ kind: "highlight", slot: 0 });
     expect(fateOf(state, 0)).toBe(2);
-    expect(state.stonePool).toHaveLength(4);
+    expect(state.die).toBe(10);
     expect(state.messages.at(-1)?.content).toBe(
       "Character 1 proposes Highlight",
     );
   });
 
-  it("on accept moves one boon from the player to the pool, and logs it", async () => {
+  it("on accept pays one boon and steps the die up, and logs it", async () => {
     const table = "mv-hl-accept";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const ada = await seatPlayer(table, fac, 0, 2);
@@ -410,9 +263,9 @@ describe("Move: Highlight", () => {
     const state = await readState(table, fac);
     expect(state.proposals).toHaveLength(0);
     expect(fateOf(state, 0)).toBe(1);
-    expect(state.stonePool.filter((s) => s === "Boon")).toHaveLength(3);
+    expect(state.die).toBe(12);
     expect(state.messages.at(-1)?.content).toBe(
-      "Highlight accepted — Character 1 pays 1 boon, the pool gains a Boon",
+      "Highlight accepted — Character 1 pays 1 boon — d10 → d12",
     );
   });
 
@@ -428,7 +281,7 @@ describe("Move: Highlight", () => {
     const state = await readState(table, fac);
     expect(state.proposals).toHaveLength(0);
     expect(fateOf(state, 0)).toBe(2);
-    expect(state.stonePool).toHaveLength(4);
+    expect(state.die).toBe(10);
     expect(state.messages.at(-1)?.content).toBe(
       "Highlight rejected — Character 1",
     );
@@ -464,10 +317,10 @@ describe("Move: Highlight", () => {
 
     const state = await readState(table, fac);
     expect(state.proposals).toHaveLength(1);
-    expect(state.stonePool).toHaveLength(4);
+    expect(state.die).toBe(10);
   });
 
-  it("is not blocked by a pending Junction — the frozen pool is a table rule", async () => {
+  it("is not yet blocked by a pending Junction (31.3 adds that lock)", async () => {
     const table = "mv-hl-not-locked";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const ada = await seatPlayer(table, fac, 0, 1);
@@ -478,7 +331,26 @@ describe("Move: Highlight", () => {
     expect(
       (await call(table, `/proposals/${id}/accept`, { token: fac })).status,
     ).toBe(204);
-    expect((await readState(table, fac)).stonePool).toHaveLength(5);
+    expect((await readState(table, fac)).die).toBe(12);
+  });
+
+  it("is refused at the top of the ladder, when proposed and again on accept", async () => {
+    const table = "mv-hl-top";
+    const { token: fac } = await seedAuth(undefined, { facilitator: true });
+    const ada = await seatPlayer(table, fac, 0, 2);
+
+    await call(table, "/die/step-up", { token: fac });
+    await call(table, "/moves/highlight", { token: ada.token });
+    await call(table, "/die/step-up", { token: fac });
+    await call(table, "/die/step-up", { token: fac });
+    expect((await call(table, "/moves/highlight", { token: ada.token })).status).toBe(409);
+
+    const id = await firstProposalId(table, fac);
+    expect((await call(table, `/proposals/${id}/accept`, { token: fac })).status).toBe(409);
+    const state = await readState(table, fac);
+    expect(state.die).toBe(20);
+    expect(state.proposals).toHaveLength(1);
+    expect(fateOf(state, 0)).toBe(2);
   });
 });
 
@@ -693,12 +565,11 @@ describe("Move: Add Detail", () => {
 });
 
 describe("Move: Alter Fate", () => {
-  /** A table with a pending Junction (pool shaped to all Boons) and two players. */
+  /** A table with a pending Junction and two players. */
   async function pendingJunction(table: string) {
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const ada = await seatPlayer(table, fac, 0, 3);
     const bea = await seatPlayer(table, fac, 1, 3);
-    await shapePool(table, fac, 4, 0);
     await call(table, "/junction/roll", { token: ada.token });
     return { fac, ada, bea };
   }
@@ -750,12 +621,13 @@ describe("Move: Alter Fate", () => {
     );
   });
 
-  it("on accept costs two boons, rerolls the stones, and marks the player as having altered", async () => {
+  it("on accept costs two boons, rerolls the same die, and marks the player as having altered", async () => {
     const table = "mv-al-accept";
     const { fac, ada } = await pendingJunction(table);
 
     await call(table, "/moves/alter", { token: ada.token });
     const id = await firstProposalId(table, fac);
+    await scriptRolls(table, [9]);
     const res = await call(table, `/proposals/${id}/accept`, { token: fac });
     expect(res.status).toBe(204);
 
@@ -763,9 +635,9 @@ describe("Move: Alter Fate", () => {
     expect(state.proposals).toHaveLength(0);
     expect(fateOf(state, 0)).toBe(1);
     expect(state.junction).toMatchObject({ rerolls: 1, alteredSlots: [0] });
-    expect(state.junction?.stones).toEqual(["Boon", "Boon"]);
+    expect(state.junction).toMatchObject({ die: 10, face: 9, outcome: "critical-flow" });
     expect(state.messages.at(-1)?.content).toBe(
-      "Alter Fate accepted — Character 1 pays 2 boons, rerolled: Boon, Boon",
+      "Alter Fate accepted — Character 1 pays 2 boons, rerolled: Critical Flow — 9 on d10",
     );
   });
 
@@ -889,13 +761,13 @@ describe("Move: Use Context Boon", () => {
       contextAspectId: id,
     });
     expect(state.contextAspects[0].consumed).toBe(false);
-    expect(state.stonePool).toHaveLength(4);
+    expect(state.die).toBe(10);
     expect(state.messages.at(-1)?.content).toBe(
       "Character 1 proposes Use Context Boon",
     );
   });
 
-  it("on accept marks it consumed (kept, not deleted) and adds a Boon to the pool", async () => {
+  it("on accept marks it consumed (kept, not deleted) and steps the die up", async () => {
     const table = "mv-us-accept";
     const { fac, ada, id } = await tableWithContextBoon(table);
 
@@ -914,9 +786,9 @@ describe("Move: Use Context Boon", () => {
     expect(state.proposals).toHaveLength(0);
     expect(state.contextAspects).toHaveLength(1);
     expect(state.contextAspects[0].consumed).toBe(true);
-    expect(state.stonePool.filter((s) => s === "Boon")).toHaveLength(3);
+    expect(state.die).toBe(12);
     expect(state.messages.at(-1)?.content).toBe(
-      "Use Context Boon accepted — Character 1 spends the guard is distracted; the pool gains a Boon",
+      "Use Context Boon accepted — Character 1 spends the guard is distracted — d10 → d12",
     );
   });
 
@@ -934,7 +806,7 @@ describe("Move: Use Context Boon", () => {
 
     const state = await readState(table, fac);
     expect(state.contextAspects[0].consumed).toBe(false);
-    expect(state.stonePool).toHaveLength(4);
+    expect(state.die).toBe(10);
     expect(state.messages.at(-1)?.content).toBe(
       "Use Context Boon rejected — Character 1",
     );
@@ -979,7 +851,7 @@ describe("Move: Use Context Boon", () => {
       body: { contextAspectId: id },
     });
     await call(table, `/context-aspects/${id}/use`, { token: fac });
-    const poolAfterDirectUse = (await readState(table, fac)).stonePool;
+    const dieAfterDirectUse = (await readState(table, fac)).die;
 
     const res = await call(
       table,
@@ -989,18 +861,18 @@ describe("Move: Use Context Boon", () => {
     expect(res.status).toBe(409);
     const state = await readState(table, fac);
     expect(state.proposals).toHaveLength(1);
-    expect(state.stonePool).toEqual(poolAfterDirectUse); // spent once, not twice
+    expect(state.die).toBe(dieAfterDirectUse); // spent once, not twice
   });
 });
 
 describe("Sessions", () => {
-  it("starting and ending a session touch nothing but the goal and history: pool, proposals, context boons and banes, and a pending Junction all survive", async () => {
+  it("starting and ending a session touch nothing but the goal and history: the die, proposals, context boons and banes, and a pending Junction all survive", async () => {
     const table = "ss-inert";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const ada = await seatPlayer(table, fac, 0, 2);
 
-    // Leave the pool below the old top-up floor, with everything pending.
-    await shapePool(table, fac, 1, 0);
+    // Leave the die off the base, with everything pending.
+    await call(table, "/die/step-up", { token: fac });
     await call(table, "/context-aspects", {
       token: fac,
       body: { kind: "Boon", text: "carries across" },
@@ -1016,7 +888,7 @@ describe("Sessions", () => {
     expect(started.status).toBe(204);
     let state = await readState(table, fac);
     expect(state.session?.goal).toBe("Reach the archive");
-    expect(state.stonePool).toEqual(before.stonePool);
+    expect(state.die).toBe(before.die);
     expect(state.proposals).toEqual(before.proposals);
     expect(state.contextAspects).toEqual(before.contextAspects);
     expect(state.junction).toEqual(before.junction);
@@ -1026,7 +898,7 @@ describe("Sessions", () => {
     state = await readState(table, fac);
     expect(state.session).toBeNull();
     expect(state.sessionHistory).toHaveLength(1);
-    expect(state.stonePool).toEqual(before.stonePool); // no top-up
+    expect(state.die).toBe(before.die); // no reset
     expect(state.proposals).toEqual(before.proposals);
     expect(state.contextAspects).toEqual(before.contextAspects);
     expect(state.junction).toEqual(before.junction);

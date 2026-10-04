@@ -1,11 +1,11 @@
 // worker/src/migrateTableState.ts
 //
-// The DO owns one blob of state D1 does not — the stone pool, the pending
-// Junction, the proposal queue, context aspects and the session — under
+// The DO owns one blob of state D1 does not — the die, the pending Junction,
+// the proposal queue, context aspects and the session — under
 // `KEY_TABLE_STATE`. This module keeps the load-time compatibility handling
-// (colour-named stones, missing fields added by later features, retired fields
-// folded forward, and the names section 31 retired) out of the main flow, so it
-// is easy to delete once no old blob can still be on disk.
+// (missing fields added by later features, retired fields dropped, and the
+// names section 31 retired) out of the main flow, so it is easy to delete once
+// no old blob can still be on disk.
 //
 // This is the one place the stored blob's old names are translated. Every
 // `Legacy*` type below spells a field as some earlier build wrote it; the
@@ -14,34 +14,35 @@
 //   sessionAspects  → contextAspects (and the older `floatingBoons`)
 //   sessionAspectId → contextAspectId, on a proposal (and the older `floatingId`)
 //   use-session-boon → use-context-boon, a proposal kind
+// Replaced by 31.2b (ADR 0001, the die ladder):
+//   stonePool (and the older per-session pool and carriedBanes) → dropped;
+//     a blob with no `die` starts at BASE_DIE
+//   a pending stone Junction (`stones`) → dropped, so nothing is pending
 
+import { BASE_DIE, type Die, isDie } from "./rules/dice";
 import type {
   ContextAspect,
   Junction,
+  Polarity,
   Proposal,
   ProposalKind,
   SessionState,
-  StoneKind,
 } from "./types";
 
 /** The shape held in `KEY_TABLE_STATE` and folded into `GameState` on load. */
 export type TableState = {
-  stonePool: StoneKind[];
+  die: Die;
   junction: Junction | null;
   contextAspects: ContextAspect[];
   proposals: Proposal[];
   session: SessionState | null;
 };
 
-/** Shape of `KEY_TABLE_STATE` as written by builds before the session pool and the
- * roll bag were merged into one pool, and before untethering was retired. */
-export type LegacyStoneKind = StoneKind | "WhiteStone" | "BlackStone";
-
 /** A context aspect as stored under its pre-31.1 name (`sessionAspects`) or
  * pre-26.1 name (`floatingBoons`), and before 23.3 widened it with `kind` —
  * every one on disk from before that point is implicitly a Boon. */
 export type LegacyContextAspect = Omit<ContextAspect, "kind" | "consumed"> & {
-  kind?: StoneKind;
+  kind?: Polarity;
   consumed?: boolean;
 };
 
@@ -86,19 +87,19 @@ export type LegacyProposal = Omit<
 };
 
 export type LegacyTableState = {
-  stonePool: LegacyStoneKind[];
-  /** Retired along with the roll/reroll/accept lifecycle (23.1) — a draw is
-   * now a read-only, stateless action, so nothing is left pending between
-   * requests. Read for old blobs but dropped from `TableState`. */
-  pendingRoll?: {
-    chosen: LegacyStoneKind[];
-    rest: LegacyStoneKind[];
-  } | null;
-  junction?: Junction | null;
-  /** The pre-31.1 name for `junction`, in two shapes: the pre-23.1
-   * `{ targetSlot }` (a named target, since retired, read and dropped) and the
-   * 26.2 Overcome, which has the `Junction` shape. */
-  overcome?: Junction | { targetSlot: number } | null;
+  /** Added by 31.2b; absent from every older blob. */
+  die?: number;
+  /** Retired by 31.2b with the rest of the stone pool. Read and dropped. */
+  stonePool?: unknown;
+  /** Retired along with the roll/reroll/accept lifecycle (23.1). Read and
+   * dropped. */
+  pendingRoll?: unknown;
+  /** Since 31.2b a die roll; before it a stone draw (`stones`), which is
+   * dropped. */
+  junction?: Junction | LegacyStoneJunction | null;
+  /** The pre-31.1 name for `junction`: the pre-23.1 `{ targetSlot }` or the
+   * 26.2 stone Overcome. Both are dropped now. */
+  overcome?: unknown;
   /** Retired (26.2): highlighted boons no longer exist. Read and dropped. */
   committedBoons?: unknown;
   contextAspects?: LegacyContextAspect[];
@@ -112,45 +113,47 @@ export type LegacyTableState = {
   session?:
     | (Pick<SessionState, "id" | "goal"> & {
         startedAt?: number;
-        pool?: LegacyStoneKind[];
+        /** Retired per-session pool. Read and dropped. */
+        pool?: unknown;
         carriedBanes?: number;
       })
     | null;
-  /** Retired: Banes the next session's pool used to inherit. Folded into
-   * `stonePool` as that many Bane stones, then dropped. */
+  /** Retired: Banes the next session's pool used to inherit. Read and
+   * dropped. */
   carriedBanes?: number;
   lastSessionFailed?: boolean;
   untether?: unknown;
 };
 
-function isJunction(value: unknown): value is Junction {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    Array.isArray((value as Junction).stones)
-  );
-}
+/** A Junction as stored while the stone pool existed (26.2 to 31.2a). */
+export type LegacyStoneJunction = {
+  rolledBy: string;
+  stones: Polarity[];
+  rerolls: number;
+  alteredSlots: number[];
+};
 
-function migrateStoneKind(kind: LegacyStoneKind): StoneKind {
-  if (kind === "WhiteStone") return "Boon";
-  if (kind === "BlackStone") return "Bane";
-  return kind;
+function isDieJunction(value: unknown): value is Junction {
+  const junction = value as Junction | null;
+  return (
+    typeof junction === "object" &&
+    junction !== null &&
+    isDie(junction.die) &&
+    Number.isInteger(junction.face)
+  );
 }
 
 /**
  * Fold a stored `KEY_TABLE_STATE` blob (or nothing, on a cold table) into the
- * current `TableState`: colour-named stones become Boon / Bane, every field a
- * later feature added is defaulted, and the retired per-session pool and
- * carried-Bane count are folded into the single shared `stonePool` so no
- * stones already in play vanish. `initialPool` is `INITIAL_STONE_POOL`.
+ * current `TableState`: every field a later feature added is defaulted, and
+ * every retired one — the stone pool, a stone draw left pending — is dropped.
  */
 export function migrateTableState(
   stored: LegacyTableState | undefined,
-  initialPool: readonly StoneKind[],
 ): TableState {
   if (!stored) {
     return {
-      stonePool: [...initialPool],
+      die: BASE_DIE,
       junction: null,
       contextAspects: [],
       proposals: [],
@@ -158,23 +161,11 @@ export function migrateTableState(
     };
   }
 
-  const legacySessionPool = (stored.session?.pool ?? []).map(migrateStoneKind);
-  const legacyCarriedBanes = Array<StoneKind>(stored.carriedBanes ?? 0).fill(
-    "Bane",
-  );
-
-  // A blob written since 31.1 has `junction` (possibly null) and no
-  // `overcome`; an older one has only `overcome`.
-  const storedJunction =
-    "junction" in stored ? stored.junction : stored.overcome;
-
   return {
-    stonePool: [
-      ...stored.stonePool.map(migrateStoneKind),
-      ...legacySessionPool,
-      ...legacyCarriedBanes,
-    ],
-    junction: isJunction(storedJunction) ? storedJunction : null,
+    die: isDie(stored.die) ? stored.die : BASE_DIE,
+    // A pending stone draw cannot be read as a die roll, so it is dropped and
+    // the table rolls again; so is anything older under `overcome`.
+    junction: isDieJunction(stored.junction) ? stored.junction : null,
     // Context aspects from before 23.3 carry no `kind` — every one on disk
     // that old is implicitly a Boon. Before 31.1 they were stored as
     // `sessionAspects`, before 26.1 as `floatingBoons`.

@@ -4,6 +4,7 @@ import type {
   D1Database,
   DurableObjectNamespace,
 } from "@cloudflare/workers-types";
+import type { Die, Outcome } from "./rules/dice";
 
 export type Role = "facilitator" | "player";
 
@@ -25,32 +26,25 @@ export type Message = {
 };
 
 /**
- * A stone names its outcome, not a colour: `Boon` is favourable, `Bane` is not.
- * (Earlier builds called these `WhiteStone` / `BlackStone`; `GameTable` migrates
- * the legacy names out of Durable Object storage on load.)
+ * Which way a context aspect pushes the die: a `Boon` steps it up, a `Bane`
+ * steps it down. (Called `StoneKind` while the stone pool existed; the wire
+ * values are unchanged.)
  */
-export type StoneKind = "Boon" | "Bane";
-
-/**
- * The result of one draw from the pool: `chosen` is what a facilitator's
- * `/junction/roll` shows, `rest` the remainder — the pool itself is never
- * written by a draw, so `rest` is only ever read, never persisted.
- */
-export type PendingRoll = {
-  chosen: StoneKind[];
-  rest: StoneKind[];
-};
+export type Polarity = "Boon" | "Bane";
 
 /**
  * The Junction in progress: one roll waiting on the facilitator to accept or
- * reject it. `stones` is the current draw (a reroll replaces it), `rerolls`
- * counts how many times it has been redrawn, and `alteredSlots` lists the
- * characters whose Alter Fate has already been accepted this Junction — each
- * may succeed at one. `null` on the `GameState` means nothing is pending.
+ * reject it. `die`, `face` and `outcome` are the current roll (a reroll or an
+ * Alter replaces them, on the same die), `rerolls` counts the replacements, and
+ * `alteredSlots` lists the characters whose Alter has already been accepted
+ * this Junction — each may succeed at one. `null` on the `GameState` means
+ * nothing is pending.
  */
 export type Junction = {
   rolledBy: string;
-  stones: StoneKind[];
+  die: Die;
+  face: number;
+  outcome: Outcome;
   rerolls: number;
   alteredSlots: number[];
 };
@@ -58,13 +52,14 @@ export type Junction = {
 /**
  * The player moves the facilitator resolves through the one accept / reject
  * queue (Junction is not one — it needs no approval):
- * - `highlight` — pay 1 boon to add a Boon to the pool.
+ * - `highlight` — pay 1 boon to step the die up.
  * - `complicate` — suggest a complication for your own character; on approval
  *   it gains 2 boons.
  * - `add-detail` — pay 1 boon to establish a fact; on approval a context boon.
  * - `alter` — Alter Fate: pay 2 boons to reroll the pending Junction.
  * - `use-context-boon` — spend a context boon (named by `contextAspectId`),
- *   adding a Boon to the pool.
+ *   stepping the die up.
+ * (31.3 replaces the queue with direct moves and undo.)
  */
 export type ProposalKind =
   | "highlight"
@@ -94,20 +89,20 @@ export type Proposal = {
 };
 
 /**
- * A session context owned by no character — a Boon or (23.3) a Bane, with a
- * note of the context it stands for. It comes from an accepted Junction that
- * drew a matched pair, an accepted Add Detail (always a Boon), or the
+ * An aspect of the situation owned by no character — a context boon or a
+ * context bane. It comes from an accepted Critical Flow (a boon) or Critical
+ * Friction (a bane), an accepted Add Detail (always a boon), or the
  * facilitator directly (`POST /context-aspects`). It stays in
  * `gameState.contextAspects` until the facilitator deletes it; spending it marks
  * it `consumed` rather than removing it, and a session ending does not clear it.
  */
 export type ContextAspect = {
   id: string;
-  kind: StoneKind;
+  kind: Polarity;
   text: string;
   createdByName: string;
   createdAt: number;
-  /** Set once the aspect has been spent into the pool. It is not deleted: it
+  /** Set once the aspect has stepped the die. It is not deleted: it
    * stays on the table, visibly consumed, and cannot be spent again. */
   consumed: boolean;
 };
@@ -186,7 +181,8 @@ export type SessionSummary = {
 export type GameState = {
   sessionId: string;
   messages: Message[];
-  stonePool: StoneKind[];
+  /** The die the next Junction rolls; back to `BASE_DIE` on every accept. */
+  die: Die;
   junction: Junction | null;
   contextAspects: ContextAspect[];
   proposals: Proposal[];
@@ -199,12 +195,6 @@ export type GameState = {
 
 export type UseContextBoonInput = {
   contextAspectId: string;
-};
-
-/** `POST /stones/{add,remove}` (23.2): a facilitator hand-edit of the shared
- * pool, one stone at a time, independent of any draw. */
-export type AddOrRemoveStoneInput = {
-  kind: StoneKind;
 };
 
 export type ProposalDecisionInput = {

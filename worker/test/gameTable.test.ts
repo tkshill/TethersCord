@@ -2,8 +2,6 @@ import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { call, claim, readState, seedAuth } from "./helpers";
 
-const ADD_BOON = { kind: "Boon" };
-
 async function firstProposalId(table: string, token: string): Promise<string> {
   const state = await readState(table, token);
   const id = state.proposals[0]?.id;
@@ -25,7 +23,7 @@ describe("GameTable state machine", () => {
       );
       let state = await readState(table, fac);
       expect(state.proposals).toHaveLength(1);
-      expect(state.stonePool).toHaveLength(4); // untouched while pending
+      expect(state.die).toBe(10); // untouched while pending
 
       const id = state.proposals[0].id;
       expect(
@@ -34,7 +32,7 @@ describe("GameTable state machine", () => {
 
       state = await readState(table, fac);
       expect(state.proposals).toHaveLength(0);
-      expect(state.stonePool).toHaveLength(5);
+      expect(state.die).toBe(12);
     });
 
     it("403s a player resolving a proposal", async () => {
@@ -55,20 +53,24 @@ describe("GameTable state machine", () => {
     });
   });
 
-  describe("stone-state write economy", () => {
-    it("a chat post between two stone changes does not disturb the persisted stone state", async () => {
+  describe("table-state write economy", () => {
+    it("a chat post between two die steps does not disturb the persisted table state", async () => {
       const table = "gt-stone-write-skip";
       const { token: fac } = await seedAuth(undefined, { facilitator: true });
 
-      await call(table, "/stones/add", { token: fac, body: { kind: "Boon" } });
+      await call(table, "/die/step-up", { token: fac });
       // A plain message runs the same mutation path but touches nothing in the
       // table-state slice; saveTableState skips the write.
       await call(table, "/message", { token: fac, body: { content: "hello" } });
-      await call(table, "/stones/add", { token: fac, body: { kind: "Boon" } });
+      await call(table, "/die/step-up", { token: fac });
 
       const state = await readState(table, fac);
-      expect(state.stonePool).toHaveLength(6); // 4 base + 2 added, nothing lost
-      expect(state.messages.at(-1)?.content).toBe("hello");
+      expect(state.die).toBe(16); // two steps, nothing lost
+      expect(state.messages.map((m) => m.content)).toEqual([
+        "Die stepped up — d10 → d12",
+        "hello",
+        "Die stepped up — d12 → d16",
+      ]);
     });
   });
 
@@ -132,7 +134,7 @@ describe("GameTable state machine", () => {
       const { token } = await seedAuth(undefined, { facilitator: true });
 
       // First call primes the cache with token → AuthInfo.
-      expect((await call(table, "/stones/add", { token, body: ADD_BOON })).status).toBe(204);
+      expect((await call(table, "/die/step-up", { token })).status).toBe(204);
 
       // Delete the row it was resolved from; an uncached lookup would now 401.
       await env.DB.prepare(
@@ -142,7 +144,7 @@ describe("GameTable state machine", () => {
         .run();
 
       // Still accepted, because the Durable Object memoised the resolution.
-      expect((await call(table, "/stones/add", { token, body: ADD_BOON })).status).toBe(204);
+      expect((await call(table, "/die/step-up", { token })).status).toBe(204);
     });
 
     it("does not cache an unknown token", async () => {
@@ -150,13 +152,13 @@ describe("GameTable state machine", () => {
       const bad = crypto.randomUUID();
 
       expect(
-        (await call(table, "/stones/add", { token: bad, body: ADD_BOON })).status,
+        (await call(table, "/die/step-up", { token: bad })).status,
       ).toBe(401);
 
       // The same token becomes valid; the earlier miss must not be remembered.
       await seedAuth(bad, { facilitator: true });
       expect(
-        (await call(table, "/stones/add", { token: bad, body: ADD_BOON })).status,
+        (await call(table, "/die/step-up", { token: bad })).status,
       ).toBe(204);
     });
   });
@@ -166,14 +168,14 @@ describe("GameTable state machine", () => {
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
 
     await Promise.all([
-      call(table, "/stones/add", { token: fac, body: ADD_BOON }),
-      call(table, "/stones/add", { token: fac, body: ADD_BOON }),
-      call(table, "/stones/add", { token: fac, body: ADD_BOON }),
+      call(table, "/die/step-up", { token: fac }),
+      call(table, "/die/step-up", { token: fac }),
+      call(table, "/die/step-up", { token: fac }),
     ]);
 
     const state = await readState(table, fac);
-    // 4 base + 3 added; a lost update would leave fewer.
-    expect(state.stonePool).toHaveLength(7);
+    // d10 up three rungs; a lost update would leave it lower.
+    expect(state.die).toBe(20);
   });
 
   describe("the session lifecycle", () => {
@@ -327,73 +329,7 @@ describe("GameTable state machine", () => {
     });
   });
 
-  describe("facilitator-run resources (23.2)", () => {
-    it("adds and removes a stone directly, no proposal", async () => {
-      const table = "gt-facilitator-stones";
-      const { token: fac } = await seedAuth(undefined, { facilitator: true });
-
-      const added = await call(table, "/stones/add", {
-        token: fac,
-        body: { kind: "Bane" },
-      });
-      expect(added.status).toBe(204);
-      let state = await readState(table, fac);
-      expect(state.stonePool.filter((s) => s === "Bane")).toHaveLength(3);
-      expect(state.proposals).toHaveLength(0);
-
-      const removed = await call(table, "/stones/remove", {
-        token: fac,
-        body: { kind: "Bane" },
-      });
-      expect(removed.status).toBe(204);
-      state = await readState(table, fac);
-      expect(state.stonePool.filter((s) => s === "Bane")).toHaveLength(2);
-    });
-
-    it("400s removing a kind the pool doesn't have, and 400s a bad kind either way", async () => {
-      const table = "gt-facilitator-stones-bad";
-      const { token: fac } = await seedAuth(undefined, { facilitator: true });
-
-      for (let i = 0; i < 4; i++) {
-        await call(table, "/stones/remove", { token: fac, body: { kind: "Bane" } });
-      }
-      const drained = await readState(table, fac);
-      expect(drained.stonePool.filter((s) => s === "Bane")).toHaveLength(0);
-
-      const overDrawn = await call(table, "/stones/remove", {
-        token: fac,
-        body: { kind: "Bane" },
-      });
-      expect(overDrawn.status).toBe(400);
-
-      const badAdd = await call(table, "/stones/add", {
-        token: fac,
-        body: { kind: "Coin" },
-      });
-      expect(badAdd.status).toBe(400);
-      const badRemove = await call(table, "/stones/remove", {
-        token: fac,
-        body: { kind: "Coin" },
-      });
-      expect(badRemove.status).toBe(400);
-    });
-
-    it("403s a player adding or removing a stone", async () => {
-      const table = "gt-facilitator-stones-player";
-      const { token: player } = await seedAuth();
-
-      const add = await call(table, "/stones/add", {
-        token: player,
-        body: { kind: "Boon" },
-      });
-      expect(add.status).toBe(403);
-      const remove = await call(table, "/stones/remove", {
-        token: player,
-        body: { kind: "Boon" },
-      });
-      expect(remove.status).toBe(403);
-    });
-
+  describe("facilitator-run context aspects (23.2)", () => {
     it("creates and deletes a Boon session context directly, logging both", async () => {
       const table = "gt-facilitator-floating";
       const { token: fac, username: facName } = await seedAuth(undefined, {
@@ -522,28 +458,28 @@ describe("GameTable state machine", () => {
 
       const state = await readState(table, fac);
       expect(state.proposals).toHaveLength(0);
-      expect(state.stonePool).toHaveLength(4); // never applied
+      expect(state.die).toBe(10); // never applied
     });
   });
 });
 
-describe("the shared pool across sessions (integration)", () => {
-  it("carries the pool across a session boundary — nothing resets on start or end", async () => {
+describe("the die across sessions (integration)", () => {
+  it("carries the die across a session boundary — nothing resets on start or end", async () => {
     const table = "gt-pool-carries";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
 
     await call(table, "/session/start", { token: fac, body: { goal: "a" } });
-    await call(table, "/stones/add", { token: fac, body: ADD_BOON });
-    await call(table, "/stones/add", { token: fac, body: ADD_BOON });
+    await call(table, "/die/step-up", { token: fac });
+    await call(table, "/die/step-up", { token: fac });
     let state = await readState(table, fac);
-    expect(state.stonePool).toHaveLength(6);
+    expect(state.die).toBe(16);
 
     await call(table, "/session/end", { token: fac });
     state = await readState(table, fac);
-    expect(state.stonePool).toHaveLength(6);
+    expect(state.die).toBe(16);
 
     await call(table, "/session/start", { token: fac, body: { goal: "b" } });
     state = await readState(table, fac);
-    expect(state.stonePool).toHaveLength(6);
+    expect(state.die).toBe(16);
   });
 });
