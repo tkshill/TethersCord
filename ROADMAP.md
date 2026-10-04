@@ -8,11 +8,13 @@ against.
 
 **Phase 1** (sections 1–16, 19, 21, 22) is shipped — each section is the record
 of what landed and the decisions taken along the way. **Phase 2** (sections
-23–26) is the current plan: section 23 was a deliberate simplification for the
+23–30) is the current plan: section 23 was a deliberate simplification for the
 testing phase, moving stone and resource management onto the facilitator by hand
 and rebuilding the view as three viewport-sized columns (section 24 then made it
-two panels); section 26 gives the players their moves back and restores the
-Overcome roll in a simpler form, and `RULES.md` states the resulting rules. **Phase 3**, at the end,
+two panels); section 26 gave the players their moves back and restored the
+Overcome roll in a simpler form, and `RULES.md` states the resulting rules;
+section 27 reworked the UI to the minimalist mockup. Sections 23, 24, 26 and 27
+are shipped; 25 and 28–30 are open. **Phase 3**, at the end,
 collects everything else still open, moved out of the Phase 1 sections so the
 outstanding-but-not-next work sits in one list — it kept its original `P2.x`
 item labels since they're referenced from `CLAUDE.md` and commit messages, so
@@ -20,6 +22,10 @@ those weren't renumbered when the phase was renamed. Sections whose entire
 content was still open (17 Campaigns, 18 AI session summary, 20 Character
 growth) moved wholesale into Phase 3, so those numbers are skipped below — the
 section numbers are stable anchors, so nothing is renumbered.
+
+**Shipped sections hold no open items.** When a section ships with something
+still unchecked, that item moves to the open section or Phase 3 item it belongs
+with, and the shipped section keeps a one-line pointer to where it went.
 
 # Phase 1 — shipped
 
@@ -824,7 +830,7 @@ before merge.
 **Largely done.** Steps 1–5 and 7 shipped in full; step 6 shipped its low-risk
 part (a `get game()` accessor, a `commit()` trailer helper, `Promise.all` on the
 cold-start reads). The `GameTable.ts` module split — a route table and
-`worker/src/handlers/*` — is carved out as its own effort (see Phase 2). No
+`worker/src/handlers/*` — is carved out as its own effort (see P2.2 in Phase 3). No
 gameplay change anywhere in this section; each step was its own branch merged
 with `--no-ff`, guarded by the client bundle, both typecheckers, and both test
 suites.
@@ -961,7 +967,7 @@ Part 1 — the low-risk items that need no module reshaping — done:
 - [x] **`const UUID = "[0-9a-fA-F-]{36}"`** shared by the two id route regexes.
 
 Part 2 — the module reshaping (route table + `worker/src/handlers/*`) — is in
-Phase 2 (P2.2).
+Phase 3 (P2.2).
 
 ### Step 7 — smaller TS cleanup — done
 
@@ -1356,9 +1362,10 @@ order, each its own branch off `main`:
       before 23.4 shipped. The proposal routes and `handleProposalDecision`'s
       Boon-only literal for an accepted one are untouched, just unreachable
       from any current UI.
-- [ ] Does aspect-Bane tracking freeze as read-only history, become a manual
-      facilitator field, or drop off the sheet display while nothing writes
-      it?
+- Does aspect-Bane tracking freeze as read-only history, become a manual
+  facilitator field, or drop off the sheet display while nothing writes it?
+  Section 26 left the display alone until advancement is designed; **moved to
+  P2.7**.
 - [x] The narrow-viewport fallback for the three-column shell (23.5's last
       item) — resolved by section 24, which retires the three-column shell
       rather than adding a fallback to it.
@@ -1433,7 +1440,7 @@ question this section is about.
       static screenshot can't show motion); its mouse-subscription gating
       follows the same pattern already exercised elsewhere in `Main.update`.
 
-## 25. Architecture review follow-ups — deferred until section 26 lands
+## 25. Architecture review follow-ups — open, reassess now that section 26 has landed
 
 **Reassess after section 26.** Section 26 (player moves and the Overcome loop)
 goes first and reshapes the very handlers 25.1 restructures — the proposal kinds,
@@ -1567,7 +1574,7 @@ possible.
       `gameLogic.test.ts`, run without `workerd` — and does `vitest` need a
       second, plain-Node project for them?
 
-## 26. Player moves and the Overcome loop — next
+## 26. Player moves and the Overcome loop — done
 
 Section 23 moved every stone and boon onto the facilitator's hands for the
 testing phase, and section 24 fixed the layout. Playtest said what that cost:
@@ -1775,7 +1782,7 @@ pending proposals (see Open questions).
 Compel, Gain Insight and the once-per-session limits, and the Guide and tooltips
 still reference them; the "Goal" label is missing its colon.
 
-### 26.4 Copy, glossary, and a real playtest — done except the playtest
+### 26.4 Copy and glossary — done
 
 - [x] **`Copy/Terms.elm` rewritten to `RULES.md`.** Groups are Roles, The session,
       Stones & the pool, The Overcome, Moves, Aspects & growth. Retired: the
@@ -1795,43 +1802,15 @@ still reference them; the "Goal" label is missing its colon.
       reworded ("Wording for the session boon…").
 - [x] **Moves card**: a player who has not claimed a sheet now sees the card with
       "Claim a character sheet to use moves." instead of nothing.
-- [ ] **One table playtest** against the checklist below, then record what it
-      showed here. Not something the code can do; section 26 stays open until it
-      has been run.
-
-### Manual playtest checklist
-
-- A player Highlights, is accepted, and the pool visibly gains a Boon.
-- A player cannot press a move whose cost they cannot pay.
-- Two players press Overcome at once: one wins, the other sees a refusal.
-- Roll → Alter Fate → accepted: the log shows roll, reroll, then the accepted
-  result. A rejected Alter Fate costs the player nothing and they can try again.
-- A second Alter Fate from the same player in one Overcome is refused.
-- Accept with two Boons → a session boon appears; accept with a mixed draw → none;
-  either way the pool is 2/2.
-- Reject → nothing changes and the roll can be pressed again.
-- A session boon is used, shows consumed, cannot be used twice, and the
-  facilitator can unconsume it.
-- Ending a session changes nothing except the history.
+The table playtest this sub-section originally ended with, its checklist, and
+the section's open questions moved to **section 30**. Aspect Banes and
+advancement moved to **P2.7**.
 
 ### Sequencing
 
 Branches 26.1 → 26.2 → 26.3 → 26.4, each off `main`, merged before the next
 starts; a section-26 docs branch (this file and `RULES.md`) goes first. §25.4
 lands as the first commit of 26.3. Nothing deploys until asked.
-
-### Open questions
-
-- [ ] **Two proposals pending against the same boons.** A player with two boons
-      can queue Alter Fate (2) and Highlight (1); both pass the proposal check,
-      and the second accept 409s. Tolerated for now. If it bites at the table,
-      count the player's own pending costs against what the buttons allow.
-- [ ] **Add Detail's text on a blank proposal and a blank accept.** The worker
-      falls back to a default (`Detail from <name>`); revisit the wording in play.
-- [ ] **Where rolled stones sit in the log.** The log carries each roll and
-      reroll as its own line; whether the UI should also fold them into one
-      "Overcome" entry is a presentation question for 26.3.
-- [ ] Aspect Banes and advancement — deliberately unresolved (see `RULES.md`).
 
 ## 27. Minimalist two-panel UI (mockup 2a) — done
 
@@ -1992,14 +1971,51 @@ Only worth doing if the staging loop proves too slow in practice.
 - Should staging get a copy of the live characters and NPCs to test against, or
   start empty? Starting empty is simpler and nothing so far needs real data.
 
+## 30. Playtest the Overcome loop — planned
+
+Moved out of section 26.4, which shipped the code. Section 26's rules have only
+been exercised by the test suites and by rendering the view in headless Chrome;
+this is the first real run at the table. Not something the code can do.
+
+- [ ] **One table playtest** against the checklist below, then record what it
+      showed here. Run it in a test channel (29.1) unless it is real play.
+
+### Manual playtest checklist
+
+- A player Highlights, is accepted, and the pool visibly gains a Boon.
+- A player cannot press a move whose cost they cannot pay.
+- Two players press Overcome at once: one wins, the other sees a refusal.
+- Roll → Alter Fate → accepted: the log shows roll, reroll, then the accepted
+  result. A rejected Alter Fate costs the player nothing and they can try again.
+- A second Alter Fate from the same player in one Overcome is refused.
+- Accept with two Boons → a session boon appears; accept with a mixed draw → none;
+  either way the pool is 2/2.
+- Reject → nothing changes and the roll can be pressed again.
+- A session boon is used, shows consumed, cannot be used twice, and the
+  facilitator can unconsume it.
+- Ending a session changes nothing except the history.
+
+### Open questions to settle in play
+
+- [ ] **Two proposals pending against the same boons.** A player with two boons
+      can queue Alter Fate (2) and Highlight (1); both pass the proposal check,
+      and the second accept 409s. Tolerated for now. If it bites at the table,
+      count the player's own pending costs against what the buttons allow.
+- [ ] **Add Detail's text on a blank proposal and a blank accept.** The worker
+      falls back to a default (`Detail from <name>`); revisit the wording in play.
+- [ ] **Where rolled stones sit in the log.** The log carries each roll and
+      reroll as its own event line; whether the UI should also fold them into
+      one "Overcome" entry is a presentation question.
+
 # Phase 3 — potential future plans
 
 Everything still open, moved out of the Phase 1 sections above so it sits in one
 list. Same conventions: each item is its own branch off `main` with a
 professional commit message, and `DESIGN_PRINCIPLES.md` is the yardstick. Items
 are roughly in value-over-effort order; the last two are explicitly not planned
-or not scheduled. Section 26 above (Phase 2) is next; everything here is
-further out.
+or not scheduled. The open Phase 2 sections above (25, 28–30) come first;
+everything here is further out. An item that later work resolved or made moot
+says so in place rather than vanishing, since its label may be cited elsewhere.
 
 ## P2.1 — Remaining test coverage (from §11)
 
@@ -2019,10 +2035,10 @@ remain.
       tests currently cover only `pruneExpiredSessions` and the
       input-validation paths, which never reach `discord.com`.
 - [ ] **Extra `GameTable` coverage:** cold-start load (seed `messages` /
-      `characters` in D1, assert the first snapshot), the overcome reroll
-      `REROLL_COST` deduction, `/stones/accept` clearing the overcome, the Accept
-      Compel payout, and the section-12 session-end clear of `overcome` /
-      `pendingRoll` / `committedBoons` / unresolved `proposals`.
+      `characters` in D1, assert the first snapshot). The other gaps listed
+      here (the `REROLL_COST` deduction, `/stones/accept`, the Accept Compel
+      payout, the section-12 session-end clear) went with the mechanics section
+      26 retired; its Overcome loop is covered by `overcome.test.ts`.
 
 ## P2.2 — Split `GameTable.ts` — section 22 step 6 Part 2 (from §22)
 
@@ -2082,17 +2098,18 @@ its own branch.
 Needs a hand-off path; the obvious failure mode is a player launching first. Not
 needed while `BOOTSTRAP_FACILITATOR_ID` covers a single known facilitator.
 
-## P2.6 — Overcome-aftermath playtest questions (from §19)
+## P2.6 — Overcome-aftermath playtest questions (from §19) — moot
 
-The section-19 rules shipped; these stay open until the table has played with
-them.
+**Moot.** Section 26 retired the mechanics these questions are about: the
+session verdict, the carried Banes, untethering, the frenzy and compels. Kept
+for the record; the section-26 playtest questions are in section 30.
 
-- [ ] **Cadence.** At base rates a failure lands roughly every ~3 sessions and
+- **Cadence.** At base rates a failure lands roughly every ~3 sessions and
       each character reckons every ~6–9; Highlights lengthen the cycle, hoarding
       Boons shortens it. Check this feels right at the table.
-- [ ] Whether compels need a per-session cap after all.
-- [ ] The exact frenzy lockout — broken-aspect-only, or broader.
-- [ ] Whether the facilitator may call a foregone-failure session early — once
+- Whether compels need a per-session cap after all.
+- The exact frenzy lockout — broken-aspect-only, or broader.
+- Whether the facilitator may call a foregone-failure session early — once
       the carried Bane debt exceeds a session's realistic Boon ceiling — and cut
       straight to the untether scene.
 
@@ -2104,6 +2121,16 @@ line as the visible running record of strain between reckonings. A rewrite
 changes what an aspect *means*; it never adds a rating (principle 5, "grow in
 depth, not strength").
 
+Section 26 removed untethering and stopped writing aspect Banes, so the
+reckoning this section hangs growth on no longer exists; `RULES.md` leaves
+advancement deliberately unresolved. Growth needs a fresh design before the two
+items below mean anything, and aspect Banes (absorbed from §23's and §26's open
+questions) are part of that design.
+
+- [ ] **Aspect Banes.** Nothing writes `archetype_banes` / `desire_banes` /
+      `quest_banes` since 23.1, and the Sheet still shows their frozen values
+      as `−` marks. Decide whether they stay as read-only history, become a
+      facilitator-edited field, feed advancement, or drop off the sheet.
 - [ ] Pin down what a rewrite may do: reword the aspect only, swap an ability
       tied to it, or retire the character outright.
 - [ ] Decide whether anything persists across a reckoning besides the rewritten
@@ -2171,7 +2198,11 @@ built bundle is correct; this is a limitation of the mechanism, not a bug.
 - [ ] Verify it actually appears inside the Discord Activity, not just a desktop
       browser tab.
 
-## P2.12 — Complicate drops the suggester's own payout (from the Alter/Complicate copy pass)
+## P2.12 — Complicate drops the suggester's own payout (from the Alter/Complicate copy pass) — resolved
+
+**Resolved by section 26.2**, which deleted the suggester payout. Complicate has
+since changed again: it now targets the proposer's own character, which gains
+`COMPLICATE_BOONS` (2).
 
 The Moves card and Guide now describe the former Suggest Compel move under a
 new name, **Complicate**: "Suggest a way a character could do something
@@ -2182,22 +2213,26 @@ and `SUGGEST_COMPEL_TARGET_BOONS` (2), and `Copy.proposalSuggestCompelOn`'s
 "(+1 / +2 boons)" facilitator-queue text, still pay the suggester too — both
 are unreachable from the current inert Moves card (23.4) regardless.
 
-- [ ] When Moves are re-wired, drop `SUGGEST_COMPEL_SUGGESTER_BOONS` and pay
+- [x] When Moves are re-wired, drop `SUGGEST_COMPEL_SUGGESTER_BOONS` and pay
       only the compelled character, to match the Complicate description.
 
-## P2.13 — Section 24 follow-ups (from code review)
+## P2.13 — Section 24 follow-ups (from code review) — moot
 
-Findings from a post-merge review of section 24 (two-panel layout). None block
-the section as shipped; captured here as explicit cleanup.
+Findings from a post-merge review of section 24 (two-panel layout). **All moot
+or closed:** section 26.3 closed the Facilitator proposal count and dropped the
+"n of 4 left" counter, and section 27 plus the three-column layout that followed
+removed what the rest are about — the accordions, `View.Guide`'s expander, the
+section-24 `Msg`s and the draggable divider with its 280px minimum. No inline
+`if props.open` copies of `Ui.onlyWhen` remain. Kept for the record.
 
-- [ ] **Moves' "n of 4 left" over-counts.** `allAbilities`
+- **Moves' "n of 4 left" over-counts.** `allAbilities`
       (`client/src/View/Moves.elm:30`) still includes `Kind.HelpOut`, but
       `worker/src/GameTable.ts:904-910` unconditionally 400s every `help-out`
       raise (23.1). `remainingSummary` (`Moves.elm:67-73`) can never actually
       reach "4 of 4" — the real ceiling is 3. Either drop `HelpOut` from the
       counted set or special-case it out of `remainingSummary` until it's
       re-wired.
-- [ ] **Divider drag can stick outside the Discord iframe.** Dragging
+- **Divider drag can stick outside the Discord iframe.** Dragging
       `Ui.dragHandle` (`Ui.elm:524`) past the Activity iframe's edge and
       releasing there means `Browser.Events.onMouseUp` (`Main.elm:280`) never
       fires, since it only sees events inside the document — `draggingDivider`
@@ -2205,27 +2240,27 @@ the section as shipped; captured here as explicit cleanup.
       the pointer re-enters the iframe and clicks. Needs a fallback release
       (e.g. clear `draggingDivider` on blur, or a pointer-capture-based
       approach) that doesn't depend on the mouseup landing inside the iframe.
-- [ ] **Collapsed Facilitator panel hides pending proposals with no cue.**
+- **Collapsed Facilitator panel hides pending proposals with no cue.**
       `proposalsPanel` (`client/src/View/FacilitatorPanel.elm:38`) only renders
       when the accordion section is open, and its header carries no count —
       unlike Moves' `accordionHeaderWith`, which shows a trailing "n of 4 left"
       for exactly this reason. A facilitator who collapses the panel gets no
       signal that a player has a proposal waiting. Give the Facilitator header
       a pending-proposal count the same way.
-- [ ] **`Ui.onlyWhen` reimplemented inline in three places.** `(if props.open
+- **`Ui.onlyWhen` reimplemented inline in three places.** `(if props.open
       then [ ... ] else [])` in `client/src/View/Moves.elm:44`,
       `View/FacilitatorPanel.elm:38-49`, and `View/Characters.elm:778-800` each
       duplicate `Ui.onlyWhen : Bool -> List (Element msg) -> List (Element
       msg)` (`Ui.elm:83`). Replace with `Ui.onlyWhen props.open [ ... ]` at all
       three sites.
-- [ ] **`View.Guide`'s header still hand-rolled.** Section 24 factored the
+- **`View.Guide`'s header still hand-rolled.** Section 24 factored the
       title-doubles-as-toggle pattern out of `View.Guide` into
       `View.Helpers.accordionHeader` / `accordionHeaderWith`, but
       `View.Guide.header` (`Guide.elm:35-51`) never switched over to calling
       it — it still builds its own `Input.button` + marker row. Point it at
       `View.Helpers.accordionHeader` so the accordion look has one
       implementation.
-- [ ] **No `Main.update` tests for section 24's five new `Msg` constructors.**
+- **No `Main.update` tests for section 24's five new `Msg` constructors.**
       `SelectRightPanelTab`, `ToggleLeftSection`, `DividerDragStarted`,
       `DividerDragged`, and `DividerDragEnded` (`Main.elm:295-313`) have none,
       breaking the one-test-per-toggle convention every prior toggle `Msg` in
@@ -2233,7 +2268,7 @@ the section as shipped; captured here as explicit cleanup.
       `ToggleSessionControls`, `ToggleAspectExamples` around line 270). Add
       tests covering the drag clamp bounds and that the right section/tab
       toggles.
-- [ ] **280px minimum left-panel width can starve the right panel.** 23.5's
+- **280px minimum left-panel width can starve the right panel.** 23.5's
       narrow-viewport item was marked resolved by section 24 "by retiring the
       three-column shell," but `minLeftPanelWidth = 280` (`Main.elm:219`) plus
       the drag handle and row padding can still squeeze `rightPanel` (plain
