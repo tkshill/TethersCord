@@ -3,7 +3,9 @@ module View.Log exposing (logDomId, view)
 {-| The event log (roadmap section 27, mockup 2a): the right panel's body — day
 dividers and one line per message, `time name text`, the name in the speaker's
 colour — with the "load earlier messages" affordance at the top and, for the
-facilitator, a confirm-gated Clear log. Flat, not a card: the panel is the
+facilitator, a confirm-gated Clear log. A move's line carries an "undo" link
+for the facilitator and for the player who made it, while the move is still
+open to undo (ADR 0002). Flat, not a card: the panel is the
 surface. The composer is pinned beneath it by `View`.
 -}
 
@@ -15,6 +17,7 @@ import Element.Font as Font
 import Element.Lazy
 import Format
 import Html.Attributes
+import MoveRecord exposing (MoveRecord)
 import Time
 import Types exposing (..)
 import Ui
@@ -68,7 +71,7 @@ view ctx props gs =
                 , Ui.onScrolledToBottom 32 LogScrolled
                 ]
                 [ loadEarlierRow props.loadingHistory props.noMoreHistory gs.messages
-                , Element.Lazy.lazy2 lazyLogBody ctx.zone gs.messages
+                , Element.Lazy.lazy4 lazyLogBody ctx.zone (viewer ctx) gs.moves gs.messages
                 ]
         ]
 
@@ -78,10 +81,24 @@ rows — behind `Element.Lazy` so re-renders that do not touch `messages` (typin
 in the composer, arming a confirm, switching a tab) skip refolding the whole
 list. A socket broadcast still decodes a fresh list, so it does not help there.
 -}
-lazyLogBody : Time.Zone -> List Message -> Element Msg
-lazyLogBody zone messages =
+lazyLogBody : Time.Zone -> ( String, Bool ) -> List MoveRecord -> List Message -> Element Msg
+lazyLogBody zone who moves messages =
+    let
+        undoable =
+            moves
+                |> List.filter (MoveRecord.undoableBy who)
+                |> List.map (\m -> ( m.messageId, m.id ))
+                |> Dict.fromList
+    in
     Element.column [ width fill, spacing 7 ]
-        (logRows zone (speakerColors messages) messages)
+        (logRows zone (speakerColors messages) undoable messages)
+
+
+{-| `( userId, isFacilitator )`, for `MoveRecord.undoableBy`.
+-}
+viewer : ViewContext -> ( String, Bool )
+viewer ctx =
+    ( Maybe.withDefault "" ctx.myId, ctx.facilitator )
 
 
 {-| A "load earlier messages" affordance at the top of the log, shown only while
@@ -142,8 +159,8 @@ speakerColors messages =
 {-| The message rows with a day divider inserted wherever the calendar date
 changes.
 -}
-logRows : Time.Zone -> Dict String Element.Color -> List Message -> List (Element Msg)
-logRows zone colors messages =
+logRows : Time.Zone -> Dict String Element.Color -> Dict String String -> List Message -> List (Element Msg)
+logRows zone colors undoable messages =
     List.foldl
         (\msg ( lastDay, acc ) ->
             let
@@ -151,7 +168,7 @@ logRows zone colors messages =
                     Format.date zone msg.createdAt
 
                 row =
-                    messageRow zone colors msg
+                    messageRow zone colors (Dict.get msg.id undoable) msg
             in
             if day == lastDay then
                 ( lastDay, row :: acc )
@@ -165,8 +182,8 @@ logRows zone colors messages =
         |> List.reverse
 
 
-messageRow : Time.Zone -> Dict String Element.Color -> Message -> Element msg
-messageRow zone colors msg =
+messageRow : Time.Zone -> Dict String Element.Color -> Maybe String -> Message -> Element Msg
+messageRow zone colors undoMoveId msg =
     let
         nameColor =
             Dict.get msg.authorId colors |> Maybe.withDefault Ui.ink
@@ -189,7 +206,7 @@ messageRow zone colors msg =
                     ]
 
             Event ->
-                eventLine msg
+                eventLine undoMoveId msg
         ]
 
 
@@ -198,8 +215,8 @@ little smaller, behind a hairline rule, so it reads as a record of play instead
 of speech. The author is named after the content, in parentheses, since most
 event lines already lead with what happened.
 -}
-eventLine : Message -> Element msg
-eventLine msg =
+eventLine : Maybe String -> Message -> Element Msg
+eventLine undoMoveId msg =
     Element.paragraph
         [ spacing 4
         , Font.size 12
@@ -211,4 +228,11 @@ eventLine msg =
         ]
         [ text msg.content
         , el [ Font.size 11 ] (text ("  · " ++ msg.authorName))
+        , case undoMoveId of
+            Just moveId ->
+                el [ Element.paddingEach { top = 0, right = 0, bottom = 0, left = 8 }, Font.italic ]
+                    (Ui.linkButton { onPress = Just (UndoMove moveId), label = Copy.undo })
+
+            Nothing ->
+                none
         ]

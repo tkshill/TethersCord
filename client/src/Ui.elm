@@ -3,6 +3,7 @@ module Ui exposing
     , baneMarks
     , banner
     , boonMarks
+    , class
     , confirmButton
     , danger
     , divider
@@ -26,6 +27,7 @@ module Ui exposing
     , page
     , panel
     , paper
+    , pencil
     , press
     , primaryButton
     , sans
@@ -36,6 +38,7 @@ module Ui exposing
     , clipX
     , sm
     , speakerColor
+    , splitButton
     , tab
     , tint
     , toolTab
@@ -171,6 +174,14 @@ facilitatorTint =
 danger : Color
 danger =
     rgb255 168 74 74
+
+
+{-| The Highlight half of an aspect's split button — the one green, kept for
+the move that steps the die up.
+-}
+success : Color
+success =
+    rgb255 64 128 88
 
 
 {-| A stable colour per speaker at the table. `0` is the facilitator; players
@@ -589,18 +600,106 @@ toolTab config =
         }
 
 
-{-| The run of `+` marks for `n` boons, the table's boon shorthand (bag, sheet).
+{-| The run of ☼ marks for `n` boons: a character's boons, a context boon.
 -}
 boonMarks : Int -> Element msg
 boonMarks n =
-    el [ Font.letterSpacing 2 ] (text (String.repeat (Basics.max 0 n) "+"))
+    el [ Font.letterSpacing 2 ] (text (String.repeat (Basics.max 0 n) "☼"))
 
 
-{-| The run of `−` marks for `n` banes, in the danger tone.
+{-| The run of ☽ marks for `n` banes, in the danger tone so a boon and a bane
+differ by more than shape.
 -}
 baneMarks : Int -> Element msg
 baneMarks n =
-    el [ Font.letterSpacing 2, Font.color danger ] (text (String.repeat (Basics.max 0 n) "−"))
+    el [ Font.letterSpacing 2, Font.color danger ] (text (String.repeat (Basics.max 0 n) "☽"))
+
+
+{-| A CSS class from `client/index.html`, for the few effects elm-ui cannot
+express (the split button's gradients and hover labels).
+-}
+class : String -> Attribute msg
+class name =
+    Element.htmlAttribute (Html.Attributes.class name)
+
+
+{-| The small ✎ that swaps a button for its text field.
+-}
+pencil : { onPress : Maybe msg, tip : String } -> Element msg
+pencil config =
+    withTip config.tip (linkButton { onPress = config.onPress, label = "✎" })
+
+
+{-| A button split down the middle into two actions on one piece of text — a
+character aspect, whose left half Complicates and right half Highlights. Each
+half washes in its colour from its outer edge on hover or press and shows its
+label there (`client/index.html`, `.split-*`), so the pair reads by word as
+well as by red / green; on touch, with no hover, both halves keep a faint
+resting tint. A half with no `onPress` is off: no wash, no label, and `tip`
+says why.
+-}
+splitButton :
+    { content : String
+    , left : { onPress : Maybe msg, label : String, tip : String }
+    , right : { onPress : Maybe msg, label : String, tip : String }
+    }
+    -> Element msg
+splitButton config =
+    let
+        half side tone half_ =
+            Input.button
+                [ width fill
+                , height fill
+                , shrinkableWidth
+                , Element.clip
+                , class
+                    ("split-half split-"
+                        ++ side
+                        ++ (case half_.onPress of
+                                Just _ ->
+                                    ""
+
+                                Nothing ->
+                                    " is-off"
+                           )
+                    )
+                , Element.htmlAttribute (Html.Attributes.title half_.tip)
+                ]
+                { onPress = half_.onPress
+                , label =
+                    el
+                        [ Element.alignBottom
+                        , if side == "left" then
+                            Element.alignLeft
+
+                          else
+                            Element.alignRight
+                        , Font.size 10
+                        , Font.semiBold
+                        , Font.color tone
+                        , Element.paddingXY 6 2
+                        , class "split-label"
+                        ]
+                        (text half_.label)
+                }
+    in
+    el
+        [ width fill
+        , Border.width 1
+        , Border.color line
+        , Border.rounded 4
+        , Element.clip
+        , Element.inFront
+            (Element.row [ width fill, height fill ]
+                [ half "left" danger config.left, half "right" success config.right ]
+            )
+        ]
+        (Element.paragraph
+            [ Font.size 13
+            , Element.paddingEach { top = 4, right = 8, bottom = 15, left = 8 }
+            ]
+            [ text config.content ]
+        )
 
 
 paddingXY_ : Int -> Int -> Attribute msg

@@ -378,6 +378,11 @@ type alias Model =
     -- character sheet: `Just ( slot, aspect )`. One at a time; `ToggleAspectExamples`.
     , aspectExamplesOpen : Maybe ( Int, Aspect )
 
+    -- The character aspect whose text field is swapped in for its split
+    -- button (✎), on the viewer's own sheet: `Just ( slot, aspect )`. Leaving
+    -- the field swaps the button back.
+    , aspectEditing : Maybe ( Int, Aspect )
+
     -- Backend WebSocket connection state, as last reported by the JS socket.
     , connection : Connection
 
@@ -407,13 +412,11 @@ type Connection
 
 
 {-| The left panel's tool strip (roadmap section 27, mockup 2a): one tool shown
-at a time under a row of glyph tabs. The facilitator's queue and pool edits
-(`FacilitatorTab`) are for the facilitator only. `SheetTab` stacks the character
-sheet, the moves and the session context in one scroll. The event log is not a tool — it fills the right panel.
+at a time under a row of glyph tabs — the character sheet, the cast, the guide.
+The event log is not a tool — it fills the right panel.
 -}
 type ToolTab
     = SheetTab
-    | FacilitatorTab
     | CastTab
     | GuideTab
 
@@ -470,6 +473,8 @@ type Msg
     | ToggleSessionControls
     | SelectTool ToolTab
     | ToggleAspectExamples Int Aspect
+    | EditAspect Int Aspect
+    | EditContextAspect String
     | WsStatusChanged String
     | RetryGetGameState
     | ContextAspectDraftChanged String

@@ -39,6 +39,7 @@ type Effect
     | RetryGetGameStateIn Float
     | DismissErrorIn Float
     | DebounceFieldSave Int Float
+    | Focus String
       -- Reads
     | GetGameState Auth
     | GetMessageHistory Auth Int
@@ -100,6 +101,9 @@ perform flags effect =
 
         DebounceFieldSave seq ms ->
             Process.sleep ms |> Task.perform (\_ -> FieldSaveDue seq)
+
+        Focus domId ->
+            Browser.Dom.focus domId |> Task.attempt (\_ -> NoOp)
 
         GetGameState auth ->
             Api.getGameState flags auth GotGameState

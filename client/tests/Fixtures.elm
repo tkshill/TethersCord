@@ -115,6 +115,7 @@ model =
     , loadingHistory = False
     , noMoreHistory = False
     , aspectExamplesOpen = Nothing
+    , aspectEditing = Nothing
     , connection = Connected
     , gameStateAttempts = 0
     , timeZone = Time.utc

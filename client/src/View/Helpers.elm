@@ -1,19 +1,19 @@
 module View.Helpers exposing
     ( ViewContext
+    , aspectFieldId
     , characterLabel
+    , contextAspectFieldId
     , glossaryTitle
     , inlineInputAttrs
     , inputAttrs
-    , myOpenMove
     , placeholder
     , tip
     , tipAttrs
-    , undoLink
     )
 
 {-| Small view helpers shared by more than one of the `View.*` section modules:
-the `ViewContext` record threaded through every section, the viewer's latest
-undoable move and its "undo" link, the bordered-input
+the `ViewContext` record threaded through every section, the DOM ids ✎ focuses,
+the bordered-input
 attributes (boxed, and the hairline-only form the sheet and context rows use),
 the plain placeholder line, and the two glossary-tooltip helpers that pair a
 label with its `Copy.Terms` gloss.
@@ -27,7 +27,7 @@ import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
 import Html.Attributes
-import MoveRecord exposing (MoveRecord)
+import Aspect exposing (Aspect)
 import Time
 import Types exposing (..)
 import Ui
@@ -44,6 +44,20 @@ type alias ViewContext =
     , inflight : List Action
     , username : String
     }
+
+
+{-| The DOM id of an aspect's text field on a sheet, so ✎ can focus it.
+-}
+aspectFieldId : Int -> Aspect -> String
+aspectFieldId slot aspect =
+    "aspect-" ++ String.fromInt slot ++ "-" ++ Aspect.toWire aspect
+
+
+{-| The DOM id of a context aspect's text field, so ✎ can focus it.
+-}
+contextAspectFieldId : String -> String
+contextAspectFieldId contextAspectId =
+    "context-" ++ contextAspectId
 
 
 placeholder : String -> Element msg
@@ -120,29 +134,3 @@ characterLabel ch =
 
     else
         Copy.characterFallback ch.slot
-
-
-{-| The viewer's most recent move of `kind` that is still open to undo.
--}
-myOpenMove : ViewContext -> MoveRecord.Kind -> GameState -> Maybe MoveRecord
-myOpenMove ctx kind gs =
-    ctx.myId
-        |> Maybe.andThen
-            (\id ->
-                gs.moves
-                    |> List.filter (\m -> m.actorId == id && m.kind == kind)
-                    |> List.reverse
-                    |> List.head
-            )
-
-
-{-| A small "undo" link for a move, or nothing.
--}
-undoLink : Maybe MoveRecord -> Element Msg
-undoLink maybeMove =
-    case maybeMove of
-        Just move ->
-            Ui.linkButton { onPress = Just (UndoMove move.id), label = Copy.undo }
-
-        Nothing ->
-            none

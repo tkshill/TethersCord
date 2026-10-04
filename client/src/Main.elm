@@ -117,6 +117,7 @@ init flags =
       , loadingHistory = False
       , noMoreHistory = False
       , aspectExamplesOpen = Nothing
+      , aspectEditing = Nothing
       , connection = Connected
       , gameStateAttempts = 0
       , timeZone = Time.utc
@@ -496,6 +497,27 @@ update msg model =
             in
             ( { model | aspectExamplesOpen = next }, Effect.None )
 
+        -- ✎ on an aspect of the viewer's own sheet: swap its split button
+        -- for the text field, and put the cursor in it.
+        EditAspect slot aspect ->
+            ( { model | aspectEditing = Just ( slot, aspect ) }
+            , Effect.Focus (View.aspectFieldId slot aspect)
+            )
+
+        -- ✎ on a context aspect (facilitator): open its field on the current
+        -- text. Leaving the field saves it and closes it (`SaveContextAspectText`).
+        EditContextAspect contextAspectId ->
+            let
+                current =
+                    model.gameState
+                        |> Maybe.andThen (\gs -> gs.contextAspects |> List.filter (\a -> a.id == contextAspectId) |> List.head)
+                        |> Maybe.map .text
+                        |> Maybe.withDefault ""
+            in
+            ( { model | contextAspectEdits = Dict.insert contextAspectId current model.contextAspectEdits }
+            , Effect.Focus (View.contextAspectFieldId contextAspectId)
+            )
+
         WsStatusChanged raw ->
             ( { model | connection = connectionFromString raw }, Effect.None )
 
@@ -570,11 +592,25 @@ update msg model =
         CharacterFieldBlur slot ->
             let
                 released =
-                    if model.editingSlot == Just slot then
-                        { model | editingSlot = Nothing }
+                    { model
+                        | editingSlot =
+                            if model.editingSlot == Just slot then
+                                Nothing
 
-                    else
-                        model
+                            else
+                                model.editingSlot
+                        , aspectEditing =
+                            case model.aspectEditing of
+                                Just ( editingSlot, _ ) ->
+                                    if editingSlot == slot then
+                                        Nothing
+
+                                    else
+                                        model.aspectEditing
+
+                                Nothing ->
+                                    Nothing
+                    }
             in
             if Set.member slot released.dirtySlots then
                 armFieldSave released

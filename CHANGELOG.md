@@ -10,6 +10,16 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **Moves are made where their subject is** (roadmap 31.5). The status strip
+  shows the die ladder, and the current die is the button that rolls the
+  Junction; the result sits beside it, with Alter for players and Reroll /
+  Reject / Accept for the facilitator, whose ‹ › step the die. On your own
+  sheet each aspect is split: the left half Complicates, the right half
+  Highlights, with a ✎ to edit it. Context boons and banes are highlighted by
+  pressing them, and Create is the field beneath them. Each move's log line
+  carries an undo link. Boons and banes are marked ☼ and ☽. The Facilitator
+  tab and the Moves panel are gone.
+
 - **The client speaks the die ladder and direct moves** (roadmap 31.4). It
   reads the die, the pending roll's face and outcome, the moves open to undo
   and each context aspect's polarity through one decoder module that refuses
