@@ -110,9 +110,8 @@ notes model =
         [ Element.column [ width fill, Element.paddingXY 10 4, spacing 2 ] lines ]
 
 
-{-| The left panel: the glyph tab strip, the selected tool's body (scrolling on
-its own), and — for the facilitator, under any tool but their own — the oldest
-waiting proposal.
+{-| The left panel: the glyph tab strip and the selected tool's body
+(scrolling on its own).
 -}
 toolPanel : ViewContext -> Model -> GameState -> Element Msg
 toolPanel ctx model gs =
@@ -133,11 +132,6 @@ toolPanel ctx model gs =
             , Element.paddingEach { top = 8, right = 10, bottom = 8, left = 10 }
             ]
             (Ui.scrollArea [ toolBody ctx model gs selected ])
-        , if selected == FacilitatorTab then
-            none
-
-          else
-            View.FacilitatorPanel.strip ctx gs
         ]
 
 
@@ -180,7 +174,7 @@ toolStrip ctx selected gs =
         ]
         (tool SheetTab "◆" Copy.sheetTabLabel Copy.sheetTabTip
             :: (if ctx.facilitator then
-                    [ tool FacilitatorTab "⚑" Copy.facilitatorPanelTitle (Copy.facilitatorTabTip (List.length gs.proposals)) ]
+                    [ tool FacilitatorTab "⚑" Copy.facilitatorPanelTitle Copy.facilitatorTabTip ]
 
                 else
                     []
@@ -202,7 +196,7 @@ toolBody ctx model gs tab =
                 gs
 
         FacilitatorTab ->
-            View.FacilitatorPanel.view ctx { drafts = model.proposalDrafts } gs
+            View.FacilitatorPanel.view ctx gs
 
         CastTab ->
             if not ctx.facilitator && List.isEmpty gs.npcs && List.isEmpty gs.locations then
@@ -242,7 +236,7 @@ movesPanel ctx model gs =
             , View.Session.view ctx gs
             ]
         , Ui.divider (String.toUpper Copy.movesHeading)
-        , View.Moves.view ctx { addDetailDraft = model.addDetailDraft, selectedSlot = model.selectedSlot } gs
+        , View.Moves.view ctx { createDraft = model.createDraft, selectedSlot = model.selectedSlot } gs
         ]
 
 

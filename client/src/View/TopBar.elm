@@ -1,15 +1,14 @@
 module View.TopBar exposing (view)
 
 {-| The status strip across the top of the page (roadmap section 27, mockup 2a):
-one line holding the running session's goal, the shared pool as a run of `+` /
-`−` marks, the Junction control, and who the viewer is.
+one line holding the running session's goal, the die, the Junction control, and
+who the viewer is.
 
-The pool marks show what is left in the pool. Pressing **Junction** (open to any
-player) draws two stones: while that roll is pending they sit in a ringed chip
-beside the pool marks (who drew and how many rerolls is its tooltip), and the
-facilitator's Reroll / Reject / Accept replace the Junction button; a player sees
-that they are waiting. Alter Fate is a player move, so it lives in the Moves
-tool, and its proposal in the facilitator's queue — not here.
+Pressing **Junction** (open to any player) rolls the current die. While that
+roll is pending it sits in a ringed chip beside the die (who rolled and how
+many rerolls is its tooltip), and the facilitator's Reroll / Reject / Accept
+replace the Junction button; a player sees that they are waiting. (31.5 turns
+the die into the full ladder, with the roll button on the current rung.)
 
 Session start / end / goal-edit controls — facilitator-only — open as a row
 beneath the strip when the facilitator clicks the goal (`ToggleSessionControls`),
@@ -23,8 +22,10 @@ import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
+import Die
 import Html.Attributes
-import Roll exposing (Stone(..))
+import Junction exposing (Junction)
+import Outcome
 import Types exposing (..)
 import Ui
 import View.Helpers exposing (ViewContext, inputAttrs)
@@ -62,59 +63,39 @@ strip ctx props gs =
         , Border.color Ui.line
         ]
         [ goalSummary ctx.facilitator gs.session
-        , pool gs
+        , dieAndRoll gs
         , controls ctx gs.junction
         , who ctx
         ]
 
 
-{-| The pool as marks, less whatever a pending Junction has drawn out of it,
-then the draw itself in a ringed chip.
+{-| The current die, then the pending roll, if any, in a ringed chip.
 -}
-pool : GameState -> Element Msg
-pool gs =
-    let
-        drawn =
-            gs.junction |> Maybe.map .stones |> Maybe.withDefault []
-
-        inPool =
-            Roll.without drawn gs.stonePool
-
-        count stone stones =
-            List.length (List.filter ((==) stone) stones)
-    in
+dieAndRoll : GameState -> Element Msg
+dieAndRoll gs =
     Element.row [ spacing 10, Element.centerY ]
-        [ Element.row
-            [ Font.size 14
-            , Element.htmlAttribute (Html.Attributes.title (Copy.bagTip (count Boon inPool) (count Bane inPool)))
+        [ el
+            [ Font.size 13
+            , Font.semiBold
+            , Element.htmlAttribute (Html.Attributes.title (Copy.dieTip (Die.label gs.die)))
             ]
-            [ Ui.boonMarks (count Boon inPool), Ui.baneMarks (count Bane inPool) ]
+            (text (Die.label gs.die))
         , case gs.junction of
-            Just o ->
-                Element.row
-                    [ Font.size 14
+            Just j ->
+                el
+                    [ Font.size 12
                     , Element.paddingXY 6 1
                     , Border.width 1
                     , Border.color Ui.accent
                     , Border.rounded 4
                     , Element.htmlAttribute
-                        (Html.Attributes.title (Copy.junctionDrew o.rolledBy ++ " · " ++ Copy.rerollsNote o.rerolls))
+                        (Html.Attributes.title (Copy.junctionRolled j.rolledBy ++ " · " ++ Copy.rerollsNote j.rerolls))
                     ]
-                    (List.map stoneMark o.stones)
+                    (text (Copy.rollChip (Outcome.label j.outcome) j.face (Die.label j.die)))
 
             Nothing ->
                 none
         ]
-
-
-stoneMark : Stone -> Element msg
-stoneMark stone =
-    case stone of
-        Boon ->
-            Ui.boonMarks 1
-
-        Bane ->
-            Ui.baneMarks 1
 
 
 controls : ViewContext -> Maybe Junction -> Element Msg

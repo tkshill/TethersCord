@@ -1,29 +1,28 @@
 module View.ContextAspects exposing (view)
 
-{-| The context boons and banes tool (roadmap 27, the ◇ "Context" tab; formerly
-the 26.3 card): what the table has established as true, that can be spent into
-the pool. They come from an accepted Junction pair, an accepted Add Detail, or
-the facilitator directly. Spending one marks it **consumed** — shown struck
-through and tagged "used" — instead of removing it, and a consumed one cannot be
-spent again.
+{-| The context boons and banes (the middle column, above the moves): what the
+table has established as true. They come from an accepted critical, a Create, a
+Complicate (a blank bane for the facilitator to word) or the facilitator
+directly. Highlighting one is the Highlight Context move, open to anyone before
+the junction is rolled: a boon steps the die up, a bane steps it down, and it is
+marked **consumed** — shown struck through and tagged — instead of removed.
 
-Read-only for players (they spend a context boon from the Moves tool, which
-proposes it). The facilitator edits the text in place (saved when the field loses
-focus, so a boon a Junction created can be worded in their own time), uses one
-directly (either kind, no approval), unconsumes one to correct a mistake, or
-removes it, and plants a new one through the row at the bottom. Each row leads
-with the kind as a `+` (Boon) or `−` (Bane) mark.
+The facilitator edits the text in place (saved when the field loses focus),
+removes one, and adds a new one through the row at the bottom. Each row leads
+with its polarity as a `+` (boon) or `−` (bane) mark.
 -}
 
 import Action exposing (Action(..))
+import ContextAspect exposing (ContextAspect, Polarity(..))
 import Copy
 import Dict exposing (Dict)
+import Die
 import Element exposing (Element, el, fill, none, spacing, text, width)
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
 import Html.Attributes
-import Roll exposing (Stone(..))
+import MoveRecord
 import Types exposing (..)
 import Ui
 import View.Helpers exposing (ViewContext, inlineInputAttrs, placeholder)
@@ -31,7 +30,7 @@ import View.Helpers exposing (ViewContext, inlineInputAttrs, placeholder)
 
 type alias Props =
     { contextAspectDraft : String
-    , contextAspectKind : Stone
+    , contextAspectKind : Polarity
     , edits : Dict String String
     }
 
@@ -43,14 +42,21 @@ view ctx props gs =
 
     else
         Ui.flat
-            (List.map (row ctx.facilitator ctx.inflight props.edits) gs.contextAspects
+            (List.map (row ctx props.edits gs) gs.contextAspects
                 ++ Ui.onlyWhen ctx.facilitator
                     [ addContextAspectRow ctx.inflight props.contextAspectDraft props.contextAspectKind ]
             )
 
 
-row : Bool -> List Action -> Dict String String -> ContextAspect -> Element Msg
-row facilitator inflight edits a =
+row : ViewContext -> Dict String String -> GameState -> ContextAspect -> Element Msg
+row ctx edits gs a =
+    let
+        facilitator =
+            ctx.facilitator
+
+        inflight =
+            ctx.inflight
+    in
     Element.row
         [ spacing Ui.sm
         , width fill
@@ -96,30 +102,47 @@ row facilitator inflight edits a =
 
           else
             none
-        , if facilitator then
-            Element.row [ spacing Ui.sm, Element.centerY ]
-                [ if a.consumed then
-                    Ui.linkButton
-                        { onPress = Ui.press inflight (UnconsumingContextAspect a.id) (UnconsumeContextAspect a.id)
-                        , label = Copy.contextAspectUnconsume
-                        }
+        , if a.consumed then
+            none
 
-                  else
-                    Ui.linkButton
-                        { onPress = Ui.press inflight (UsingContextAspect a.id) (UseContextAspect a.id)
-                        , label = Copy.contextAspectUse
-                        }
-                , el [ Element.htmlAttribute (Html.Attributes.title Copy.contextAspectRemove) ]
-                    (Ui.linkButton
-                        { onPress = Ui.press inflight (DeletingContextAspect a.id) (DeleteContextAspect a.id)
-                        , label = "×"
-                        }
-                    )
-                ]
+          else
+            Ui.linkButton
+                { onPress =
+                    if canHighlight gs a then
+                        Ui.press inflight (MakingMove MoveRecord.HighlightContext) (MakeHighlightContext a.id)
+
+                    else
+                        Nothing
+                , label = Copy.contextAspectUse
+                }
+        , if facilitator then
+            el [ Element.htmlAttribute (Html.Attributes.title Copy.contextAspectRemove) ]
+                (Ui.linkButton
+                    { onPress = Ui.press inflight (DeletingContextAspect a.id) (DeleteContextAspect a.id)
+                    , label = "×"
+                    }
+                )
 
           else
             none
         ]
+
+
+{-| Highlight Context is a preparation move, refused at the end of the ladder
+its polarity pushes toward.
+-}
+canHighlight : GameState -> ContextAspect -> Bool
+canHighlight gs a =
+    let
+        direction =
+            case a.polarity of
+                Boon ->
+                    Die.Up
+
+                Bane ->
+                    Die.Down
+    in
+    gs.junction == Nothing && Die.step direction gs.die /= Nothing
 
 
 {-| A context boon or bane's kind as a mark, faded once it has been consumed.
@@ -129,7 +152,7 @@ kindMark a =
     let
         mark =
             el [ Font.size 14, Font.bold, Element.width (Element.px 12) ]
-                (case a.kind of
+                (case a.polarity of
                     Boon ->
                         text "+"
 
@@ -144,7 +167,7 @@ kindMark a =
         mark
 
 
-addContextAspectRow : List Action -> String -> Stone -> Element Msg
+addContextAspectRow : List Action -> String -> Polarity -> Element Msg
 addContextAspectRow inflight draft draftKind =
     let
         canAdd =

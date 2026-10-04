@@ -2352,15 +2352,25 @@ shape (ADR 0003).
       carries `fromAspect: { slot, aspect }` on the wire. `GameTable.ts` is
       ~880 lines (from ~2150 before 31.2a). Suites: client 97, worker 137.
 
-#### 31.4 Client domain and wire
+#### 31.4 Client domain and wire — done
 
-- [ ] `Die`, `Outcome`, `Junction`, `ContextAspect`, `MoveRecord` modules;
+- [x] `Die`, `Outcome`, `Junction`, `ContextAspect`, `MoveRecord` modules;
       `Roll.elm` and `Kind.elm` deleted.
-- [ ] `Api/Decode.elm` as the one wire boundary, with the ladder parity
+- [x] `Api/Decode.elm` as the one wire boundary, with the ladder parity
       fixture.
-- [ ] `Msg`, `Effect`, `Action` (`StonesFamily` → `DieFamily`, the proposal
+- [x] `Msg`, `Effect`, `Action` (`StonesFamily` → `DieFamily`, the proposal
       families gone, an `UndoFamily`) and `update`; `UpdateTest` and the
       decoder tests follow.
+- [x] Also in 31.4: an `Aspect` module (a Complicate's bane carries one, and
+      `ContextAspect` cannot import `Types`), and a `ContextFamily` for the
+      context aspect edits beside `DieFamily`. The ladder parity test lives
+      on the Worker side (`ladderParity.test.ts` reads `Die.elm` through
+      Vite's `?raw`), since elm-test cannot read the Worker's ladder. The
+      views are rewired just enough to run against the new Worker — the die
+      and the pending roll on the strip, the facilitator's `‹` `›` in the
+      Facilitator tab, Highlight / Complicate as a button per written aspect
+      in the Moves column with "undo" beside each, Highlight Context on each
+      context aspect — and 31.5 replaces them. Suites: client 92, worker 138.
 
 #### 31.5 View
 

@@ -1,21 +1,19 @@
 module View.Helpers exposing
     ( ViewContext
     , characterLabel
-    , countProposals
     , glossaryTitle
     , inlineInputAttrs
     , inputAttrs
-    , latestProposalId
-    , pendingHint
+    , myOpenMove
     , placeholder
     , tip
     , tipAttrs
-    , withdrawLink
+    , undoLink
     )
 
 {-| Small view helpers shared by more than one of the `View.*` section modules:
-the `ViewContext` record threaded through every section, the proposal-count /
-latest-id lookups, the "(n pending) · withdraw" hint, the bordered-input
+the `ViewContext` record threaded through every section, the viewer's latest
+undoable move and its "undo" link, the bordered-input
 attributes (boxed, and the hairline-only form the sheet and context rows use),
 the plain placeholder line, and the two glossary-tooltip helpers that pair a
 label with its `Copy.Terms` gloss.
@@ -29,7 +27,7 @@ import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
 import Html.Attributes
-import Kind
+import MoveRecord exposing (MoveRecord)
 import Time
 import Types exposing (..)
 import Ui
@@ -124,59 +122,27 @@ characterLabel ch =
         Copy.characterFallback ch.slot
 
 
-countProposals : Maybe String -> Kind.ProposalKind -> List Proposal -> Int
-countProposals myId kind proposals =
-    case myId of
-        Just id ->
-            List.length
-                (List.filter (\p -> p.proposerId == id && p.kind == kind) proposals)
-
-        Nothing ->
-            0
-
-
-{-| The id of the proposer's most recently queued proposal of `kind`, if any.
-This is what the "withdraw" link beside a "(pending)" hint pulls back — the
-latest matching one.
+{-| The viewer's most recent move of `kind` that is still open to undo.
 -}
-latestProposalId : Maybe String -> Kind.ProposalKind -> List Proposal -> Maybe String
-latestProposalId myId kind proposals =
-    myId
+myOpenMove : ViewContext -> MoveRecord.Kind -> GameState -> Maybe MoveRecord
+myOpenMove ctx kind gs =
+    ctx.myId
         |> Maybe.andThen
             (\id ->
-                proposals
-                    |> List.filter (\p -> p.proposerId == id && p.kind == kind)
+                gs.moves
+                    |> List.filter (\m -> m.actorId == id && m.kind == kind)
                     |> List.reverse
                     |> List.head
             )
-        |> Maybe.map .id
 
 
-{-| A muted "(n pending)" note for the proposer, with a "withdraw" link for the
-proposal it refers to. Nothing when there are none.
+{-| A small "undo" link for a move, or nothing.
 -}
-pendingHint : Int -> Maybe String -> List (Element Msg)
-pendingHint n maybeId =
-    if n <= 0 then
-        []
-
-    else
-        [ Element.row [ spacing Ui.xs, Element.centerY ]
-            [ el [ Font.size 11, Font.color Ui.inkSoft ]
-                (text ("(" ++ String.fromInt n ++ " pending)"))
-            , withdrawLink maybeId
-            ]
-        ]
-
-
-{-| A small "withdraw" link for whichever pending proposal a hint refers to.
-Renders nothing when there is no id to act on.
--}
-withdrawLink : Maybe String -> Element Msg
-withdrawLink maybeId =
-    case maybeId of
-        Just pid ->
-            Ui.linkButton { onPress = Just (WithdrawProposal pid), label = Copy.withdraw }
+undoLink : Maybe MoveRecord -> Element Msg
+undoLink maybeMove =
+    case maybeMove of
+        Just move ->
+            Ui.linkButton { onPress = Just (UndoMove move.id), label = Copy.undo }
 
         Nothing ->
             none

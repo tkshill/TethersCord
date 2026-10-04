@@ -6,25 +6,27 @@ mocking.
 -}
 
 import Action exposing (Action(..), Family(..))
+import Aspect exposing (Aspect(..))
+import ContextAspect exposing (Polarity(..))
 import Dict
+import Die
 import Effect exposing (Effect(..))
 import Expect
 import Fixtures
 import Http
 import Main
-import Roll exposing (Stone(..))
+import MoveRecord
 import Set
 import Test exposing (Test, describe, test)
 import Time
 import Types exposing (Model, Msg(..), ToolTab(..))
 
 
-{-| The collapsed acknowledge-only result for the stones family, standing in for
-the old `StonesUpdated` constructor.
+{-| The collapsed acknowledge-only result for the die family.
 -}
-stonesDone : Result Http.Error () -> Msg
-stonesDone =
-    MutationDone { family = StonesFamily, failMsg = "Failed to update stones." }
+dieDone : Result Http.Error () -> Msg
+dieDone =
+    MutationDone { family = DieFamily, failMsg = "Couldn't step the die." }
 
 
 junctionDone : Result Http.Error () -> Msg
@@ -60,7 +62,7 @@ withAspect =
             Just
                 { gs
                     | contextAspects =
-                        [ { id = "f1", kind = Boon, text = "a note", createdByName = "Gm", consumed = False } ]
+                        [ { id = "f1", polarity = Boon, text = "a note", createdByName = "Gm", consumed = False, fromAspect = Nothing } ]
                 }
     }
 
@@ -181,21 +183,26 @@ suite =
                             ]
             , test "a result message releases only its own family of in-flight actions" <|
                 \_ ->
-                    Main.update (stonesDone (Ok ()))
-                        { ready | inflight = [ AddingStone Bane, GrantingFate 0, AddingStone Boon ] }
+                    Main.update (dieDone (Ok ()))
+                        { ready | inflight = [ SteppingDie Die.Down, GrantingFate 0, SteppingDie Die.Up ] }
                         |> Tuple.first
                         |> .inflight
                         |> Expect.equal [ GrantingFate 0 ]
-            , test "AddStone posts the stone's kind" <|
+            , test "StepDie posts the step's direction, once while in flight" <|
                 \_ ->
-                    Main.update (AddStone Bane) ready
-                        |> Tuple.second
-                        |> Expect.equal (Effect.PostAddStone Fixtures.playerAuth Bane)
-            , test "RemoveStone posts the stone's kind" <|
-                \_ ->
-                    Main.update (RemoveStone Boon) ready
-                        |> Tuple.second
-                        |> Expect.equal (Effect.PostRemoveStone Fixtures.playerAuth Boon)
+                    let
+                        ( afterFirst, first ) =
+                            Main.update (StepDie Die.Up) ready
+                    in
+                    ( first
+                    , Main.update (StepDie Die.Up) afterFirst |> Tuple.second
+                    , Main.update (StepDie Die.Down) afterFirst |> Tuple.second
+                    )
+                        |> Expect.equal
+                            ( Effect.PostStepDie Fixtures.playerAuth Die.Up
+                            , Effect.None
+                            , Effect.PostStepDie Fixtures.playerAuth Die.Down
+                            )
             , test "ContextAspectKindChanged sets the pending kind" <|
                 \_ ->
                     Main.update (ContextAspectKindChanged Bane) ready
@@ -223,46 +230,6 @@ suite =
                     Main.update (DeleteContextAspect "f1") ready
                         |> Tuple.second
                         |> Expect.equal (Effect.PostDeleteContextAspect Fixtures.playerAuth "f1")
-            , test "AcceptProposal carries that row's trimmed draft note as context" <|
-                \_ ->
-                    Main.update (AcceptProposal "p1")
-                        { ready | proposalDrafts = Dict.fromList [ ( "p1", "  a detail  " ) ] }
-                        |> Tuple.second
-                        |> Expect.equal
-                            (Effect.PostProposalDecision Fixtures.playerAuth "p1" "accept" (Just "a detail"))
-            , test "AcceptProposal sends no context when this row's draft is blank" <|
-                \_ ->
-                    Main.update (AcceptProposal "p1")
-                        { ready | proposalDrafts = Dict.fromList [ ( "p1", "   " ), ( "p2", "other" ) ] }
-                        |> Tuple.second
-                        |> Expect.equal (Effect.PostProposalDecision Fixtures.playerAuth "p1" "accept" Nothing)
-            , test "RejectProposal never carries context" <|
-                \_ ->
-                    Main.update (RejectProposal "p1")
-                        { ready | proposalDrafts = Dict.fromList [ ( "p1", "ignored" ) ] }
-                        |> Tuple.second
-                        |> Expect.equal (Effect.PostProposalDecision Fixtures.playerAuth "p1" "reject" Nothing)
-            , test "WithdrawProposal posts to the withdraw route with auth" <|
-                \_ ->
-                    Main.update (WithdrawProposal "p1") ready
-                        |> Tuple.second
-                        |> Expect.equal (Effect.PostWithdrawProposal Fixtures.playerAuth "p1")
-            ]
-        , describe "per-row proposal drafts"
-            [ test "ProposalDraftChanged writes only the named row" <|
-                \_ ->
-                    { ready | proposalDrafts = Dict.fromList [ ( "p2", "kept" ) ] }
-                        |> Main.update (ProposalDraftChanged "p1" "typing")
-                        |> Tuple.first
-                        |> .proposalDrafts
-                        |> Expect.equal (Dict.fromList [ ( "p1", "typing" ), ( "p2", "kept" ) ])
-            , test "ProposalResolved Ok drops that row's draft" <|
-                \_ ->
-                    { ready | proposalDrafts = Dict.fromList [ ( "p1", "note" ), ( "p2", "kept" ) ] }
-                        |> Main.update (ProposalResolved "p1" (Ok ()))
-                        |> Tuple.first
-                        |> .proposalDrafts
-                        |> Expect.equal (Dict.fromList [ ( "p2", "kept" ) ])
             ]
         , describe "confirm gate"
             [ test "RequestConfirm arms the named action, no effect" <|
@@ -286,10 +253,10 @@ suite =
         , describe "transient errors"
             [ test "a failed mutation sets error, not status, and schedules its dismissal" <|
                 \_ ->
-                    Main.update (stonesDone (Err Http.NetworkError)) ready
+                    Main.update (dieDone (Err Http.NetworkError)) ready
                         |> (\( next, eff ) -> ( next.error, next.status, eff ))
                         |> Expect.equal
-                            ( Just "Failed to update stones.", ready.status, Effect.DismissErrorIn 6000 )
+                            ( Just "Couldn't step the die.", ready.status, Effect.DismissErrorIn 6000 )
             , test "DismissError clears the error line" <|
                 \_ ->
                     Main.update DismissError { ready | error = Just "boom" }
@@ -322,22 +289,22 @@ suite =
                 \_ ->
                     let
                         opened =
-                            Main.update (ToggleAspectExamples 0 Types.Archetype) ready |> Tuple.first
+                            Main.update (ToggleAspectExamples 0 Archetype) ready |> Tuple.first
                     in
                     ( opened.aspectExamplesOpen
-                    , Main.update (ToggleAspectExamples 0 Types.Archetype) opened
+                    , Main.update (ToggleAspectExamples 0 Archetype) opened
                     )
-                        |> Expect.equal ( Just ( 0, Types.Archetype ), ( ready, Effect.None ) )
+                        |> Expect.equal ( Just ( 0, Archetype ), ( ready, Effect.None ) )
             , test "ToggleAspectExamples on a different aspect replaces the open one" <|
                 \_ ->
                     let
                         opened =
-                            Main.update (ToggleAspectExamples 0 Types.Archetype) ready |> Tuple.first
+                            Main.update (ToggleAspectExamples 0 Archetype) ready |> Tuple.first
                     in
-                    Main.update (ToggleAspectExamples 1 Types.Desire) opened
+                    Main.update (ToggleAspectExamples 1 Desire) opened
                         |> Tuple.first
                         |> .aspectExamplesOpen
-                        |> Expect.equal (Just ( 1, Types.Desire ))
+                        |> Expect.equal (Just ( 1, Desire ))
             , test "CharacterFieldInput edits local state, marks the slot dirty, and arms the debounced save" <|
                 \_ ->
                     Main.update (CharacterFieldInput 1 Types.NameField "Bea") ready
@@ -379,59 +346,76 @@ suite =
                            )
                         |> Expect.equal ( 1, "Bea", True )
             ]
-        , describe "player moves (each is queued as a proposal)"
-            [ test "Highlight posts a proposal with auth, and none without" <|
+        , describe "moves (each acts at once)"
+            [ test "Highlight posts the aspect with auth, and nothing without" <|
                 \_ ->
-                    ( Main.update ProposeHighlight ready |> Tuple.second
-                    , Main.update ProposeHighlight m |> Tuple.second
+                    ( Main.update (MakeHighlight Desire) ready |> Tuple.second
+                    , Main.update (MakeHighlight Desire) m |> Tuple.second
                     )
-                        |> Expect.equal ( Effect.PostHighlight Fixtures.playerAuth, Effect.None )
-            , test "Complicate posts for the caller's own sheet" <|
+                        |> Expect.equal ( Effect.PostHighlight Fixtures.playerAuth Desire, Effect.None )
+            , test "Complicate posts the aspect it draws on" <|
                 \_ ->
-                    Main.update ProposeComplicate ready
+                    Main.update (MakeComplicate Quest) ready
                         |> Tuple.second
-                        |> Expect.equal (Effect.PostComplicate Fixtures.playerAuth)
-            , test "Add Detail sends the trimmed suggestion and clears the field" <|
+                        |> Expect.equal (Effect.PostComplicate Fixtures.playerAuth Quest)
+            , test "Create sends the trimmed draft and clears the field" <|
                 \_ ->
-                    Main.update ProposeAddDetail { ready | addDetailDraft = "  the door is barred  " }
-                        |> (\( next, eff ) -> ( eff, next.addDetailDraft ))
-                        |> Expect.equal ( Effect.PostAddDetail Fixtures.playerAuth (Just "the door is barred"), "" )
-            , test "Add Detail with a blank field asks the facilitator for the wording" <|
+                    Main.update MakeCreate { ready | createDraft = "  the door is barred  " }
+                        |> (\( next, eff ) -> ( eff, next.createDraft ))
+                        |> Expect.equal ( Effect.PostCreate Fixtures.playerAuth "the door is barred", "" )
+            , test "Create with a blank field still posts, for the Worker's default wording" <|
                 \_ ->
-                    Main.update ProposeAddDetail { ready | addDetailDraft = "   " }
+                    Main.update MakeCreate { ready | createDraft = "   " }
                         |> Tuple.second
-                        |> Expect.equal (Effect.PostAddDetail Fixtures.playerAuth Nothing)
-            , test "Alter Fate and Use Context Boon post their proposals" <|
+                        |> Expect.equal (Effect.PostCreate Fixtures.playerAuth "")
+            , test "CreateDraftChanged keeps the draft without posting" <|
                 \_ ->
-                    [ Main.update ProposeAlter ready |> Tuple.second
-                    , Main.update (ProposeUseContextBoon "f1") ready |> Tuple.second
+                    Main.update (CreateDraftChanged "a ladder") ready
+                        |> Expect.equal ( { ready | createDraft = "a ladder" }, Effect.None )
+            , test "Alter and Highlight Context post their moves" <|
+                \_ ->
+                    [ Main.update MakeAlter ready |> Tuple.second
+                    , Main.update (MakeHighlightContext "f1") ready |> Tuple.second
                     ]
                         |> Expect.equal
                             [ Effect.PostAlter Fixtures.playerAuth
-                            , Effect.PostUseContextBoon Fixtures.playerAuth "f1"
+                            , Effect.PostHighlightContext Fixtures.playerAuth "f1"
                             ]
             , test "a second move of the same kind is dropped while the first is in flight, a different move is not" <|
                 \_ ->
                     let
                         afterFirst =
-                            Main.update ProposeHighlight ready |> Tuple.first
+                            Main.update (MakeHighlight Desire) ready |> Tuple.first
                     in
-                    ( Main.update ProposeHighlight afterFirst |> Tuple.second
-                    , Main.update ProposeAlter afterFirst |> Tuple.second
+                    ( Main.update (MakeHighlight Quest) afterFirst |> Tuple.second
+                    , Main.update MakeAlter afterFirst |> Tuple.second
                     )
                         |> Expect.equal ( Effect.None, Effect.PostAlter Fixtures.playerAuth )
+            , test "UndoMove posts the move's undo, guarded per move" <|
+                \_ ->
+                    let
+                        ( afterFirst, first ) =
+                            Main.update (UndoMove "mv1") ready
+                    in
+                    ( first
+                    , Main.update (UndoMove "mv1") afterFirst |> Tuple.second
+                    , Main.update (UndoMove "mv2") afterFirst |> Tuple.second
+                    )
+                        |> Expect.equal
+                            ( Effect.PostUndo Fixtures.playerAuth "mv1"
+                            , Effect.None
+                            , Effect.PostUndo Fixtures.playerAuth "mv2"
+                            )
+            , test "a move's result releases the move family only" <|
+                \_ ->
+                    Main.update (MutationDone { family = MoveFamily, failMsg = "" } (Ok ()))
+                        { ready | inflight = [ MakingMove MoveRecord.Alter, UndoingMove "mv1" ] }
+                        |> Tuple.first
+                        |> .inflight
+                        |> Expect.equal [ UndoingMove "mv1" ]
             ]
         , describe "context boons and banes"
-            [ test "using and unconsuming post their own step" <|
-                \_ ->
-                    [ Main.update (UseContextAspect "f1") ready |> Tuple.second
-                    , Main.update (UnconsumeContextAspect "f1") ready |> Tuple.second
-                    ]
-                        |> Expect.equal
-                            [ Effect.PostUseContextAspect Fixtures.playerAuth "f1"
-                            , Effect.PostUnconsumeContextAspect Fixtures.playerAuth "f1"
-                            ]
-            , test "editing the text keeps a local draft without posting" <|
+            [ test "editing the text keeps a local draft without posting" <|
                 \_ ->
                     Main.update (ContextAspectTextChanged "f1" "new wording") withAspect
                         |> (\( next, eff ) -> ( eff, Dict.get "f1" next.contextAspectEdits ))

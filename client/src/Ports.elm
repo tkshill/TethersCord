@@ -17,7 +17,8 @@ Ports declared here still surface on the single `app.ports` object that
 
 import Json.Decode as Decode
 import Json.Encode as Encode
-import Types exposing (Auth, decodeRole)
+import Api.Decode
+import Types exposing (Auth)
 
 
 
@@ -79,7 +80,7 @@ inboundDecoder =
             (\t ->
                 case t of
                     "BackendAuthResult" ->
-                        Decode.map BackendAuth (Decode.field "data" decodeAuth)
+                        Decode.map BackendAuth (Decode.field "data" Api.Decode.auth)
 
                     "AuthFailed" ->
                         Decode.map AuthRejected (Decode.at [ "data", "message" ] Decode.string)
@@ -88,11 +89,3 @@ inboundDecoder =
                         Decode.succeed UnknownInbound
             )
 
-
-decodeAuth : Decode.Decoder Auth
-decodeAuth =
-    Decode.map4 Auth
-        (Decode.field "userId" Decode.string)
-        (Decode.field "username" Decode.string)
-        (Decode.field "role" decodeRole)
-        (Decode.field "sessionToken" Decode.string)
