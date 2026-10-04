@@ -44,8 +44,8 @@ suite =
                     |> Expect.equal (List.length (dedupe names))
         , test "termShort resolves a known term" <|
             \_ ->
-                Terms.termShort "Overcome"
-                    |> Expect.equal overcomeShort
+                Terms.termShort "Junction"
+                    |> Expect.equal junctionShort
         , test "no term describes a mechanic RULES.md retired" <|
             \_ ->
                 let
@@ -65,7 +65,7 @@ suite =
                     |> Expect.equalLists []
         , test "every term a view looks up for a tooltip exists" <|
             \_ ->
-                [ "Session", "Session boon", "Aspect", "Highlight", "Complicate", "Add Detail", "Alter Fate" ]
+                [ "Session", "Context boon", "Aspect", "Highlight", "Complicate", "Add Detail", "Alter Fate" ]
                     |> List.filter (\name -> Terms.termShort name == "")
                     |> Expect.equalLists []
         , test "termShort returns \"\" for an unknown name" <|
@@ -75,10 +75,10 @@ suite =
         ]
 
 
-overcomeShort : String
-overcomeShort =
+junctionShort : String
+junctionShort =
     Terms.terms
-        |> List.filter (\t -> t.term == "Overcome")
+        |> List.filter (\t -> t.term == "Junction")
         |> List.head
         |> Maybe.map .short
         |> Maybe.withDefault "MISSING"

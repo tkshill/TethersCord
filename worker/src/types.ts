@@ -33,7 +33,7 @@ export type StoneKind = "Boon" | "Bane";
 
 /**
  * The result of one draw from the pool: `chosen` is what a facilitator's
- * `/overcome/roll` shows, `rest` the remainder — the pool itself is never
+ * `/junction/roll` shows, `rest` the remainder — the pool itself is never
  * written by a draw, so `rest` is only ever read, never persisted.
  */
 export type PendingRoll = {
@@ -42,13 +42,13 @@ export type PendingRoll = {
 };
 
 /**
- * The Overcome in progress: one roll waiting on the facilitator to accept or
+ * The Junction in progress: one roll waiting on the facilitator to accept or
  * reject it. `stones` is the current draw (a reroll replaces it), `rerolls`
  * counts how many times it has been redrawn, and `alteredSlots` lists the
- * characters whose Alter Fate has already been accepted this Overcome — each
+ * characters whose Alter Fate has already been accepted this Junction — each
  * may succeed at one. `null` on the `GameState` means nothing is pending.
  */
-export type Overcome = {
+export type Junction = {
   rolledBy: string;
   stones: StoneKind[];
   rerolls: number;
@@ -57,13 +57,13 @@ export type Overcome = {
 
 /**
  * The player moves the facilitator resolves through the one accept / reject
- * queue (Overcome is not one — it needs no approval):
+ * queue (Junction is not one — it needs no approval):
  * - `highlight` — pay 1 boon to add a Boon to the pool.
  * - `complicate` — suggest a complication for your own character; on approval
  *   it gains 2 boons.
- * - `add-detail` — pay 1 boon to establish a fact; on approval a session boon.
- * - `alter` — Alter Fate: pay 2 boons to reroll the pending Overcome.
- * - `use-session-boon` — spend a session boon (named by `sessionAspectId`),
+ * - `add-detail` — pay 1 boon to establish a fact; on approval a context boon.
+ * - `alter` — Alter Fate: pay 2 boons to reroll the pending Junction.
+ * - `use-context-boon` — spend a context boon (named by `contextAspectId`),
  *   adding a Boon to the pool.
  */
 export type ProposalKind =
@@ -71,12 +71,12 @@ export type ProposalKind =
   | "complicate"
   | "add-detail"
   | "alter"
-  | "use-session-boon";
+  | "use-context-boon";
 
 /**
  * A player-initiated change to shared state, waiting on the facilitator. One per
- * click. `slot` is the proposer's claimed sheet. `sessionAspectId` names the
- * boon for `use-session-boon`. `targetSlot` is only set on an older
+ * click. `slot` is the proposer's claimed sheet. `contextAspectId` names the
+ * boon for `use-context-boon`. `targetSlot` is only set on an older
  * `complicate`, which named another character; it is null otherwise.
  */
 export type Proposal = {
@@ -85,7 +85,7 @@ export type Proposal = {
   proposerId: string;
   proposerName: string;
   slot: number | null;
-  sessionAspectId: string | null;
+  contextAspectId: string | null;
   targetSlot: number | null;
   /** `add-detail` only: the player's suggested wording, or null to ask the
    * facilitator for one. */
@@ -95,13 +95,13 @@ export type Proposal = {
 
 /**
  * A session context owned by no character — a Boon or (23.3) a Bane, with a
- * note of the context it stands for. It comes from an accepted Overcome that
+ * note of the context it stands for. It comes from an accepted Junction that
  * drew a matched pair, an accepted Add Detail (always a Boon), or the
- * facilitator directly (`POST /session-aspects`). It stays in
- * `gameState.sessionAspects` until the facilitator deletes it; spending it marks
+ * facilitator directly (`POST /context-aspects`). It stays in
+ * `gameState.contextAspects` until the facilitator deletes it; spending it marks
  * it `consumed` rather than removing it, and a session ending does not clear it.
  */
-export type SessionAspect = {
+export type ContextAspect = {
   id: string;
   kind: StoneKind;
   text: string;
@@ -116,7 +116,7 @@ export type SessionAspect = {
 export type AspectName = "archetype" | "desire" | "quest";
 
 /**
- * How many Banes each aspect carries. A mixed overcome roll marks one aspect;
+ * How many Banes each aspect carries. A mixed junction roll marks one aspect;
  * the counts persist between sessions.
  */
 export type AspectBanes = Record<AspectName, number>;
@@ -184,8 +184,8 @@ export type GameState = {
   sessionId: string;
   messages: Message[];
   stonePool: StoneKind[];
-  overcome: Overcome | null;
-  sessionAspects: SessionAspect[];
+  junction: Junction | null;
+  contextAspects: ContextAspect[];
   proposals: Proposal[];
   session: SessionState | null;
   sessionHistory: SessionSummary[];
@@ -212,8 +212,8 @@ export type UpdateSessionGoalInput = {
   goal: string;
 };
 
-export type UseSessionBoonInput = {
-  sessionAspectId: string;
+export type UseContextBoonInput = {
+  contextAspectId: string;
 };
 
 /** `POST /stones/{add,remove}` (23.2): a facilitator hand-edit of the shared
@@ -222,9 +222,9 @@ export type AddOrRemoveStoneInput = {
   kind: StoneKind;
 };
 
-/** `POST /session-aspects` (23.2, widened 23.3): the facilitator plants
+/** `POST /context-aspects` (23.2, widened 23.3): the facilitator plants
  * a session context directly, picking its `kind`. */
-export type AddSessionAspectInput = {
+export type AddContextAspectInput = {
   kind: StoneKind;
   text: string;
 };

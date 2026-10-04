@@ -33,17 +33,17 @@ type Action
     | ReleasingSlot
     | ResolvingProposal Decision String
     | RaisingMove ProposalKind
-    | RollingOvercome
-    | RerollingOvercome
-    | AcceptingOvercome
-    | RejectingOvercome
+    | RollingJunction
+    | RerollingJunction
+    | AcceptingJunction
+    | RejectingJunction
     | AddingStone Stone
     | RemovingStone Stone
-    | AddingSessionAspect
-    | DeletingSessionAspect String
-    | UsingSessionAspect String
-    | UnconsumingSessionAspect String
-    | EditingSessionAspect String
+    | AddingContextAspect
+    | DeletingContextAspect String
+    | UsingContextAspect String
+    | UnconsumingContextAspect String
+    | EditingContextAspect String
     | GrantingFate Int
     | CreatingNpc
     | CreatingLocation
@@ -63,7 +63,7 @@ type Family
     | SlotFamily
     | ProposalFamily
     | MoveFamily
-    | OvercomeFamily
+    | JunctionFamily
     | StonesFamily
     | FateFamily
     | EntityFamily
@@ -88,17 +88,17 @@ family action =
         RaisingMove _ ->
             MoveFamily
 
-        RollingOvercome ->
-            OvercomeFamily
+        RollingJunction ->
+            JunctionFamily
 
-        RerollingOvercome ->
-            OvercomeFamily
+        RerollingJunction ->
+            JunctionFamily
 
-        AcceptingOvercome ->
-            OvercomeFamily
+        AcceptingJunction ->
+            JunctionFamily
 
-        RejectingOvercome ->
-            OvercomeFamily
+        RejectingJunction ->
+            JunctionFamily
 
         AddingStone _ ->
             StonesFamily
@@ -106,19 +106,19 @@ family action =
         RemovingStone _ ->
             StonesFamily
 
-        AddingSessionAspect ->
+        AddingContextAspect ->
             StonesFamily
 
-        DeletingSessionAspect _ ->
+        DeletingContextAspect _ ->
             StonesFamily
 
-        UsingSessionAspect _ ->
+        UsingContextAspect _ ->
             StonesFamily
 
-        UnconsumingSessionAspect _ ->
+        UnconsumingContextAspect _ ->
             StonesFamily
 
-        EditingSessionAspect _ ->
+        EditingContextAspect _ ->
             StonesFamily
 
         GrantingFate _ ->

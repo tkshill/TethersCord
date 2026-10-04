@@ -1471,7 +1471,9 @@ a restructuring, verified by the existing suites plus the new tests it makes
 possible.
 
 - [ ] **25.1 — A pure rules core behind `GameTable`** (the review's top
-      recommendation). The rules are interleaved with D1 awaits: a handler does
+      recommendation; **folded into section 31** on 2026-10-04, whose 31.2 and
+      31.3 write the new Junction and move rules in this shape). The rules are
+      interleaved with D1 awaits: a handler does
       its D1 write, then updates memory, then commits (storage put, message
       insert, broadcast), so a throw between the two leaves D1 ahead of memory,
       and the rules are reachable only through `SELF.fetch`. The review's shape:
@@ -2255,13 +2257,22 @@ a later step deletes.
 
 #### 31.1 Pure rename — no behaviour change
 
-- [ ] Overcome → Junction and session aspect → context aspect everywhere: wire
-      fields, routes, Worker types and handlers, client types, `Msg` /
-      `Effect` / `Action` names, tests, copy. Proposals and the pool are left
-      alone, since 31.2 and 31.3 delete them.
-- [ ] `migrateTableState.ts` (renamed) reads `sessionAspects` into
-      `contextAspects` and an Overcome into a Junction; a test for each.
-- [ ] Both test suites pass with only renamed identifiers.
+- [x] Overcome → Junction and session aspect / boon / bane → context aspect /
+      boon / bane everywhere: wire fields, routes, Worker types and handlers,
+      client types, `Msg` / `Effect` / `Action` names, tests, copy, log text and
+      `CLAUDE.md`. The pool is left alone (31.2 replaces it). Proposals keep
+      their shape, but the parts that name a context aspect follow the rename
+      (`contextAspectId`, the `use-context-boon` kind and route) so no old word
+      survives in code.
+- [x] `migrateStoneState.ts` → `migrateTableState.ts` (and `StoneState` →
+      `TableState`, `KEY_STONES` → `KEY_TABLE_STATE`, the key string still
+      `"stones"`). Its header lists every 31.1 translation. It reads
+      `overcome` into `junction`, `sessionAspects` into `contextAspects`,
+      `sessionAspectId` into `contextAspectId` and `use-session-boon` into
+      `use-context-boon`, preferring the current name when a blob has both. Its
+      tests moved to their own `migrateTableState.test.ts`, with two new ones.
+- [x] Both test suites pass (client 97, worker 103: the 101 before plus the two
+      migration tests).
 
 #### 31.2 Worker — the die ladder
 
@@ -2332,11 +2343,14 @@ a later step deletes.
 - **Equal criticals.** Does volatility at the bottom of the ladder feel right
   at the table, or do players read a bane making context boons likelier as
   backwards?
-- **25.1's `rules/` transition module.** 31.2 and 31.3 rewrite most of the
-  rules handlers anyway. Writing the new Junction and move logic straight into
-  a pure `transition(state, command, deps)` shape would land most of 25.1 for
-  little extra; keeping 31 narrower leaves 25.1 as a later rewrite of fresh
-  code. Decide before 31.2.
+- **25.1's `rules/` transition module — decided (2026-10-04): folded into
+  31.** 31.2 and 31.3 rewrite most of the rules handlers anyway, so the new
+  Junction and move logic is written straight into 25.1's pure
+  `transition(state, command, deps)` shape, with the dice source as an
+  injected dependency (which replaces the overridable `GameTable` source
+  above). A design pass on that interface (`mattpocock-skills:codebase-design`)
+  runs before 31.2. It was not done before 31.1: doing it first would have
+  rebuilt the pool and proposal code 31.2 and 31.3 delete.
 - **Unconsume.** Undo restores a consumed aspect; the separate facilitator
   unconsume may no longer be needed.
 - **Complicate abuse.** It is free and now unapproved; the facilitator's undo

@@ -31,7 +31,7 @@ stoneLabel stone =
 
 {-| `stones` with one occurrence of each of `taken` removed, by kind. Stones carry
 no identity beyond their kind, so this is by count, not position. Used to show
-the pool with a pending Overcome's drawn stones lifted out of it.
+the pool with a pending Junction's drawn stones lifted out of it.
 -}
 without : List Stone -> List Stone -> List Stone
 without taken stones =

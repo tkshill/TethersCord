@@ -1,15 +1,15 @@
-module View.SessionAspects exposing (view)
+module View.ContextAspects exposing (view)
 
-{-| The session boons and banes tool (roadmap 27, the ◇ "Context" tab; formerly
+{-| The context boons and banes tool (roadmap 27, the ◇ "Context" tab; formerly
 the 26.3 card): what the table has established as true, that can be spent into
-the pool. They come from an accepted Overcome pair, an accepted Add Detail, or
+the pool. They come from an accepted Junction pair, an accepted Add Detail, or
 the facilitator directly. Spending one marks it **consumed** — shown struck
 through and tagged "used" — instead of removing it, and a consumed one cannot be
 spent again.
 
-Read-only for players (they spend a session boon from the Moves tool, which
+Read-only for players (they spend a context boon from the Moves tool, which
 proposes it). The facilitator edits the text in place (saved when the field loses
-focus, so a boon an Overcome created can be worded in their own time), uses one
+focus, so a boon a Junction created can be worded in their own time), uses one
 directly (either kind, no approval), unconsumes one to correct a mistake, or
 removes it, and plants a new one through the row at the bottom. Each row leads
 with the kind as a `+` (Boon) or `−` (Bane) mark.
@@ -30,26 +30,26 @@ import View.Helpers exposing (ViewContext, inlineInputAttrs, placeholder)
 
 
 type alias Props =
-    { sessionAspectDraft : String
-    , sessionAspectKind : Stone
+    { contextAspectDraft : String
+    , contextAspectKind : Stone
     , edits : Dict String String
     }
 
 
 view : ViewContext -> Props -> GameState -> Element Msg
 view ctx props gs =
-    if List.isEmpty gs.sessionAspects && not ctx.facilitator then
-        placeholder Copy.noSessionAspects
+    if List.isEmpty gs.contextAspects && not ctx.facilitator then
+        placeholder Copy.noContextAspects
 
     else
         Ui.flat
-            (List.map (row ctx.facilitator ctx.inflight props.edits) gs.sessionAspects
+            (List.map (row ctx.facilitator ctx.inflight props.edits) gs.contextAspects
                 ++ Ui.onlyWhen ctx.facilitator
-                    [ addSessionAspectRow ctx.inflight props.sessionAspectDraft props.sessionAspectKind ]
+                    [ addContextAspectRow ctx.inflight props.contextAspectDraft props.contextAspectKind ]
             )
 
 
-row : Bool -> List Action -> Dict String String -> SessionAspect -> Element Msg
+row : Bool -> List Action -> Dict String String -> ContextAspect -> Element Msg
 row facilitator inflight edits a =
     Element.row
         [ spacing Ui.sm
@@ -63,7 +63,7 @@ row facilitator inflight edits a =
             Input.text
                 (inlineInputAttrs
                     ++ [ width fill
-                       , Ui.onBlur (SaveSessionAspectText a.id)
+                       , Ui.onBlur (SaveContextAspectText a.id)
                        , Border.color Ui.tint
                        ]
                     ++ (if a.consumed then
@@ -73,10 +73,10 @@ row facilitator inflight edits a =
                             []
                        )
                 )
-                { onChange = SessionAspectTextChanged a.id
+                { onChange = ContextAspectTextChanged a.id
                 , text = Dict.get a.id edits |> Maybe.withDefault a.text
                 , placeholder = Nothing
-                , label = Input.labelHidden "Session boon or bane text"
+                , label = Input.labelHidden "Context boon or bane text"
                 }
 
           else
@@ -92,7 +92,7 @@ row facilitator inflight edits a =
                 )
                 [ text a.text ]
         , if a.consumed then
-            el [ Font.size 10, Font.color Ui.inkSoft ] (text Copy.sessionAspectConsumed)
+            el [ Font.size 10, Font.color Ui.inkSoft ] (text Copy.contextAspectConsumed)
 
           else
             none
@@ -100,18 +100,18 @@ row facilitator inflight edits a =
             Element.row [ spacing Ui.sm, Element.centerY ]
                 [ if a.consumed then
                     Ui.linkButton
-                        { onPress = Ui.press inflight (UnconsumingSessionAspect a.id) (UnconsumeSessionAspect a.id)
-                        , label = Copy.sessionAspectUnconsume
+                        { onPress = Ui.press inflight (UnconsumingContextAspect a.id) (UnconsumeContextAspect a.id)
+                        , label = Copy.contextAspectUnconsume
                         }
 
                   else
                     Ui.linkButton
-                        { onPress = Ui.press inflight (UsingSessionAspect a.id) (UseSessionAspect a.id)
-                        , label = Copy.sessionAspectUse
+                        { onPress = Ui.press inflight (UsingContextAspect a.id) (UseContextAspect a.id)
+                        , label = Copy.contextAspectUse
                         }
-                , el [ Element.htmlAttribute (Html.Attributes.title Copy.sessionAspectRemove) ]
+                , el [ Element.htmlAttribute (Html.Attributes.title Copy.contextAspectRemove) ]
                     (Ui.linkButton
-                        { onPress = Ui.press inflight (DeletingSessionAspect a.id) (DeleteSessionAspect a.id)
+                        { onPress = Ui.press inflight (DeletingContextAspect a.id) (DeleteContextAspect a.id)
                         , label = "×"
                         }
                     )
@@ -122,9 +122,9 @@ row facilitator inflight edits a =
         ]
 
 
-{-| A session boon or bane's kind as a mark, faded once it has been consumed.
+{-| A context boon or bane's kind as a mark, faded once it has been consumed.
 -}
-kindMark : SessionAspect -> Element msg
+kindMark : ContextAspect -> Element msg
 kindMark a =
     let
         mark =
@@ -144,8 +144,8 @@ kindMark a =
         mark
 
 
-addSessionAspectRow : List Action -> String -> Stone -> Element Msg
-addSessionAspectRow inflight draft draftKind =
+addContextAspectRow : List Action -> String -> Stone -> Element Msg
+addContextAspectRow inflight draft draftKind =
     let
         canAdd =
             String.trim draft /= ""
@@ -164,13 +164,13 @@ addSessionAspectRow inflight draft draftKind =
                         0.35
                     )
                 ]
-                { onPress = Just (SessionAspectKindChanged kind)
+                { onPress = Just (ContextAspectKindChanged kind)
                 , label = el [ Element.centerX ] (text glyph)
                 }
 
         addMsg =
             if canAdd then
-                Ui.press inflight AddingSessionAspect AddSessionAspect
+                Ui.press inflight AddingContextAspect AddContextAspect
 
             else
                 Nothing
@@ -179,11 +179,11 @@ addSessionAspectRow inflight draft draftKind =
         [ kindButton Boon "+" Ui.accent
         , kindButton Bane "−" Ui.danger
         , Input.text
-            (inlineInputAttrs ++ [ width fill, Ui.onEnter AddSessionAspect ])
-            { onChange = SessionAspectDraftChanged
+            (inlineInputAttrs ++ [ width fill, Ui.onEnter AddContextAspect ])
+            { onChange = ContextAspectDraftChanged
             , text = draft
-            , placeholder = Just (Input.placeholder [] (text Copy.addSessionAspectPlaceholder))
-            , label = Input.labelHidden "New session boon or bane"
+            , placeholder = Just (Input.placeholder [] (text Copy.addContextAspectPlaceholder))
+            , label = Input.labelHidden "New context boon or bane"
             }
-        , Ui.ghostButton { onPress = addMsg, label = Copy.addSessionAspect }
+        , Ui.ghostButton { onPress = addMsg, label = Copy.addContextAspect }
         ]

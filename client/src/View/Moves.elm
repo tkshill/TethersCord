@@ -3,13 +3,13 @@ module View.Moves exposing (view)
 {-| The Moves column (the middle of the three, above the session context), shown
 once the viewer holds a sheet (roadmap 26.3): a real button for each player
 move. Highlight, Complicate and Alter Fate share the first line; Add Detail and
-its suggestion field the second; Use Session Boon, one row per unspent session
+its suggestion field the second; Use Context Boon, one row per unspent session
 boon, follows. Each one queues a proposal for the facilitator; nothing lands
 until they accept it, and the cost of a move is paid only then (`RULES.md`).
 
 A move a player cannot afford is disabled here rather than refused after the
 fact: the Worker checks the cost when the proposal is raised and again when it is
-accepted, but the button says so first. Overcome is not one of these — it needs
+accepted, but the button says so first. Junction is not one of these — it needs
 no approval and lives on the status strip in `View.TopBar`.
 
 The facilitator has no sheet of their own, so they get a read-only look at
@@ -90,7 +90,7 @@ view ctx props gs =
                     , alterMove ctx gs ch
                     ]
                 , addDetailRow ctx props gs ch
-                , useSessionBoonRow ctx gs
+                , useContextBoonRow ctx gs
                 ]
 
 
@@ -117,7 +117,7 @@ selectedCharacter slot gs =
 
 {-| Whether a move's button can be pressed. `Off (Just reason)` names why
 beneath the button; `Off Nothing` is off without comment (Alter Fate outside an
-Overcome, where the button's tooltip already says when it applies).
+Junction, where the button's tooltip already says when it applies).
 -}
 type Availability
     = Available
@@ -218,20 +218,20 @@ complicateMove ctx gs =
         Kind.Complicate
 
 
-{-| Alter Fate is always shown but pressable only while an Overcome is pending.
+{-| Alter Fate is always shown but pressable only while a Junction is pending.
 It is also off for a player who cannot pay, who has already altered this
-Overcome, or while another Alter Fate is waiting (one at a time).
+Junction, or while another Alter Fate is waiting (one at a time).
 -}
 alterMove : ViewContext -> GameState -> CharacterSheet -> Element Msg
 alterMove ctx gs ch =
     let
         availability =
-            case gs.overcome of
+            case gs.junction of
                 Nothing ->
                     Off Nothing
 
-                Just overcome ->
-                    if List.member ch.slot overcome.alteredSlots then
+                Just junction ->
+                    if List.member ch.slot junction.alteredSlots then
                         Off (Just Copy.alterAlreadyUsed)
 
                     else if List.any (\p -> p.kind == Kind.Alter) gs.proposals then
@@ -266,28 +266,28 @@ addDetailRow ctx props gs ch =
         )
 
 
-{-| Each unspent session *boon*. Session banes are the facilitator's to use.
+{-| Each unspent session *boon*. Context banes are the facilitator's to use.
 -}
-useSessionBoonRow : ViewContext -> GameState -> Element Msg
-useSessionBoonRow ctx gs =
+useContextBoonRow : ViewContext -> GameState -> Element Msg
+useContextBoonRow ctx gs =
     let
         spendable =
-            gs.sessionAspects
+            gs.contextAspects
                 |> List.filter (\a -> a.kind == Boon && not a.consumed)
     in
     Element.column [ spacing Ui.xs, width fill ]
         [ if List.isEmpty spendable then
-            el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.noSessionBoons)
+            el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.noContextBoons)
 
           else
             Element.column [ spacing Ui.xs, width fill ]
                 (List.map
                     (\a ->
                         Element.row [ spacing Ui.sm, Element.centerY, width fill ]
-                            [ tip "Session boon"
+                            [ tip "Context boon"
                                 (Ui.ghostButton
-                                    { onPress = movePress ctx Available (RaisingMove Kind.UseSessionBoon) (ProposeUseSessionBoon a.id)
-                                    , label = Copy.useSessionBoonButton
+                                    { onPress = movePress ctx Available (RaisingMove Kind.UseContextBoon) (ProposeUseContextBoon a.id)
+                                    , label = Copy.useContextBoonButton
                                     }
                                 )
                             , Element.paragraph [ Font.size 12 ] [ text a.text ]
@@ -295,5 +295,5 @@ useSessionBoonRow ctx gs =
                     )
                     spendable
                 )
-        , Element.row [ spacing Ui.sm ] (pendingFor ctx gs Kind.UseSessionBoon)
+        , Element.row [ spacing Ui.sm ] (pendingFor ctx gs Kind.UseContextBoon)
         ]

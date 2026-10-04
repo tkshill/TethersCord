@@ -3,7 +3,7 @@ module Api exposing
     , getGameState
     , getMessageHistory
     , postAddDetail
-    , postAddSessionAspect
+    , postAddContextAspect
     , postAddStone
     , postAlter
     , postCharacterUpdate
@@ -12,22 +12,22 @@ module Api exposing
     , postComplicate
     , postCreateEntity
     , postDeleteEntity
-    , postDeleteSessionAspect
+    , postDeleteContextAspect
     , postEndSession
     , postFate
     , postHighlight
     , postMessage
-    , postOvercome
+    , postJunction
     , postProposalDecision
     , postReleaseSlot
     , postRemoveStone
     , postSessionGoal
     , postStartSession
-    , postUnconsumeSessionAspect
+    , postUnconsumeContextAspect
     , postUpdateEntity
-    , postUpdateSessionAspect
-    , postUseSessionAspect
-    , postUseSessionBoon
+    , postUpdateContextAspect
+    , postUseContextAspect
+    , postUseContextBoon
     , postWithdrawProposal
     )
 
@@ -46,7 +46,7 @@ import Json.Encode as Encode
 import Kind
 import Roll exposing (Stone(..), stoneLabel)
 import Time
-import Types exposing (Auth, CharacterSheet, EntityKind, Flags, GameState, Overcome, Proposal, Session, SessionAspect, SessionSummary, TableEntity, decodeMessageKind, decodeRole, entityKindPath)
+import Types exposing (Auth, CharacterSheet, EntityKind, Flags, GameState, Junction, Proposal, Session, ContextAspect, SessionSummary, TableEntity, decodeMessageKind, decodeRole, entityKindPath)
 
 
 
@@ -186,12 +186,12 @@ postHighlight flags auth toMsg =
     postEmpty flags auth "/moves/highlight" toMsg
 
 
-{-| One step of the Overcome loop. `step` is `"roll"` (any player), or
+{-| One step of the Junction loop. `step` is `"roll"` (any player), or
 `"reroll"` / `"accept"` / `"reject"` (facilitator only).
 -}
-postOvercome : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
-postOvercome flags auth step toMsg =
-    postEmpty flags auth ("/overcome/" ++ step) toMsg
+postJunction : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postJunction flags auth step toMsg =
+    postEmpty flags auth ("/junction/" ++ step) toMsg
 
 
 {-| Claim a character sheet for the calling user, or release one. Releasing is
@@ -266,22 +266,22 @@ postAddDetail flags auth text toMsg =
         toMsg
 
 
-{-| Alter Fate: propose paying two boons to reroll the pending Overcome.
+{-| Alter Fate: propose paying two boons to reroll the pending Junction.
 -}
 postAlter : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
 postAlter flags auth toMsg =
     postEmpty flags auth "/moves/alter" toMsg
 
 
-{-| Use Session Boon: propose spending an unconsumed session boon into the pool.
+{-| Use Context Boon: propose spending an unconsumed context boon into the pool.
 -}
-postUseSessionBoon : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
-postUseSessionBoon flags auth sessionAspectId toMsg =
-    postJson flags auth "/moves/use-session-boon" (Encode.object [ ( "sessionAspectId", Encode.string sessionAspectId ) ]) toMsg
+postUseContextBoon : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postUseContextBoon flags auth contextAspectId toMsg =
+    postJson flags auth "/moves/use-context-boon" (Encode.object [ ( "contextAspectId", Encode.string contextAspectId ) ]) toMsg
 
 
 {-| Facilitator-only: add one stone directly to the shared pool, independent of
-any Overcome.
+any Junction.
 -}
 postAddStone : Flags -> Auth -> Stone -> (Result Http.Error () -> msg) -> Cmd msg
 postAddStone flags auth stone toMsg =
@@ -296,14 +296,14 @@ postRemoveStone flags auth stone toMsg =
     postJson flags auth "/stones/remove" (Encode.object [ ( "kind", Encode.string (stoneLabel stone) ) ]) toMsg
 
 
-{-| Facilitator-only: plant a session boon or bane directly, kind and note of
+{-| Facilitator-only: plant a context boon or bane directly, kind and note of
 the facilitator's choosing.
 -}
-postAddSessionAspect : Flags -> Auth -> Stone -> String -> (Result Http.Error () -> msg) -> Cmd msg
-postAddSessionAspect flags auth kind text toMsg =
+postAddContextAspect : Flags -> Auth -> Stone -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postAddContextAspect flags auth kind text toMsg =
     postJson flags
         auth
-        "/session-aspects"
+        "/context-aspects"
         (Encode.object
             [ ( "kind", Encode.string (stoneLabel kind) )
             , ( "text", Encode.string text )
@@ -312,36 +312,36 @@ postAddSessionAspect flags auth kind text toMsg =
         toMsg
 
 
-{-| Facilitator-only: remove a session boon or bane outright.
+{-| Facilitator-only: remove a context boon or bane outright.
 -}
-postDeleteSessionAspect : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
-postDeleteSessionAspect flags auth sessionAspectId toMsg =
-    postEmpty flags auth ("/session-aspects/" ++ sessionAspectId ++ "/delete") toMsg
+postDeleteContextAspect : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postDeleteContextAspect flags auth contextAspectId toMsg =
+    postEmpty flags auth ("/context-aspects/" ++ contextAspectId ++ "/delete") toMsg
 
 
-{-| Facilitator-only: spend a session boon or bane into the pool directly, no
+{-| Facilitator-only: spend a context boon or bane into the pool directly, no
 approval. It is marked consumed, not deleted.
 -}
-postUseSessionAspect : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
-postUseSessionAspect flags auth sessionAspectId toMsg =
-    postEmpty flags auth ("/session-aspects/" ++ sessionAspectId ++ "/use") toMsg
+postUseContextAspect : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postUseContextAspect flags auth contextAspectId toMsg =
+    postEmpty flags auth ("/context-aspects/" ++ contextAspectId ++ "/use") toMsg
 
 
 {-| Facilitator-only: clear a consumed mark, to correct a table miscommunication.
 It does not touch the pool.
 -}
-postUnconsumeSessionAspect : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
-postUnconsumeSessionAspect flags auth sessionAspectId toMsg =
-    postEmpty flags auth ("/session-aspects/" ++ sessionAspectId ++ "/unconsume") toMsg
+postUnconsumeContextAspect : Flags -> Auth -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postUnconsumeContextAspect flags auth contextAspectId toMsg =
+    postEmpty flags auth ("/context-aspects/" ++ contextAspectId ++ "/unconsume") toMsg
 
 
-{-| Facilitator-only: rewrite a session boon or bane's text.
+{-| Facilitator-only: rewrite a context boon or bane's text.
 -}
-postUpdateSessionAspect : Flags -> Auth -> String -> String -> (Result Http.Error () -> msg) -> Cmd msg
-postUpdateSessionAspect flags auth sessionAspectId text toMsg =
+postUpdateContextAspect : Flags -> Auth -> String -> String -> (Result Http.Error () -> msg) -> Cmd msg
+postUpdateContextAspect flags auth contextAspectId text toMsg =
     postJson flags
         auth
-        ("/session-aspects/" ++ sessionAspectId ++ "/update")
+        ("/context-aspects/" ++ contextAspectId ++ "/update")
         (Encode.object [ ( "text", Encode.string text ) ])
         toMsg
 
@@ -361,7 +361,7 @@ postSessionGoal flags auth goal toMsg =
 
 
 {-| Facilitator-only: end the running session. Records it in the history and
-nothing else; the pool, proposals and session boons carry across.
+nothing else; the pool, proposals and context boons carry across.
 -}
 postEndSession : Flags -> Auth -> (Result Http.Error () -> msg) -> Cmd msg
 postEndSession flags auth toMsg =
@@ -439,14 +439,14 @@ decodeProposal =
         (Decode.field "proposerId" Decode.string)
         (Decode.field "proposerName" Decode.string)
         (Decode.field "slot" (Decode.nullable Decode.int))
-        (Decode.field "sessionAspectId" (Decode.nullable Decode.string))
+        (Decode.field "contextAspectId" (Decode.nullable Decode.string))
         (Decode.field "targetSlot" (Decode.nullable Decode.int))
         (Decode.field "text" (Decode.nullable Decode.string))
 
 
-decodeSessionAspect : Decode.Decoder SessionAspect
-decodeSessionAspect =
-    Decode.map5 SessionAspect
+decodeContextAspect : Decode.Decoder ContextAspect
+decodeContextAspect =
+    Decode.map5 ContextAspect
         (Decode.field "id" Decode.string)
         (Decode.field "kind" decodeStone)
         (Decode.field "text" Decode.string)
@@ -454,9 +454,9 @@ decodeSessionAspect =
         (Decode.field "consumed" Decode.bool)
 
 
-decodeOvercome : Decode.Decoder Overcome
-decodeOvercome =
-    Decode.map4 Overcome
+decodeJunction : Decode.Decoder Junction
+decodeJunction =
+    Decode.map4 Junction
         (Decode.field "rolledBy" Decode.string)
         (Decode.field "stones" decodeStoneList)
         (Decode.field "rerolls" Decode.int)
@@ -546,11 +546,11 @@ decodeGameState =
         (Decode.field "sessionId" Decode.string)
         (Decode.field "messages" (Decode.list decodeMessage))
         (Decode.field "stonePool" decodeStoneList)
-        (Decode.field "overcome" (Decode.nullable decodeOvercome))
+        (Decode.field "junction" (Decode.nullable decodeJunction))
         (Decode.field "proposals" (Decode.list decodeProposal))
         (Decode.field "session" (Decode.nullable decodeSession))
         (Decode.field "characters" (Decode.list decodeCharacterSheet))
         (Decode.field "sessionHistory" (Decode.list decodeSessionSummary))
-        |> andMap (Decode.field "sessionAspects" (Decode.list decodeSessionAspect))
+        |> andMap (Decode.field "contextAspects" (Decode.list decodeContextAspect))
         |> andMap (Decode.field "npcs" (Decode.list decodeTableEntity))
         |> andMap (Decode.field "locations" (Decode.list decodeTableEntity))

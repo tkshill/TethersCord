@@ -84,7 +84,7 @@ export async function setOwner(
     .run();
 }
 
-/** Add one Bane to a sheet's aspect (section 19's mixed overcome result). */
+/** Add one Bane to a sheet's aspect (section 19's mixed junction result). */
 export async function incrementAspectBane(
   db: D1Database,
   id: string,

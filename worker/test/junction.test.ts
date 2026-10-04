@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { call, claim, readState, seedAuth } from "./helpers";
 
-// The Overcome loop (roadmap section 26.2): prepare the pool, one player
+// The Junction loop (roadmap section 26.2): prepare the pool, one player
 // rolls, optional Alter Fate rerolls, the facilitator accepts or rejects.
 // Tests act through the routes and observe through the broadcast snapshot and
 // the message log. The draw is random, so a test that needs a known result
@@ -33,26 +33,26 @@ async function shapePool(
   }
 }
 
-describe("Overcome: rolling", () => {
+describe("Junction: rolling", () => {
   it("lets any player roll: two stones are drawn, the pool is untouched, and the roll is logged", async () => {
     const table = "oc-roll";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const { token: player, username } = await seedAuth();
 
     const before = await readState(table, fac);
-    const res = await call(table, "/overcome/roll", { token: player });
+    const res = await call(table, "/junction/roll", { token: player });
     expect(res.status).toBe(204);
 
     const state = await readState(table, fac);
     expect(state.stonePool).toEqual(before.stonePool);
-    expect(state.overcome).toMatchObject({
+    expect(state.junction).toMatchObject({
       rolledBy: username,
       rerolls: 0,
       alteredSlots: [],
     });
-    expect(state.overcome?.stones).toHaveLength(2);
+    expect(state.junction?.stones).toHaveLength(2);
     expect(state.messages.at(-1)?.content).toMatch(
-      new RegExp(`^Overcome — ${username} rolled: (Boon|Bane), (Boon|Bane)$`),
+      new RegExp(`^Junction — ${username} rolled: (Boon|Bane), (Boon|Bane)$`),
     );
   });
 
@@ -61,71 +61,71 @@ describe("Overcome: rolling", () => {
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const { token: player } = await seedAuth();
 
-    expect((await call(table, "/overcome/roll", { token: player })).status).toBe(
+    expect((await call(table, "/junction/roll", { token: player })).status).toBe(
       204,
     );
-    const first = (await readState(table, fac)).overcome;
+    const first = (await readState(table, fac)).junction;
 
-    const second = await call(table, "/overcome/roll", { token: fac });
+    const second = await call(table, "/junction/roll", { token: fac });
     expect(second.status).toBe(409);
-    expect((await readState(table, fac)).overcome).toEqual(first);
+    expect((await readState(table, fac)).junction).toEqual(first);
   });
 });
 
-describe("Overcome: accepting", () => {
+describe("Junction: accepting", () => {
   it("resets the pool to two Boon and two Bane and clears the pending roll", async () => {
     const table = "oc-accept-reset";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const { token: player } = await seedAuth();
 
     await shapePool(table, fac, 5, 1);
-    await call(table, "/overcome/roll", { token: player });
+    await call(table, "/junction/roll", { token: player });
 
-    const res = await call(table, "/overcome/accept", { token: fac });
+    const res = await call(table, "/junction/accept", { token: fac });
     expect(res.status).toBe(204);
 
     const state = await readState(table, fac);
-    expect(state.overcome).toBeNull();
+    expect(state.junction).toBeNull();
     expect(state.stonePool.filter((s) => s === "Boon")).toHaveLength(2);
     expect(state.stonePool.filter((s) => s === "Bane")).toHaveLength(2);
   });
 
-  it("creates a session boon, credited to the roller, when two Boons were drawn", async () => {
+  it("creates a context boon, credited to the roller, when two Boons were drawn", async () => {
     const table = "oc-accept-boon-pair";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const { token: player, username } = await seedAuth();
 
     await shapePool(table, fac, 4, 0);
-    await call(table, "/overcome/roll", { token: player });
-    await call(table, "/overcome/accept", { token: fac });
+    await call(table, "/junction/roll", { token: player });
+    await call(table, "/junction/accept", { token: fac });
 
     const state = await readState(table, fac);
-    expect(state.sessionAspects).toHaveLength(1);
-    expect(state.sessionAspects[0]).toMatchObject({
+    expect(state.contextAspects).toHaveLength(1);
+    expect(state.contextAspects[0]).toMatchObject({
       kind: "Boon",
       createdByName: username,
       consumed: false,
     });
-    expect(state.sessionAspects[0].text).not.toBe("");
+    expect(state.contextAspects[0].text).not.toBe("");
     expect(state.messages.at(-1)?.content).toBe(
-      "Overcome accepted — Boon, Boon (session boon added)",
+      "Junction accepted — Boon, Boon (context boon added)",
     );
   });
 
-  it("creates a session bane when two Banes were drawn", async () => {
+  it("creates a context bane when two Banes were drawn", async () => {
     const table = "oc-accept-bane-pair";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const { token: player } = await seedAuth();
 
     await shapePool(table, fac, 0, 4);
-    await call(table, "/overcome/roll", { token: player });
-    await call(table, "/overcome/accept", { token: fac });
+    await call(table, "/junction/roll", { token: player });
+    await call(table, "/junction/accept", { token: fac });
 
     const state = await readState(table, fac);
-    expect(state.sessionAspects).toHaveLength(1);
-    expect(state.sessionAspects[0]).toMatchObject({ kind: "Bane" });
+    expect(state.contextAspects).toHaveLength(1);
+    expect(state.contextAspects[0]).toMatchObject({ kind: "Bane" });
     expect(state.messages.at(-1)?.content).toBe(
-      "Overcome accepted — Bane, Bane (session bane added)",
+      "Junction accepted — Bane, Bane (context bane added)",
     );
   });
 
@@ -135,13 +135,13 @@ describe("Overcome: accepting", () => {
     const { token: player } = await seedAuth();
 
     await shapePool(table, fac, 1, 1);
-    await call(table, "/overcome/roll", { token: player });
-    await call(table, "/overcome/accept", { token: fac });
+    await call(table, "/junction/roll", { token: player });
+    await call(table, "/junction/accept", { token: fac });
 
     const state = await readState(table, fac);
-    expect(state.sessionAspects).toHaveLength(0);
+    expect(state.contextAspects).toHaveLength(0);
     expect(state.messages.at(-1)?.content).toMatch(
-      /^Overcome accepted — (Boon, Bane|Bane, Boon)$/,
+      /^Junction accepted — (Boon, Bane|Bane, Boon)$/,
     );
   });
 
@@ -150,40 +150,40 @@ describe("Overcome: accepting", () => {
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const { token: player } = await seedAuth();
 
-    expect((await call(table, "/overcome/accept", { token: fac })).status).toBe(
+    expect((await call(table, "/junction/accept", { token: fac })).status).toBe(
       409,
     );
-    await call(table, "/overcome/roll", { token: player });
+    await call(table, "/junction/roll", { token: player });
     expect(
-      (await call(table, "/overcome/accept", { token: player })).status,
+      (await call(table, "/junction/accept", { token: player })).status,
     ).toBe(403);
-    expect((await readState(table, fac)).overcome).not.toBeNull();
+    expect((await readState(table, fac)).junction).not.toBeNull();
   });
 });
 
-describe("Overcome: rejecting", () => {
+describe("Junction: rejecting", () => {
   it("discards the pending roll and changes nothing else", async () => {
     const table = "oc-reject";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const { token: player } = await seedAuth();
 
     await shapePool(table, fac, 4, 0);
-    await call(table, "/overcome/roll", { token: player });
+    await call(table, "/junction/roll", { token: player });
     const before = await readState(table, fac);
 
-    const res = await call(table, "/overcome/reject", { token: fac });
+    const res = await call(table, "/junction/reject", { token: fac });
     expect(res.status).toBe(204);
 
     const state = await readState(table, fac);
-    expect(state.overcome).toBeNull();
+    expect(state.junction).toBeNull();
     expect(state.stonePool).toEqual(before.stonePool); // not reset
-    expect(state.sessionAspects).toHaveLength(0); // a pair creates nothing on reject
+    expect(state.contextAspects).toHaveLength(0); // a pair creates nothing on reject
     expect(state.messages.at(-1)?.content).toBe(
-      "Overcome rejected — the roll is discarded",
+      "Junction rejected — the roll is discarded",
     );
 
     // The table can roll again.
-    expect((await call(table, "/overcome/roll", { token: player })).status).toBe(
+    expect((await call(table, "/junction/roll", { token: player })).status).toBe(
       204,
     );
   });
@@ -193,33 +193,33 @@ describe("Overcome: rejecting", () => {
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const { token: player } = await seedAuth();
 
-    expect((await call(table, "/overcome/reject", { token: fac })).status).toBe(
+    expect((await call(table, "/junction/reject", { token: fac })).status).toBe(
       409,
     );
-    await call(table, "/overcome/roll", { token: player });
+    await call(table, "/junction/roll", { token: player });
     expect(
-      (await call(table, "/overcome/reject", { token: player })).status,
+      (await call(table, "/junction/reject", { token: player })).status,
     ).toBe(403);
   });
 });
 
-describe("Overcome: the facilitator's free reroll", () => {
+describe("Junction: the facilitator's free reroll", () => {
   it("redraws from the pool, counts the reroll, and logs it", async () => {
     const table = "oc-reroll";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const { token: player } = await seedAuth();
 
     await shapePool(table, fac, 4, 0);
-    await call(table, "/overcome/roll", { token: player });
+    await call(table, "/junction/roll", { token: player });
     const before = await readState(table, fac);
 
-    const res = await call(table, "/overcome/reroll", { token: fac });
+    const res = await call(table, "/junction/reroll", { token: fac });
     expect(res.status).toBe(204);
 
     const state = await readState(table, fac);
-    expect(state.overcome?.rerolls).toBe(1);
-    expect(state.overcome?.stones).toEqual(["Boon", "Boon"]);
-    expect(state.overcome?.rolledBy).toBe(before.overcome?.rolledBy);
+    expect(state.junction?.rerolls).toBe(1);
+    expect(state.junction?.stones).toEqual(["Boon", "Boon"]);
+    expect(state.junction?.rolledBy).toBe(before.junction?.rolledBy);
     expect(state.stonePool).toEqual(before.stonePool);
     expect(state.messages.at(-1)?.content).toBe("Reroll — Boon, Boon");
   });
@@ -229,27 +229,27 @@ describe("Overcome: the facilitator's free reroll", () => {
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const { token: player } = await seedAuth();
 
-    expect((await call(table, "/overcome/reroll", { token: fac })).status).toBe(
+    expect((await call(table, "/junction/reroll", { token: fac })).status).toBe(
       409,
     );
-    await call(table, "/overcome/roll", { token: player });
+    await call(table, "/junction/roll", { token: player });
     expect(
-      (await call(table, "/overcome/reroll", { token: player })).status,
+      (await call(table, "/junction/reroll", { token: player })).status,
     ).toBe(403);
   });
 });
 
-describe("Session boons and banes", () => {
+describe("Context boons and banes", () => {
   async function plant(
     table: string,
     fac: string,
     kind: "Boon" | "Bane",
     text = "a note",
   ): Promise<string> {
-    await call(table, "/session-aspects", { token: fac, body: { kind, text } });
+    await call(table, "/context-aspects", { token: fac, body: { kind, text } });
     const state = await readState(table, fac);
-    const found = state.sessionAspects.find((a) => a.text === text);
-    if (!found) throw new Error("session aspect not created");
+    const found = state.contextAspects.find((a) => a.text === text);
+    if (!found) throw new Error("context aspect not created");
     return found.id;
   }
 
@@ -258,15 +258,15 @@ describe("Session boons and banes", () => {
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
 
     const id = await plant(table, fac, "Bane", "the guard suspects");
-    const res = await call(table, `/session-aspects/${id}/use`, { token: fac });
+    const res = await call(table, `/context-aspects/${id}/use`, { token: fac });
     expect(res.status).toBe(204);
 
     const state = await readState(table, fac);
     expect(state.stonePool.filter((s) => s === "Bane")).toHaveLength(3);
-    expect(state.sessionAspects).toHaveLength(1);
-    expect(state.sessionAspects[0]).toMatchObject({ id, consumed: true });
+    expect(state.contextAspects).toHaveLength(1);
+    expect(state.contextAspects[0]).toMatchObject({ id, consumed: true });
     expect(state.messages.at(-1)?.content).toBe(
-      "Session bane used — the guard suspects",
+      "Context bane used — the guard suspects",
     );
   });
 
@@ -275,8 +275,8 @@ describe("Session boons and banes", () => {
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
 
     const id = await plant(table, fac, "Boon");
-    await call(table, `/session-aspects/${id}/use`, { token: fac });
-    const again = await call(table, `/session-aspects/${id}/use`, { token: fac });
+    await call(table, `/context-aspects/${id}/use`, { token: fac });
+    const again = await call(table, `/context-aspects/${id}/use`, { token: fac });
     expect(again.status).toBe(409);
 
     const state = await readState(table, fac);
@@ -288,17 +288,17 @@ describe("Session boons and banes", () => {
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
 
     const id = await plant(table, fac, "Boon");
-    await call(table, `/session-aspects/${id}/use`, { token: fac });
-    const res = await call(table, `/session-aspects/${id}/unconsume`, {
+    await call(table, `/context-aspects/${id}/use`, { token: fac });
+    const res = await call(table, `/context-aspects/${id}/unconsume`, {
       token: fac,
     });
     expect(res.status).toBe(204);
 
     const state = await readState(table, fac);
-    expect(state.sessionAspects[0].consumed).toBe(false);
+    expect(state.contextAspects[0].consumed).toBe(false);
     expect(state.stonePool.filter((s) => s === "Boon")).toHaveLength(3);
 
-    const notConsumed = await call(table, `/session-aspects/${id}/unconsume`, {
+    const notConsumed = await call(table, `/context-aspects/${id}/unconsume`, {
       token: fac,
     });
     expect(notConsumed.status).toBe(409);
@@ -309,16 +309,16 @@ describe("Session boons and banes", () => {
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
 
     const id = await plant(table, fac, "Boon", "first wording");
-    const res = await call(table, `/session-aspects/${id}/update`, {
+    const res = await call(table, `/context-aspects/${id}/update`, {
       token: fac,
       body: { text: "second wording" },
     });
     expect(res.status).toBe(204);
-    expect((await readState(table, fac)).sessionAspects[0].text).toBe(
+    expect((await readState(table, fac)).contextAspects[0].text).toBe(
       "second wording",
     );
 
-    const blank = await call(table, `/session-aspects/${id}/update`, {
+    const blank = await call(table, `/context-aspects/${id}/update`, {
       token: fac,
       body: { text: "  " },
     });
@@ -332,7 +332,7 @@ describe("Session boons and banes", () => {
 
     const id = await plant(table, fac, "Boon");
     for (const action of ["use", "unconsume", "update"]) {
-      const res = await call(table, `/session-aspects/${id}/${action}`, {
+      const res = await call(table, `/context-aspects/${id}/${action}`, {
         token: player,
         body: { text: "x" },
       });
@@ -341,7 +341,7 @@ describe("Session boons and banes", () => {
 
     const missing = crypto.randomUUID();
     for (const action of ["use", "unconsume", "update"]) {
-      const res = await call(table, `/session-aspects/${missing}/${action}`, {
+      const res = await call(table, `/context-aspects/${missing}/${action}`, {
         token: fac,
         body: { text: "x" },
       });
@@ -467,12 +467,12 @@ describe("Move: Highlight", () => {
     expect(state.stonePool).toHaveLength(4);
   });
 
-  it("is not blocked by a pending Overcome — the frozen pool is a table rule", async () => {
+  it("is not blocked by a pending Junction — the frozen pool is a table rule", async () => {
     const table = "mv-hl-not-locked";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const ada = await seatPlayer(table, fac, 0, 1);
 
-    await call(table, "/overcome/roll", { token: ada.token });
+    await call(table, "/junction/roll", { token: ada.token });
     await call(table, "/moves/highlight", { token: ada.token });
     const id = await firstProposalId(table, fac);
     expect(
@@ -616,7 +616,7 @@ describe("Move: Add Detail", () => {
     ).toBe(400);
   });
 
-  it("on accept costs the player one boon and creates a session boon with the facilitator's wording", async () => {
+  it("on accept costs the player one boon and creates a context boon with the facilitator's wording", async () => {
     const table = "mv-ad-accept";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const ada = await seatPlayer(table, fac, 0, 2);
@@ -635,8 +635,8 @@ describe("Move: Add Detail", () => {
     const state = await readState(table, fac);
     expect(state.proposals).toHaveLength(0);
     expect(fateOf(state, 0)).toBe(1);
-    expect(state.sessionAspects).toHaveLength(1);
-    expect(state.sessionAspects[0]).toMatchObject({
+    expect(state.contextAspects).toHaveLength(1);
+    expect(state.contextAspects[0]).toMatchObject({
       kind: "Boon",
       text: "the door is barred from the inside",
       createdByName: ada.username,
@@ -665,7 +665,7 @@ describe("Move: Add Detail", () => {
       body: { text: "  " },
     });
 
-    const aspects = (await readState(table, fac)).sessionAspects;
+    const aspects = (await readState(table, fac)).contextAspects;
     expect(aspects[0].text).toBe("a suggestion");
     expect(aspects[1].text).toBe(`Detail from ${ada.username}`);
   });
@@ -685,7 +685,7 @@ describe("Move: Add Detail", () => {
 
     await call(table, `/proposals/${id}/reject`, { token: fac });
     const state = await readState(table, fac);
-    expect(state.sessionAspects).toHaveLength(0);
+    expect(state.contextAspects).toHaveLength(0);
     expect(state.messages.at(-1)?.content).toBe(
       "Add Detail rejected — Character 1",
     );
@@ -693,19 +693,19 @@ describe("Move: Add Detail", () => {
 });
 
 describe("Move: Alter Fate", () => {
-  /** A table with a pending Overcome (pool shaped to all Boons) and two players. */
-  async function pendingOvercome(table: string) {
+  /** A table with a pending Junction (pool shaped to all Boons) and two players. */
+  async function pendingJunction(table: string) {
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const ada = await seatPlayer(table, fac, 0, 3);
     const bea = await seatPlayer(table, fac, 1, 3);
     await shapePool(table, fac, 4, 0);
-    await call(table, "/overcome/roll", { token: ada.token });
+    await call(table, "/junction/roll", { token: ada.token });
     return { fac, ada, bea };
   }
 
-  it("queues a proposal during a pending Overcome and logs it, taking no boons yet", async () => {
+  it("queues a proposal during a pending Junction and logs it, taking no boons yet", async () => {
     const table = "mv-al-propose";
-    const { fac, ada } = await pendingOvercome(table);
+    const { fac, ada } = await pendingJunction(table);
 
     const res = await call(table, "/moves/alter", { token: ada.token });
     expect(res.status).toBe(204);
@@ -716,19 +716,19 @@ describe("Move: Alter Fate", () => {
     expect(state.messages.at(-1)?.content).toBe("Character 1 proposes Alter Fate");
   });
 
-  it("cannot be proposed without a pending Overcome, a sheet, or two boons", async () => {
+  it("cannot be proposed without a pending Junction, a sheet, or two boons", async () => {
     const table = "mv-al-gates";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const rich = await seatPlayer(table, fac, 0, 3);
     const poor = await seatPlayer(table, fac, 1, 1);
     const { token: unseated } = await seedAuth();
 
-    // No Overcome yet.
+    // No Junction yet.
     expect((await call(table, "/moves/alter", { token: rich.token })).status).toBe(
       409,
     );
 
-    await call(table, "/overcome/roll", { token: rich.token });
+    await call(table, "/junction/roll", { token: rich.token });
     expect((await call(table, "/moves/alter", { token: unseated })).status).toBe(
       400,
     );
@@ -740,7 +740,7 @@ describe("Move: Alter Fate", () => {
 
   it("allows only one pending Alter Fate at a time", async () => {
     const table = "mv-al-one-at-a-time";
-    const { ada, bea } = await pendingOvercome(table);
+    const { ada, bea } = await pendingJunction(table);
 
     expect((await call(table, "/moves/alter", { token: ada.token })).status).toBe(
       204,
@@ -752,7 +752,7 @@ describe("Move: Alter Fate", () => {
 
   it("on accept costs two boons, rerolls the stones, and marks the player as having altered", async () => {
     const table = "mv-al-accept";
-    const { fac, ada } = await pendingOvercome(table);
+    const { fac, ada } = await pendingJunction(table);
 
     await call(table, "/moves/alter", { token: ada.token });
     const id = await firstProposalId(table, fac);
@@ -762,22 +762,22 @@ describe("Move: Alter Fate", () => {
     const state = await readState(table, fac);
     expect(state.proposals).toHaveLength(0);
     expect(fateOf(state, 0)).toBe(1);
-    expect(state.overcome).toMatchObject({ rerolls: 1, alteredSlots: [0] });
-    expect(state.overcome?.stones).toEqual(["Boon", "Boon"]);
+    expect(state.junction).toMatchObject({ rerolls: 1, alteredSlots: [0] });
+    expect(state.junction?.stones).toEqual(["Boon", "Boon"]);
     expect(state.messages.at(-1)?.content).toBe(
       "Alter Fate accepted — Character 1 pays 2 boons, rerolled: Boon, Boon",
     );
   });
 
-  it("allows each player one Alter Fate per Overcome, but another player may still alter", async () => {
+  it("allows each player one Alter Fate per Junction, but another player may still alter", async () => {
     const table = "mv-al-once-each";
-    const { fac, ada, bea } = await pendingOvercome(table);
+    const { fac, ada, bea } = await pendingJunction(table);
 
     await call(table, "/moves/alter", { token: ada.token });
     await call(table, `/proposals/${await firstProposalId(table, fac)}/accept`, {
       token: fac,
     });
-    // Plenty of boons left: the limit is the once-per-Overcome rule, not cost.
+    // Plenty of boons left: the limit is the once-per-Junction rule, not cost.
     await call(table, "/characters/0/fate", { token: fac, body: { delta: 3 } });
 
     expect((await call(table, "/moves/alter", { token: ada.token })).status).toBe(
@@ -790,7 +790,7 @@ describe("Move: Alter Fate", () => {
 
   it("a rejected Alter Fate costs nothing and does not use up the attempt", async () => {
     const table = "mv-al-reject";
-    const { fac, ada } = await pendingOvercome(table);
+    const { fac, ada } = await pendingJunction(table);
 
     await call(table, "/moves/alter", { token: ada.token });
     await call(table, `/proposals/${await firstProposalId(table, fac)}/reject`, {
@@ -799,7 +799,7 @@ describe("Move: Alter Fate", () => {
 
     const state = await readState(table, fac);
     expect(fateOf(state, 0)).toBe(3);
-    expect(state.overcome).toMatchObject({ rerolls: 0, alteredSlots: [] });
+    expect(state.junction).toMatchObject({ rerolls: 0, alteredSlots: [] });
     expect(state.messages.at(-1)?.content).toBe("Alter Fate rejected — Character 1");
     expect((await call(table, "/moves/alter", { token: ada.token })).status).toBe(
       204,
@@ -808,7 +808,7 @@ describe("Move: Alter Fate", () => {
 
   it("is checked again on accept: 409 when the player can no longer pay, proposal stays queued", async () => {
     const table = "mv-al-recheck";
-    const { fac, ada } = await pendingOvercome(table);
+    const { fac, ada } = await pendingJunction(table);
 
     await call(table, "/moves/alter", { token: ada.token });
     await call(table, "/characters/0/fate", { token: fac, body: { delta: -2 } });
@@ -819,89 +819,89 @@ describe("Move: Alter Fate", () => {
     ).toBe(409);
     const state = await readState(table, fac);
     expect(state.proposals).toHaveLength(1);
-    expect(state.overcome?.rerolls).toBe(0);
+    expect(state.junction?.rerolls).toBe(0);
   });
 
-  it("withdraws a queued Alter Fate when the Overcome is rejected or accepted, without charging for it", async () => {
+  it("withdraws a queued Alter Fate when the Junction is rejected or accepted, without charging for it", async () => {
     const table = "mv-al-resolve";
-    const { fac, ada } = await pendingOvercome(table);
+    const { fac, ada } = await pendingJunction(table);
 
     await call(table, "/moves/alter", { token: ada.token });
-    await call(table, "/overcome/reject", { token: fac });
+    await call(table, "/junction/reject", { token: fac });
     let state = await readState(table, fac);
     expect(state.proposals).toHaveLength(0);
     expect(fateOf(state, 0)).toBe(3);
 
-    await call(table, "/overcome/roll", { token: ada.token });
+    await call(table, "/junction/roll", { token: ada.token });
     await call(table, "/moves/alter", { token: ada.token });
-    await call(table, "/overcome/accept", { token: fac });
+    await call(table, "/junction/accept", { token: fac });
     state = await readState(table, fac);
     expect(state.proposals).toHaveLength(0);
     expect(fateOf(state, 0)).toBe(3);
   });
 
-  it("starts every Overcome with nobody having altered", async () => {
+  it("starts every Junction with nobody having altered", async () => {
     const table = "mv-al-fresh";
-    const { fac, ada } = await pendingOvercome(table);
+    const { fac, ada } = await pendingJunction(table);
 
     await call(table, "/moves/alter", { token: ada.token });
     await call(table, `/proposals/${await firstProposalId(table, fac)}/accept`, {
       token: fac,
     });
-    await call(table, "/overcome/accept", { token: fac });
+    await call(table, "/junction/accept", { token: fac });
     await call(table, "/characters/0/fate", { token: fac, body: { delta: 3 } });
 
-    await call(table, "/overcome/roll", { token: ada.token });
+    await call(table, "/junction/roll", { token: ada.token });
     const state = await readState(table, fac);
-    expect(state.overcome?.alteredSlots).toEqual([]);
+    expect(state.junction?.alteredSlots).toEqual([]);
     expect((await call(table, "/moves/alter", { token: ada.token })).status).toBe(
       204,
     );
   });
 });
 
-describe("Move: Use Session Boon", () => {
-  async function tableWithSessionBoon(table: string, kind: "Boon" | "Bane" = "Boon") {
+describe("Move: Use Context Boon", () => {
+  async function tableWithContextBoon(table: string, kind: "Boon" | "Bane" = "Boon") {
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const ada = await seatPlayer(table, fac, 0, 0);
-    await call(table, "/session-aspects", {
+    await call(table, "/context-aspects", {
       token: fac,
       body: { kind, text: "the guard is distracted" },
     });
-    const id = (await readState(table, fac)).sessionAspects[0].id;
+    const id = (await readState(table, fac)).contextAspects[0].id;
     return { fac, ada, id };
   }
 
   it("queues a proposal and logs it; nothing is spent until the facilitator accepts", async () => {
     const table = "mv-us-propose";
-    const { fac, ada, id } = await tableWithSessionBoon(table);
+    const { fac, ada, id } = await tableWithContextBoon(table);
 
-    const res = await call(table, "/moves/use-session-boon", {
+    const res = await call(table, "/moves/use-context-boon", {
       token: ada.token,
-      body: { sessionAspectId: id },
+      body: { contextAspectId: id },
     });
     expect(res.status).toBe(204);
 
     const state = await readState(table, fac);
     expect(state.proposals[0]).toMatchObject({
-      kind: "use-session-boon",
+      kind: "use-context-boon",
       slot: 0,
-      sessionAspectId: id,
+      contextAspectId: id,
     });
-    expect(state.sessionAspects[0].consumed).toBe(false);
+    expect(state.contextAspects[0].consumed).toBe(false);
     expect(state.stonePool).toHaveLength(4);
     expect(state.messages.at(-1)?.content).toBe(
-      "Character 1 proposes Use Session Boon",
+      "Character 1 proposes Use Context Boon",
     );
   });
 
   it("on accept marks it consumed (kept, not deleted) and adds a Boon to the pool", async () => {
     const table = "mv-us-accept";
-    const { fac, ada, id } = await tableWithSessionBoon(table);
+    const { fac, ada, id } = await tableWithContextBoon(table);
 
-    await call(table, "/moves/use-session-boon", {
+    await call(table, "/moves/use-context-boon", {
       token: ada.token,
-      body: { sessionAspectId: id },
+      body: { contextAspectId: id },
     });
     const res = await call(
       table,
@@ -912,40 +912,40 @@ describe("Move: Use Session Boon", () => {
 
     const state = await readState(table, fac);
     expect(state.proposals).toHaveLength(0);
-    expect(state.sessionAspects).toHaveLength(1);
-    expect(state.sessionAspects[0].consumed).toBe(true);
+    expect(state.contextAspects).toHaveLength(1);
+    expect(state.contextAspects[0].consumed).toBe(true);
     expect(state.stonePool.filter((s) => s === "Boon")).toHaveLength(3);
     expect(state.messages.at(-1)?.content).toBe(
-      "Use Session Boon accepted — Character 1 spends the guard is distracted; the pool gains a Boon",
+      "Use Context Boon accepted — Character 1 spends the guard is distracted; the pool gains a Boon",
     );
   });
 
   it("on reject changes nothing and logs the rejection", async () => {
     const table = "mv-us-reject";
-    const { fac, ada, id } = await tableWithSessionBoon(table);
+    const { fac, ada, id } = await tableWithContextBoon(table);
 
-    await call(table, "/moves/use-session-boon", {
+    await call(table, "/moves/use-context-boon", {
       token: ada.token,
-      body: { sessionAspectId: id },
+      body: { contextAspectId: id },
     });
     await call(table, `/proposals/${await firstProposalId(table, fac)}/reject`, {
       token: fac,
     });
 
     const state = await readState(table, fac);
-    expect(state.sessionAspects[0].consumed).toBe(false);
+    expect(state.contextAspects[0].consumed).toBe(false);
     expect(state.stonePool).toHaveLength(4);
     expect(state.messages.at(-1)?.content).toBe(
-      "Use Session Boon rejected — Character 1",
+      "Use Context Boon rejected — Character 1",
     );
   });
 
   it("refuses an unknown, consumed, already-proposed, or Bane one, and needs a sheet", async () => {
     const table = "mv-us-refuse";
-    const { fac, ada, id } = await tableWithSessionBoon(table);
+    const { fac, ada, id } = await tableWithContextBoon(table);
     const { token: unseated } = await seedAuth();
-    const use = (token: string, sessionAspectId: string) =>
-      call(table, "/moves/use-session-boon", { token, body: { sessionAspectId } });
+    const use = (token: string, contextAspectId: string) =>
+      call(table, "/moves/use-context-boon", { token, body: { contextAspectId } });
 
     expect((await use(unseated, id)).status).toBe(400);
     expect((await use(ada.token, crypto.randomUUID())).status).toBe(404);
@@ -957,14 +957,14 @@ describe("Move: Use Session Boon", () => {
     await call(table, `/proposals/${await firstProposalId(table, fac)}/reject`, {
       token: fac,
     });
-    await call(table, `/session-aspects/${id}/use`, { token: fac });
+    await call(table, `/context-aspects/${id}/use`, { token: fac });
     expect((await use(ada.token, id)).status).toBe(409); // consumed
 
-    await call(table, "/session-aspects", {
+    await call(table, "/context-aspects", {
       token: fac,
       body: { kind: "Bane", text: "a looming threat" },
     });
-    const bane = (await readState(table, fac)).sessionAspects.find(
+    const bane = (await readState(table, fac)).contextAspects.find(
       (a) => a.kind === "Bane",
     );
     expect((await use(ada.token, bane!.id)).status).toBe(400); // banes: facilitator only
@@ -972,13 +972,13 @@ describe("Move: Use Session Boon", () => {
 
   it("is checked again on accept: 409 if it was consumed meanwhile, and the proposal stays queued", async () => {
     const table = "mv-us-recheck";
-    const { fac, ada, id } = await tableWithSessionBoon(table);
+    const { fac, ada, id } = await tableWithContextBoon(table);
 
-    await call(table, "/moves/use-session-boon", {
+    await call(table, "/moves/use-context-boon", {
       token: ada.token,
-      body: { sessionAspectId: id },
+      body: { contextAspectId: id },
     });
-    await call(table, `/session-aspects/${id}/use`, { token: fac });
+    await call(table, `/context-aspects/${id}/use`, { token: fac });
     const poolAfterDirectUse = (await readState(table, fac)).stonePool;
 
     const res = await call(
@@ -994,19 +994,19 @@ describe("Move: Use Session Boon", () => {
 });
 
 describe("Sessions", () => {
-  it("starting and ending a session touch nothing but the goal and history: pool, proposals, session boons and banes, and a pending Overcome all survive", async () => {
+  it("starting and ending a session touch nothing but the goal and history: pool, proposals, context boons and banes, and a pending Junction all survive", async () => {
     const table = "ss-inert";
     const { token: fac } = await seedAuth(undefined, { facilitator: true });
     const ada = await seatPlayer(table, fac, 0, 2);
 
     // Leave the pool below the old top-up floor, with everything pending.
     await shapePool(table, fac, 1, 0);
-    await call(table, "/session-aspects", {
+    await call(table, "/context-aspects", {
       token: fac,
       body: { kind: "Boon", text: "carries across" },
     });
     await call(table, "/moves/highlight", { token: ada.token });
-    await call(table, "/overcome/roll", { token: ada.token });
+    await call(table, "/junction/roll", { token: ada.token });
     const before = await readState(table, fac);
 
     const started = await call(table, "/session/start", {
@@ -1018,8 +1018,8 @@ describe("Sessions", () => {
     expect(state.session?.goal).toBe("Reach the archive");
     expect(state.stonePool).toEqual(before.stonePool);
     expect(state.proposals).toEqual(before.proposals);
-    expect(state.sessionAspects).toEqual(before.sessionAspects);
-    expect(state.overcome).toEqual(before.overcome);
+    expect(state.contextAspects).toEqual(before.contextAspects);
+    expect(state.junction).toEqual(before.junction);
 
     const ended = await call(table, "/session/end", { token: fac });
     expect(ended.status).toBe(204);
@@ -1028,8 +1028,8 @@ describe("Sessions", () => {
     expect(state.sessionHistory).toHaveLength(1);
     expect(state.stonePool).toEqual(before.stonePool); // no top-up
     expect(state.proposals).toEqual(before.proposals);
-    expect(state.sessionAspects).toEqual(before.sessionAspects);
-    expect(state.overcome).toEqual(before.overcome);
+    expect(state.contextAspects).toEqual(before.contextAspects);
+    expect(state.junction).toEqual(before.junction);
     expect(state.messages.at(-1)?.content).toBe(
       "Session ended — Reach the archive",
     );
