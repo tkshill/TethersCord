@@ -5,16 +5,24 @@
 // table and its log lines, or a refusal. It never awaits, writes, or reads the
 // clock or randomness except through `deps`; `GameTable` persists the result.
 //
-// Not yet here (roadmap 31.2b, 31.3): the Junction, the stone pool, using or
-// unconsuming a context aspect, and the proposal queue, which still run on
-// `GameTable`'s legacy `commit` path.
+// Not yet here (roadmap 31.3): the proposal queue, which still runs on
+// `GameTable`'s legacy `commit` path until direct moves replace it.
 
 import {
   addContextAspect,
   deleteContextAspect,
+  unconsumeContextAspect,
   updateContextAspect,
+  useContextAspect,
 } from "./context";
 import { createEntity, deleteEntity, updateEntity } from "./entities";
+import {
+  acceptJunction,
+  rejectJunction,
+  rerollJunction,
+  rollJunction,
+  stepDie,
+} from "./junction";
 import { applied, entry, refuse } from "./result";
 import { endSession, startSession, updateGoal } from "./session";
 import { adjustBoons, claimSheet, releaseSheet, updateSheet } from "./sheets";
@@ -33,6 +41,7 @@ export type {
   Table,
 } from "./types";
 export { type LogEvent, logText } from "./log";
+export * as dice from "./dice";
 export { SESSION_HISTORY_LIMIT } from "./session";
 
 /** The commands only the facilitator may issue. Every other command is open
@@ -49,6 +58,12 @@ const FACILITATOR_ONLY: ReadonlySet<CommandType> = new Set<CommandType>([
   "context/add",
   "context/update",
   "context/delete",
+  "context/use",
+  "context/unconsume",
+  "junction/reroll",
+  "junction/accept",
+  "junction/reject",
+  "die/step",
 ]);
 
 export function transition(table: Table, command: Command, deps: Deps): Result {
@@ -90,6 +105,20 @@ export function transition(table: Table, command: Command, deps: Deps): Result {
       return updateContextAspect(table, command);
     case "context/delete":
       return deleteContextAspect(table, command, deps);
+    case "context/use":
+      return useContextAspect(table, command, deps);
+    case "context/unconsume":
+      return unconsumeContextAspect(table, command, deps);
+    case "junction/roll":
+      return rollJunction(table, command, deps);
+    case "junction/reroll":
+      return rerollJunction(table, command, deps);
+    case "junction/accept":
+      return acceptJunction(table, command, deps);
+    case "junction/reject":
+      return rejectJunction(table, command, deps);
+    case "die/step":
+      return stepDie(table, command, deps);
     default:
       return assertNever(command);
   }

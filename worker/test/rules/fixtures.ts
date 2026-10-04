@@ -30,7 +30,7 @@ export function sheet(over: Partial<CharacterSheet> = {}): CharacterSheet {
 export function table(over: Partial<Table> = {}): Table {
   return {
     sessionId: "t",
-    stonePool: [],
+    die: 10,
     junction: null,
     contextAspects: [],
     proposals: [],

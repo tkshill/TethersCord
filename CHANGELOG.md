@@ -10,6 +10,17 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **The die ladder replaces the stone pool in the Worker** (roadmap 31.2,
+  ADR 0001). A Junction rolls one die — d10 at the base, stepped along
+  d6, d8, d10, d12, d16, d20 — and reads Critical Friction, Friction, Flow
+  or Critical Flow from the face. Accepting resets the die to d10 and adds a
+  context boon from a Critical Flow or a context bane from a Critical
+  Friction. The facilitator steps the die with `/die/{step-up,step-down}`,
+  which replace `/stones/{add,remove}`; a Highlight, a context boon or a
+  context bane steps it a rung, and a step past either end is refused. A
+  stored stone pool and any pending stone draw are dropped on load. The
+  client follows in 31.4.
+
 - **The Worker's rules run through one pure core** (roadmap 31.2a, ADR 0003;
   no change to play). Chat, sessions, character sheets, NPCs and locations,
   and the facilitator's context aspect edits are now computed by

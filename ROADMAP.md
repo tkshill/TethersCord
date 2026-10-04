@@ -2305,20 +2305,26 @@ shape (ADR 0003).
       include `startedAt`. Context aspect use and unconsume stay on `commit`
       with the pool.
 
-#### 31.2 Worker — the die ladder
+#### 31.2 Worker — the die ladder — done (31.2b)
 
-- [ ] `dice.ts` test-first: ladder, step with refusal at the ends, `rollDie`
+- [x] `dice.ts` test-first: ladder, step with refusal at the ends, `rollDie`
       with an injected source, `classify`.
-- [ ] `gameState.die` replaces `stonePool`; the Junction carries
+- [x] `gameState.die` replaces `stonePool`; the Junction carries
       `{ rolledBy, die, face, outcome, rerolls, alteredSlots }`; accept resets
       to d10 and adds a context aspect from a critical; reject leaves the
       die.
-- [ ] `/die/{step-up,step-down}` (facilitator, logged) replace
+- [x] `/die/{step-up,step-down}` (facilitator, logged) replace
       `/stones/{add,remove}`; context aspect use steps the die.
-- [ ] Migration: no `die` → d10, a pending stone Overcome → dropped.
-- [ ] The junction and die commands in the rules core, tested with a scripted
+- [x] Migration: no `die` → d10, a pending stone Overcome → dropped.
+- [x] The junction and die commands in the rules core, tested with a scripted
       `Deps.roll`; `junction.test.ts` shrinks to route wiring. The proposal
       accept arms get only the pool-to-die edit, since 31.3 deletes them.
+- [x] Also in 31.2b: `StoneKind` is `Polarity` in the Worker (wire values
+      unchanged), context aspect unconsume moved into the core, and the
+      legacy Highlight and Use Context Boon proposals refuse at d20 (409)
+      when proposed and on accept. Suites: client 97, worker 147. The client
+      still decodes the stone wire shape and does not run against this
+      Worker until 31.4.
 
 #### 31.3 Worker — direct moves and undo
 

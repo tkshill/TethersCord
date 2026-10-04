@@ -2,10 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   characterLabel,
   clearSlotPendingState,
-  describeStones,
-  pairKind,
-  pickTwoRandom,
-  removeStones,
+  randomInt,
 } from "../src/gameLogic";
 import type { CharacterSheet, GameState } from "../src/types";
 
@@ -31,7 +28,7 @@ function state(over: Partial<GameState> = {}): GameState {
   return {
     sessionId: "t",
     messages: [],
-    stonePool: [],
+    die: 10,
     proposals: [],
     session: null,
     characters: [],
@@ -64,36 +61,11 @@ describe("small helpers", () => {
     expect(characterLabel(sheet({ name: "Bea" }))).toBe("Bea");
   });
 
-  it("describeStones joins with a comma", () => {
-    expect(describeStones(["Boon", "Bane"])).toBe("Boon, Bane");
-  });
-
-  it("pickTwoRandom draws two and returns the rest, order-independent", () => {
-    const { chosen, rest } = pickTwoRandom(["Boon", "Bane", "Boon", "Bane"]);
-    expect(chosen).toHaveLength(2);
-    expect(rest).toHaveLength(2);
-    expect([...chosen, ...rest].sort()).toEqual(
-      ["Bane", "Bane", "Boon", "Boon"],
-    );
-  });
-
-  it("removeStones drops by count, not identity, and no-ops what isn't there", () => {
-    expect(removeStones(["Boon", "Bane", "Boon"], ["Boon"])).toEqual([
-      "Bane",
-      "Boon",
-    ]);
-    expect(removeStones(["Boon"], ["Bane"])).toEqual(["Boon"]);
-    expect(removeStones(["Boon", "Bane"], ["Boon", "Bane", "Boon"])).toEqual(
-      [],
-    );
-  });
-});
-
-describe("pairKind", () => {
-  it("names the kind of a matched pair and nothing for a mixed draw", () => {
-    expect(pairKind(["Boon", "Boon"])).toBe("Boon");
-    expect(pairKind(["Bane", "Bane"])).toBe("Bane");
-    expect(pairKind(["Boon", "Bane"])).toBeNull();
-    expect(pairKind(["Bane", "Boon"])).toBeNull();
+  it("randomInt stays in [0, max)", () => {
+    for (let i = 0; i < 200; i++) {
+      const n = randomInt(6);
+      expect(n).toBeGreaterThanOrEqual(0);
+      expect(n).toBeLessThan(6);
+    }
   });
 });

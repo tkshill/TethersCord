@@ -9,8 +9,9 @@ import type {
   EntityKind,
   GameState,
   Role,
-  StoneKind,
+  Polarity,
 } from "../types";
+import type { Direction } from "./dice";
 import type { LogEvent } from "./log";
 
 /**
@@ -66,9 +67,16 @@ export type CommandBody =
       fields: { name?: string; notes?: string } | null;
     }
   | { type: "entity/delete"; kind: EntityKind; id: string }
-  | { type: "context/add"; kind: StoneKind | null; text: string }
+  | { type: "context/add"; kind: Polarity | null; text: string }
   | { type: "context/update"; id: string; text: string }
-  | { type: "context/delete"; id: string };
+  | { type: "context/delete"; id: string }
+  | { type: "context/use"; id: string }
+  | { type: "context/unconsume"; id: string }
+  | { type: "junction/roll" }
+  | { type: "junction/reroll" }
+  | { type: "junction/accept" }
+  | { type: "junction/reject" }
+  | { type: "die/step"; direction: Direction };
 
 export type Command = CommandBody & { by: Actor };
 

@@ -107,13 +107,13 @@ describe("transition", () => {
       const t = table({
         session: { id: "s", goal: "g", startedAt: 5 },
         sessionHistory: history,
-        stonePool: ["Boon"],
+        die: 16,
       });
       const r = ok(transition(t, as(facilitator, { type: "session/end" }), scripted({ now: 9 })));
       expect(r.next.session).toBeNull();
       expect(r.next.sessionHistory).toHaveLength(SESSION_HISTORY_LIMIT);
       expect(r.next.sessionHistory[0]).toEqual({ id: "s", goal: "g", startedAt: 5, endedAt: 9 });
-      expect(r.next.stonePool).toEqual(["Boon"]);
+      expect(r.next.die).toBe(16);
       expect(r.log.map((e) => e.event)).toEqual([{ type: "session-ended", goal: "g" }]);
     });
 
