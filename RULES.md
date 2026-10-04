@@ -95,13 +95,14 @@ The app does not model the declaring. It models what follows.
    before the roll.**
 2. **Roll.** Any player, or the facilitator, rolls the die. It needs no
    approval. Only one junction is pending at a time.
-3. **After the roll, preparation is over.** The only move left is **Alter
-   Fate**. Nothing else can change the die, spend boons, or highlight an aspect
-   until the junction ends. This is deliberate: boons are spent proactively,
+3. **After the roll, preparation is over.** The only move left is **Alter**.
+   Nothing else can change the die, spend boons, or highlight an aspect until
+   the junction ends. This is deliberate: boons are spent proactively,
    not only after a Friction. The app enforces it. (The facilitator's direct
    edits stay available, for corrections.)
-4. **Alter.** Players may spend **Alter Fate** to reroll. The facilitator may
-   reroll directly, for free. Either way the roll is on the same die.
+4. **Alter.** Players may **Alter**, paying two boons to reroll. The
+   facilitator may reroll directly, for free. Either way the roll is on the
+   same die.
 5. **Resolve.** The facilitator **accepts** or **rejects** the roll.
    - **Accept.** The last roll stands. The die returns to the d10. A Critical
      Flow adds a context boon; a Critical Friction adds a context bane; any
@@ -117,7 +118,7 @@ and a roll reads as its outcome, face and die ("Flow — 7 on d10").
 ## Moves
 
 There are five moves: **Highlight**, **Highlight Context**, **Complicate**,
-**Create** and **Alter Fate**. Use these names in copy and in code.
+**Create** and **Alter**. Use these names in copy and in code.
 Rolling a junction is not a move.
 
 A move takes effect immediately. A move that costs boons cannot be made unless
@@ -129,7 +130,7 @@ the player holds enough. Every move is a line in the log.
 | **Highlight Context** | Anyone, on an unconsumed context aspect | none | A context boon steps the die up; a context bane steps it down. It is consumed. |
 | **Complicate** | Player, on one of their character aspects | none | The character gains two boons, and a context bane appears for the facilitator to word. |
 | **Create** | Player | 1 boon | A context boon is added in the player's words. |
-| **Alter Fate** | Player, after a roll | 2 boons | The roll is rerolled on the same die. |
+| **Alter** | Player, after a roll | 2 boons | The roll is rerolled on the same die. |
 
 - **Highlight** — show how one of your character aspects shapes what happens
   next. Highlights stack: each steps the die one rung.
@@ -142,8 +143,8 @@ the player holds enough. Every move is a line in the log.
   mechanic.
 - **Create** — establish something true about the scene. If you leave it
   blank it is recorded as a detail from you, and the facilitator can reword it.
-- **Alter Fate** — pay two boons to suggest an alternate action and reroll. Only
-  after a roll and before the junction ends. **Each character may Alter Fate
+- **Alter** — pay two boons to suggest an alternate action and reroll. Only
+  after a roll and before the junction ends. **Each character may Alter
   once per junction.**
 
 ### Undo
@@ -155,11 +156,11 @@ the player holds enough. Every move is a line in the log.
   - Highlight Context: the aspect is unconsumed, the die steps back.
   - Complicate: the two boons are taken back, the context bane is deleted.
   - Create: the context boon is deleted, the boon is refunded.
-  - Alter Fate: the previous roll is restored, the two boons are refunded, and
-    the character may Alter Fate again.
+  - Alter: the previous roll is restored, the two boons are refunded, and
+    the character may Alter again.
 - A step back that would pass the end of the ladder stops at the end.
 - **Undo is open during preparation only**: it closes when the junction is
-  rolled. An Alter Fate can be undone until its junction is accepted or
+  rolled. An Alter can be undone until its junction is accepted or
   rejected.
 - An undo is a line in the log.
 

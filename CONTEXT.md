@@ -91,7 +91,7 @@ The time before a junction's first roll, when moves are made and can be undone.
 
 **Roll**:
 One throw of the die during a junction. A junction may have several: a reroll
-or an Alter Fate replaces the previous roll.
+or an Alter replaces the previous roll.
 _Avoid_: draw
 
 **Face**:
@@ -122,7 +122,7 @@ and resets the die to the base die; rejecting discards it and leaves the die.
 
 **Move**:
 Something a player does that has a cost or an effect and can be undone. There
-are five: Highlight, Highlight Context, Complicate, Create and Alter Fate.
+are five: Highlight, Highlight Context, Complicate, Create and Alter.
 Rolling a junction is not a move.
 _Avoid_: proposal, ability, action
 
@@ -145,14 +145,14 @@ Spending a boon to establish something true about the scene, which becomes a
 context boon in the player's words.
 _Avoid_: Add Detail, gain insight
 
-**Alter Fate**:
+**Alter**:
 Spending two boons to reroll a junction's pending roll on the same die; the
 only move allowed after the first roll, once per character per junction.
-_Avoid_: help out, press fate
+_Avoid_: Alter Fate, help out, press fate
 
 **Undo**:
 Reversing one move's own effects, by the facilitator or the move's player,
-during preparation (or, for Alter Fate, before the junction ends).
+during preparation (or, for Alter, before the junction ends).
 _Avoid_: withdraw, reject (for a move)
 
 **Direct edit**:
@@ -203,5 +203,6 @@ _Avoid_: history (the session history is the list of past sessions)
 - "Add Detail" was renamed **Create**, a single verb like the other moves. Because
   Create is a move, other ways a context aspect comes into being are described
   as *adding* one, never *creating* it.
+- "Alter Fate" was shortened to **Alter** for the same reason.
 - "Use a context" was named **Highlight Context** so that every die step a
   player makes from an aspect is a Highlight of some kind.

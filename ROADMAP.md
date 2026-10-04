@@ -2087,8 +2087,7 @@ models.
   - **Rejects**: the roll is discarded, the die stays where it was.
 - **Preparation happens before the roll, officially.** Every Highlight,
   Highlight Context, Complicate and Create is made *before* the
-  Junction is rolled. Once the result is up, the only player move is **Alter
-  Fate**. This is intended: it rewards proactive play and stops boons being
+  Junction is rolled. Once the result is up, the only player move is **Alter**. This is intended: it rewards proactive play and stops boons being
   spent only after a Friction. **The Worker enforces it** (409 on any move
   except Alter while a Junction is pending); the client disables the controls.
   The facilitator's direct corrections (die arrows, a character's boons,
@@ -2107,7 +2106,7 @@ models.
   | **Complicate** | left half of one of your aspects | none | +2 boons, and a context bane with blank text for the facilitator to fill, tagged with the aspect |
   | **Create** | the field under the context list | 1 boon | a context boon with the player's text (blank falls back to `Detail from <name>`) |
   | **Highlight Context** | click a context boon / bane | none | die up / down one rung; marked consumed |
-  | **Alter Fate** | status strip, beside the result | 2 boons | reroll the pending Junction on the same die; once per character per Junction |
+  | **Alter** | status strip, beside the result | 2 boons | reroll the pending Junction on the same die; once per character per Junction |
 
   Highlights stack: three take a d10 to a d20.
 - **Undo replaces approval.** The facilitator may undo any move; a player may
@@ -2117,7 +2116,7 @@ models.
   - Complicate: 2 boons taken back, its context bane deleted.
   - Create: its context boon deleted, boon refunded.
   - Highlight Context: unconsumed, die back a rung.
-  - Alter Fate: the previous result restored, 2 boons refunded, the
+  - Alter: the previous result restored, 2 boons refunded, the
     once-per-Junction allowance freed.
 
   A reverse step that would run off the ladder stops at the end.
@@ -2248,9 +2247,9 @@ a later step deletes.
       (character aspects and context aspects); "boon" alone means only the
       character currency; the move that spends a context aspect is **Highlight
       Context**, giving five moves: Highlight, Highlight Context, Complicate,
-      Create (renamed from Add Detail, a single verb like the rest), Alter
-      Fate. A context aspect that appears any other way is *added*, never
-      *created*.
+      Create and Alter (renamed from Add Detail and Alter Fate, so every
+      move is a single verb but the Highlight pair). A context aspect that
+      appears any other way is *added*, never *created*.
 - [x] `docs/adr/0001-die-ladder-replaces-stone-pool.md` and
       `docs/adr/0002-undo-replaces-approval.md`.
 

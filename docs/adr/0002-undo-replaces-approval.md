@@ -10,7 +10,7 @@ correction costs one.
 ## Consequences
 
 - **The post-roll lock is enforced by the Worker.** Officially every move except
-  Alter Fate is made before a junction's first roll, so boons cannot be spent
+  Alter is made before a junction's first roll, so boons cannot be spent
   only after seeing a Friction. Approval used to stand in the way of breaking
   that; with no approval, the Worker refuses any other move while a junction is
   pending.
@@ -18,7 +18,7 @@ correction costs one.
   moves made since survive. A reverse step past the end of the ladder stops at
   the end.
 - **The undo window closes when the junction is rolled**, so the odds of a roll
-  already made cannot change; an Alter Fate stays undoable until its junction
+  already made cannot change; an Alter stays undoable until its junction
   ends.
 - **Complicate is unapproved and free**, so the facilitator's undo is its only
   check.
