@@ -151,8 +151,8 @@ accentText =
     rgb255 253 252 250
 
 
-{-| A faint warm tint for a strip that sits apart from the paper — the proposal
-strip, the session-controls row, a highlighted log line.
+{-| A faint warm tint for a strip that sits apart from the paper — the hovered
+context aspect, the session-controls row, a highlighted log line.
 -}
 tint : Color
 tint =
@@ -336,7 +336,7 @@ scrollArea children =
 
 
 {-| A single line of text that ellipsises instead of wrapping when it is too long
-for its slot — the strip's goal and the proposal strip's summary. It sits in a
+for its slot — the strip's goal. It sits in a
 `width fill` slot that may shrink below its content (`min-width: 0`); the text
 itself is a plain block so `text-overflow` applies, which a wrapping paragraph
 would not honour.
@@ -482,7 +482,7 @@ ghostButton config =
         { onPress = config.onPress, label = text config.label }
 
 
-{-| A quiet text action for a row's own controls (Use, Undo, withdraw): no
+{-| A quiet text action for a row's own controls (undo, ×, ✎): no
 border, muted until hovered.
 -}
 linkButton : { onPress : Maybe msg, label : String } -> Element msg
@@ -563,8 +563,7 @@ tab selected label msg =
 
 {-| One glyph tab in the tool strip (mockup 2a). The selected tool shows its
 glyph and its name on a tinted chip; the others are a bare glyph, named by `tip`
-(a native tooltip, which is also where a count such as "1 proposal waiting"
-goes).
+(a native tooltip).
 -}
 toolTab : { glyph : String, label : String, tip : String, selected : Bool, onPress : msg } -> Element msg
 toolTab config =

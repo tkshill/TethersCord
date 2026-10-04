@@ -10,6 +10,13 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **The Guide and the app's text describe the die ladder and direct moves**
+  (roadmap 31.6). The glossary is rewritten to `RULES.md` — the die and its
+  ladder, Flow and Friction, the Junction and preparation, boons and aspects,
+  the five moves and undo — and the Guide shows the odds on each rung. The
+  last references to stones, the pool and proposals are gone, and `RULES.md`
+  no longer marks its rules as not yet built.
+
 - **Moves are made where their subject is** (roadmap 31.5). The status strip
   shows the die ladder, and the current die is the button that rolls the
   Junction; the result sits beside it, with Alter for players and Reroll /

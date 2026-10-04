@@ -18,25 +18,19 @@ import ContextAspect exposing (Polarity(..))
 
 
 
--- STONE VOCABULARY — chip captions shared across cards
+-- VOCABULARY shared across cards
 
 
-boonStone : String
-boonStone =
-    "Boon"
-
-
-baneStone : String
-baneStone =
+{-| An aspect's legacy Bane count on the Sheet ("2 Banes on this aspect").
+-}
+baneLabel : String
+baneLabel =
     "Bane"
 
 
--- JUNCTION STAGE (View/TopBar.elm, roadmap 26.3)
 
-
-junction : String
-junction =
-    "Junction"
+-- THE STRIP (View/TopBar.elm) — the die ladder, the pending roll and the
+-- controls that resolve it.
 
 
 junctionRolled : String -> String
@@ -142,10 +136,9 @@ messagePlaceholder =
 
 
 
--- TOP BAR (View/TopBar.elm) — the running session's goal and the shared
--- stone pool, both moved off the old Session / Stones cards by roadmap
--- section 23.6. Session start / end / goal-edit sit behind the bar's
--- expander so it stays one line at rest.
+-- SESSION CONTROLS (View/TopBar.elm) — the running session's goal on the
+-- strip; start / end / goal-edit sit behind its expander so the strip stays
+-- one line at rest.
 
 
 endSession : String
@@ -197,7 +190,7 @@ sessionHistoryTitle =
 
 
 
--- SESSION BOONS & BANES CARD (View/ContextAspects.elm)
+-- CONTEXT BOONS & BANES (View/ContextAspects.elm)
 
 
 noContextAspects : String
@@ -210,7 +203,7 @@ the table, visibly consumed, and cannot be highlighted again.
 -}
 contextAspectConsumed : String
 contextAspectConsumed =
-    "used"
+    "consumed"
 
 
 {-| Facilitator-only: remove a context boon or bane outright.
@@ -220,8 +213,8 @@ contextAspectRemove =
     "Remove"
 
 
-{-| Facilitator-only: the field and button that plant a context boon or bane
-directly, below the existing ones.
+{-| Facilitator-only: the field at the foot of the list that adds a context
+boon or bane directly, free.
 -}
 addContextAspectPlaceholder : String
 addContextAspectPlaceholder =
@@ -384,11 +377,6 @@ claimASheetForMoves =
 -- CHARACTERS CARD (View/Characters.elm)
 
 
-charactersTitle : String
-charactersTitle =
-    "Characters"
-
-
 noCharacterSheets : String
 noCharacterSheets =
     "No character sheets."
@@ -502,9 +490,6 @@ entityUnnamed =
 
 
 
--- LOG CARD (View/Log.elm)
-
-
 
 -- TOOL STRIP (View.elm, roadmap section 27) — the label shown on the selected
 -- glyph tab, and the tooltip on each unselected one.
@@ -517,7 +502,7 @@ sheetTabLabel =
 
 sheetTabTip : String
 sheetTabTip =
-    "Sheet, moves & session context"
+    "Your character, and the moves on its aspects"
 
 
 castTabLabel : String
@@ -548,6 +533,10 @@ guideTabLabel =
 guideTabTip : String
 guideTabTip =
     "How to play"
+
+
+
+-- LOG (View/Log.elm)
 
 
 noMessages : String

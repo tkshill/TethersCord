@@ -1,14 +1,14 @@
-module Copy.Terms exposing (Term, groupedTerms, termShort, terms)
+module Copy.Terms exposing (Term, groupedTerms, ladderOdds, termShort, terms)
 
 {-| The game's vocabulary in one place: every term a player meets in the
 interface, each with a one-line `short` (used as a tooltip on the label where the
-term appears) and a two-to-three-sentence `long` (shown in the "How to play"
-card). One definition, two surfaces.
+term appears) and a two-to-three-sentence `long` (shown in the Guide). One
+definition, two surfaces.
 
-The wording tracks `RULES.md`, which is the canonical statement of the rules — when
-a rule changes, that file changes first and this one follows. `DESIGN_PRINCIPLES.md`
-is the "why". It is meant to be revised freely — this module has no logic, only
-data.
+The wording tracks `RULES.md`, the canonical statement of the rules, and the
+names follow `CONTEXT.md` — when a rule changes, that file changes first and
+this one follows. `DESIGN_PRINCIPLES.md` is the "why". It is meant to be
+revised freely — this module has no logic, only data.
 -}
 
 
@@ -19,17 +19,17 @@ type alias Term =
     }
 
 
-{-| The terms grouped by the heading they sit under in the guide, in rough order
+{-| The terms grouped by the heading they sit under in the Guide, in rough order
 of play. `terms` is the flat list of all of them.
 -}
 groupedTerms : List ( String, List Term )
 groupedTerms =
     [ ( "Roles", [ table, facilitator, player ] )
+    , ( "The die", [ die, ladder, flow, friction, criticals ] )
+    , ( "The Junction", [ junction, preparation ] )
+    , ( "Boons & aspects", [ boon, aspect, archetype, desire, quest, contextAspect, condition ] )
+    , ( "Moves", [ highlight, highlightContext, complicate, create, alter, undo ] )
     , ( "The session", [ session, goal ] )
-    , ( "Stones & the pool", [ stone, boon, bane, thePool ] )
-    , ( "The Junction", [ junction, proposal ] )
-    , ( "Moves", [ highlight, complicate, addDetail, alterFate, contextBoon ] )
-    , ( "Aspects & growth", [ aspect, archetype, desire, quest, condition ] )
     ]
 
 
@@ -51,6 +51,21 @@ termShort name =
         |> Maybe.withDefault ""
 
 
+{-| The odds on each rung of the ladder, as `RULES.md` tabulates them: die,
+Critical Friction, Friction, Flow, Critical Flow. Copy, not a calculation — the
+Worker reads every roll.
+-}
+ladderOdds : List { die : String, criticalFriction : String, friction : String, flow : String, criticalFlow : String }
+ladderOdds =
+    [ { die = "d6", criticalFriction = "33%", friction = "33%", flow = "—", criticalFlow = "33%" }
+    , { die = "d8", criticalFriction = "25%", friction = "25%", flow = "25%", criticalFlow = "25%" }
+    , { die = "d10", criticalFriction = "20%", friction = "20%", flow = "40%", criticalFlow = "20%" }
+    , { die = "d12", criticalFriction = "17%", friction = "17%", flow = "50%", criticalFlow = "17%" }
+    , { die = "d16", criticalFriction = "12.5%", friction = "12.5%", flow = "62.5%", criticalFlow = "12.5%" }
+    , { die = "d20", criticalFriction = "10%", friction = "10%", flow = "70%", criticalFlow = "10%" }
+    ]
+
+
 
 -- ROLES
 
@@ -60,16 +75,16 @@ table =
     { term = "Table"
     , short = "Everyone playing, plus the shared fiction you agree on."
     , long =
-        "The whole group — the facilitator and the character players — together with the world you build between you. What the table agrees is true is true; the rules exist to keep everyone on the same page and enjoying themselves, not to settle every detail."
+        "The whole group — the facilitator and the players — together with the world you build between you. What the table agrees is true is true; the rules keep everyone on the same page, they do not settle every detail."
     }
 
 
 facilitator : Term
 facilitator =
     { term = "Facilitator"
-    , short = "Frames scenes, plays the world, and rules on the moves players propose."
+    , short = "Frames scenes, plays the world, resolves each Junction, and can undo any move."
     , long =
-        "An asymmetric role, not a leader. The facilitator presents situations, plays everyone who is not a player character, and accepts or rejects the moves players propose. They act directly where players propose and wait: rolling and rerolling a Junction, granting boons, adjusting the pool, and planting context boons and banes."
+        "A role, not a leader. The facilitator presents situations, plays everyone who is not a player character, and accepts or rejects each Junction's roll. They make direct edits — stepping the die, granting boons, adding and wording context boons and banes — and can undo any player's move."
     }
 
 
@@ -78,69 +93,56 @@ player =
     { term = "Player"
     , short = "Runs one character — their wants, choices, and risks."
     , long =
-        "Each player drives a single character: what they want, what they will risk for it, and how they act under pressure. Players edit their own sheet and send messages freely. Every other change to shared state is a move, and a move waits for the facilitator to accept it."
+        "Each player drives a single character: what they want, what they will risk for it, and how they act under pressure. Players edit their own sheet, send messages and make moves. A move takes effect at once; nobody approves it, and you can undo your own until the Junction is rolled."
     }
 
 
 
--- THE SESSION
+-- THE DIE
 
 
-session : Term
-session =
-    { term = "Session"
-    , short = "One game day, with a goal the table names and works toward."
+die : Term
+die =
+    { term = "Die"
+    , short = "The one die every Junction rolls. Its size is its rung on the ladder."
     , long =
-        "A session runs from the facilitator starting it, with a goal, to ending it. The goal is table talk: nothing is rolled to judge whether it was met. Starting or ending a session records the goal and dates and nothing else — the pool, waiting proposals, and context boons and banes all carry across."
+        "There is one die at the table, and it decides every Junction. Moves step it up or down the ladder before the roll; accepting a Junction returns it to the d10."
     }
 
 
-goal : Term
-goal =
-    { term = "Goal"
-    , short = "What the table is working toward this session."
+ladder : Term
+ladder =
+    { term = "Ladder"
+    , short = "d6 → d8 → d10 → d12 → d16 → d20. The die starts each Junction at the d10."
     , long =
-        "Set by the facilitator when the session starts, and editable at any time. It names a target for the fiction; whether it is met is for the table to decide by playing it out, not by a roll."
+        "The die's sizes, in order. A boon steps it up a rung, a bane steps it down. A step past either end is not allowed — nothing is spent and nothing happens. The bigger the die, the likelier a Flow."
     }
 
 
-
--- STONES & THE POOL
-
-
-stone : Term
-stone =
-    { term = "Stone"
-    , short = "The unit of chance — either a Boon or a Bane."
+flow : Term
+flow =
+    { term = "Flow"
+    , short = "A roll of 5 or more: the story takes the easier path."
     , long =
-        "Every Junction is resolved by drawing two stones from the pool. There are only two kinds, Boon and Bane, so an outcome is read from the fiction rather than compared against a number."
+        "The outcome where things go the characters' way, or at least not against them. On a d10 a Flow comes up 60% of the time, counting a Critical Flow."
     }
 
 
-boon : Term
-boon =
-    { term = "Boon"
-    , short = "A favourable stone, and the currency a character spends on moves."
+friction : Term
+friction =
+    { term = "Friction"
+    , short = "A roll of 4 or less: the story takes the harder path."
     , long =
-        "As a stone, the good result of a draw. As a resource, the boons on a character's sheet: spent on Highlight, Add Detail and Alter Fate, and gained by Complicate. The facilitator can also grant or take them directly."
+        "The outcome with more difficulty or conflict. It is not failure — it is the version of events that pushes back. A 1 or a 2 is a Critical Friction."
     }
 
 
-bane : Term
-bane =
-    { term = "Bane"
-    , short = "An unfavourable stone; the facilitator adds Banes to the pool."
+criticals : Term
+criticals =
+    { term = "Criticals"
+    , short = "1–2 is a Critical Friction; the die's top two faces a Critical Flow."
     , long =
-        "The bad result of a draw. Banes in the pool make a Junction riskier. Players put Boons into the pool; the facilitator puts Banes in, directly or by using a context bane. Nothing marks a character's aspects with Banes at present."
-    }
-
-
-thePool : Term
-thePool =
-    { term = "The pool"
-    , short = "The shared stones a Junction draws from — two Boon and two Bane, reset after each."
-    , long =
-        "One shared set of stones. It starts at two Boon and two Bane, and returns to exactly that whenever a Junction is accepted, so nothing carries from one Junction to the next. In between, players add Boons (Highlight, or using a context boon) and the facilitator adds Banes."
+        "Accepting a Critical Flow adds a context boon, a Critical Friction a context bane. The two are always equally likely — two faces each — so a smaller die makes the story more volatile both ways and a larger one steadies it. On a d6 every Flow is a Critical Flow."
     }
 
 
@@ -151,80 +153,40 @@ thePool =
 junction : Term
 junction =
     { term = "Junction"
-    , short = "A fork at the table: prepare the pool, roll two stones, the facilitator accepts or rejects."
+    , short = "A point where the story could go two ways: prepare, roll the die, the facilitator accepts or rejects."
     , long =
-        "The facilitator declares a fork where the plot could go more than one way. The table prepares the pool, then one player presses Junction to draw two stones. From that roll until the facilitator resolves it, the pool is frozen — a table rule the app does not enforce. Accepting resets the pool, and if two Boons or two Banes came up, plants a context boon or bane. Rejecting discards the roll and changes nothing else."
+        "The facilitator declares a point where the story could go an easier way (Flow) or a harder one (Friction). The table prepares, then anyone presses the current die on the ladder to roll it. After the roll, the only move left is Alter, and the facilitator may reroll for free. Accepting keeps the last roll, returns the die to the d10 and turns a critical into a context aspect. Rejecting discards the roll and leaves the die where it was."
     }
 
 
-proposal : Term
-proposal =
-    { term = "Proposal"
-    , short = "A move waiting for the facilitator to accept or reject."
+preparation : Term
+preparation =
+    { term = "Preparation"
+    , short = "Everything before the roll: the moves are made, and can be undone."
     , long =
-        "Players do not change shared state directly. Highlight, Complicate, Add Detail, Alter Fate and using a context boon are proposals that queue for the facilitator; nothing happens, and nothing is paid, until one is accepted, and you can withdraw your own while it waits. Junction is the exception: it needs no approval."
-    }
-
-
-
--- MOVES
-
-
-highlight : Term
-highlight =
-    { term = "Highlight"
-    , short = "Pay 1 boon: an aspect shapes the outcome, and the pool gains a Boon."
-    , long =
-        "Note how an aspect of the scene will shape the outcome. It costs you one boon, paid when the facilitator accepts, and puts one Boon into the pool. Do it before the roll: once a Junction is rolled, the pool is frozen until it is resolved."
-    }
-
-
-complicate : Term
-complicate =
-    { term = "Complicate"
-    , short = "Suggest a complication for your character; you gain 2 boons."
-    , long =
-        "Suggest a way your own character could do something dangerous, destructive, or derailing. It is free to propose. When the facilitator accepts it, your character gains two boons."
-    }
-
-
-addDetail : Term
-addDetail =
-    { term = "Add Detail"
-    , short = "Pay 1 boon to establish something true about the scene — it becomes a context boon."
-    , long =
-        "Propose a fact about the scene: suggest the wording yourself, or leave it blank and ask the facilitator for one. It costs one boon when accepted, and the result is a context boon anyone can spend later."
-    }
-
-
-alterFate : Term
-alterFate =
-    { term = "Alter Fate"
-    , short = "Pay 2 boons to reroll a pending Junction."
-    , long =
-        "Pay two boons to suggest an alternate action at the fork, and reroll. It works only while a Junction has a roll pending, once per player per Junction, and one at a time. A rejected Alter Fate costs nothing and does not use up your attempt."
-    }
-
-
-contextBoon : Term
-contextBoon =
-    { term = "Context boon"
-    , short = "Something established as true, spendable into the pool — a context boon or a context bane."
-    , long =
-        "A note of something true in the fiction. An accepted Junction that drew a matched pair makes one, Add Detail makes a context boon, and the facilitator can plant either kind at any time. Spending one adds a stone of its kind to the pool and marks it used: it stays on the table, visibly consumed, and cannot be spent again. Players spend context boons through a proposal; the facilitator uses context banes directly. They stay until the facilitator removes them — ending a session does not clear them."
+        "Highlight, Highlight Context, Complicate and Create are all made before the Junction is rolled, so boons are spent proactively, not only after a Friction. Once the die is rolled, those moves are locked and can no longer be undone."
     }
 
 
 
--- ASPECTS & GROWTH
+-- BOONS & ASPECTS
+
+
+boon : Term
+boon =
+    { term = "Boon"
+    , short = "A character's currency: spent on Highlight, Create and Alter, earned by Complicate."
+    , long =
+        "The ☼ marks on a character's sheet. Spend them on moves, earn two with Complicate; the facilitator can also grant or take them directly. Boon on its own always means this currency — a context boon is something else."
+    }
 
 
 aspect : Term
 aspect =
     { term = "Aspect"
-    , short = "One of a character's three always-true things: Archetype, Desire, Quest."
+    , short = "A statement that is true in the fiction: a character's three, or a context aspect."
     , long =
-        "Aspects are written to carry latent conflict with the world. They are always true; a Highlight makes one mechanically relevant to the roll."
+        "A character is written around three aspects — Archetype, Desire, Quest — that carry latent conflict with the world. They are always true; on your own sheet, the right half of one Highlights it and the left half Complicates it."
     }
 
 
@@ -255,10 +217,99 @@ quest =
     }
 
 
+contextAspect : Term
+contextAspect =
+    { term = "Context aspect"
+    , short = "Something true about the situation, owned by nobody: a context boon ☼ or a context bane ☽, with one use."
+    , long =
+        "An accepted Critical Flow adds a context boon and a Critical Friction a context bane; Create adds a boon and Complicate a bane; the facilitator can add either. Anyone may highlight one: a boon steps the die up, a bane steps it down, and it is consumed — it stays on the table, struck through, and cannot be used again. They stay until the facilitator removes them; ending a session does not clear them."
+    }
+
+
 condition : Term
 condition =
     { term = "Condition"
     , short = "One evolving sentence for what strain is doing to the character."
     , long =
         "Always emotional or identity-level, never a number. It is the whole harm model — no wounds, no death mechanic. Update it when the situation actually shifts."
+    }
+
+
+
+-- MOVES
+
+
+highlight : Term
+highlight =
+    { term = "Highlight"
+    , short = "Pay 1 boon to make one of your aspects matter: the die steps up."
+    , long =
+        "Show how one of your character aspects shapes what happens next — press the right half of it on your sheet. It costs one boon and steps the die up one rung. Highlights stack: three take a d10 to a d20."
+    }
+
+
+highlightContext : Term
+highlightContext =
+    { term = "Highlight Context"
+    , short = "Use a context aspect's one use: a boon steps the die up, a bane steps it down."
+    , long =
+        "Bring a context aspect to bear by pressing it in the context list. It is free and open to anyone. Highlighting a context bane makes the Junction riskier and more volatile — a choice a player may make."
+    }
+
+
+complicate : Term
+complicate =
+    { term = "Complicate"
+    , short = "Your aspect drags you into trouble: gain 2 boons, and a context bane appears."
+    , long =
+        "Suggest how one of your character aspects pulls your character into something dangerous, destructive, or derailing — press the left half of it on your sheet. It is free: you gain two boons, and the trouble becomes a context bane for the facilitator to word."
+    }
+
+
+create : Term
+create =
+    { term = "Create"
+    , short = "Pay 1 boon to make something true about the scene — a context boon in your words."
+    , long =
+        "Establish a fact in the field under the context list. It costs one boon and becomes a context boon. Leave it blank and it is recorded as a detail from you, for the facilitator to word."
+    }
+
+
+alter : Term
+alter =
+    { term = "Alter"
+    , short = "Pay 2 boons to reroll a pending Junction on the same die."
+    , long =
+        "Suggest an alternate action and reroll — the only move after a roll, from the button beside the result. Each character may Alter once per Junction."
+    }
+
+
+undo : Term
+undo =
+    { term = "Undo"
+    , short = "Reverse one move's own effects, from its line in the log."
+    , long =
+        "The facilitator can undo any move; a player can undo their own. It reverses that move and nothing else, so moves made since are kept. Undo closes when the Junction is rolled; an Alter can be undone until its Junction is accepted or rejected."
+    }
+
+
+
+-- THE SESSION
+
+
+session : Term
+session =
+    { term = "Session"
+    , short = "One sitting of play, from the facilitator starting it with a goal to ending it."
+    , long =
+        "A session runs from the facilitator starting it, with a goal, to ending it. Starting or ending one records the goal and dates and nothing else — the die, open moves, and context boons and banes all carry across."
+    }
+
+
+goal : Term
+goal =
+    { term = "Goal"
+    , short = "What the table is working toward this session."
+    , long =
+        "Set by the facilitator when the session starts, and editable at any time. It names a target for the fiction; whether it is met is for the table to decide by playing it out, not by a roll."
     }

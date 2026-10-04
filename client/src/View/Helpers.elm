@@ -67,7 +67,7 @@ placeholder label =
 
 {-| A section-card title carrying a native tooltip with its glossary gloss.
 `label` is the card heading; `termKey` is the `Copy.Terms` name to look the gloss
-up by (they differ where the card is plural, e.g. "Stones" / "Stone").
+up by (they differ where the card is plural, e.g. "Moves" / "Move").
 -}
 glossaryTitle : String -> String -> Element msg
 glossaryTitle label termKey =

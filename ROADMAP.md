@@ -1470,7 +1470,7 @@ Same conventions as the rest of the roadmap: one branch per item off `main`,
 a restructuring, verified by the existing suites plus the new tests it makes
 possible.
 
-- [ ] **25.1 — A pure rules core behind `GameTable`** (the review's top
+- [x] **25.1 — A pure rules core behind `GameTable`** — done in 31.2a–31.3 (`worker/src/rules/`, ADR 0003; `GameTable.ts` ~880 lines) (the review's top
       recommendation; **folded into section 31** on 2026-10-04, whose 31.2 and
       31.3 write the new Junction and move rules in this shape; the settled
       design is `docs/adr/0003-pure-rules-core.md`). The rules are
@@ -1493,7 +1493,7 @@ possible.
       injected RNG would make unnecessary. **Supersedes P2.2's handler split** —
       that split relocates the interleave into handler files; this removes it.
       The route-table half of P2.2 survives on its own.
-- [ ] **25.2 — One "change a sheet" seam** (absorbed by 25.1). Four handlers
+- [x] **25.2 — One "change a sheet" seam** (absorbed by 25.1) — done: `persistDiff` derives every sheet write from the table diff. Four handlers
       still hand-copy the replace-by-slot `this.game.characters.map`
       (`GameTable.ts` ~1779, ~1817, ~1856, ~1894), plus a fate helper (~1302),
       beside the one-statement D1 wrappers in `characters.ts` (`setFate`,
@@ -1532,8 +1532,8 @@ possible.
       would touch `Api` only and route strings would leave `Main`.
       Speculative: do it only if the wide constructor list keeps costing edits
       after 25.3.
-- [ ] **25.7 — Worker `Proposal` as a discriminated union** (absorbed by 25.1's
-      proposals branch). The client already models the kinds (`Kind.elm`); the
+- [x] **25.7 — Worker `Proposal` as a discriminated union** — moot: 31.3
+      deleted proposals. (Was absorbed by 25.1's proposals branch.) The client already models the kinds (`Kind.elm`); the
       worker's `Proposal` (`worker/src/types.ts`) is one flat record with
       nullable `slot`, `sessionAspectId`, `targetSlot` (legacy `complicate`
       only) and `text` (`add-detail` only), re-checked per arm, and
@@ -1871,53 +1871,29 @@ here; the current layout is described in `CLAUDE.md`. In order:
       longer names another character.
 - [x] **Character sheet fields wrap** instead of running past the column edge.
 
-## 28. Heart and skull marks, labelled tool tabs — next
+## 28. Labelled tool tabs — next
 
-Two small visual changes to the section-27 UI.
-
-### 28.1 Boons and banes as hearts and skulls
-
-> **Superseded by section 31**, which uses sun and moon marks (☼ / ☽) and
-> removes the pool marks entirely. 28.2 stands.
-
-The `+` / `−` marks read as arithmetic rather than as game pieces, and a run of
-them is hard to count at a glance. Replace them with a pictorial pair — hearts
-for boons, skulls for banes (exact glyphs open; see below).
-
-- [ ] Swap the glyph in `Ui.boonMarks` / `Ui.baneMarks` (`client/src/Ui.elm`).
-      That covers the pool in the status strip, the pending Overcome draw chip
-      (`View/TopBar.elm`), boons on the Sheet and aspect Banes
-      (`View/Characters.elm`).
-- [ ] Route the hand-written `+` / `−` in `View/SessionAspects.elm` (the
-      session boon / bane rows and the facilitator's add-aspect kind buttons)
-      through the same helpers so every mark changes together.
-- [ ] Check the log lines and `Copy.elm` strings for `+` / `−` shorthand that
-      should follow (for example the "(+1 / +2 boons)" style text), and the
-      glossary in `Copy/Terms.elm` if it describes the marks.
-- [ ] Keep the colour split (bane in the danger tone) so the two stay
-      distinguishable without relying on shape alone.
-- [ ] Verify the glyphs render inside the Discord Activity webview on desktop
-      and mobile, and that letter-spacing still leaves a run countable.
+One small visual change to the section-27 UI. Re-baselined by 31.6: 28.1
+(hearts and skulls for boons and banes) was dropped when section 31 settled
+on sun and moon marks (☼ / ☽), shipped in 31.5 through `Ui.boonMarks` /
+`Ui.baneMarks`; the glyph check in the Discord webview is tracked in 31.5.
 
 ### 28.2 Tool tabs always show their titles
 
-The left panel's tabs show only a glyph (`◆` / `⚑` / `☺` / `?`) until selected,
-so a player has to hover or guess. Show every tab's title all the time and drop
-the glyphs.
+The left panel's tabs show only a glyph (`◆` / `☺` / `?`) until selected, so a
+player has to hover or guess. Show every tab's title all the time and drop the
+glyphs.
 
 - [ ] `Ui.toolTab` renders `label` for every tab, selected or not; the selected
       tab keeps its wash and weight. Remove the `glyph` field and the fixed
       26px unselected width.
 - [ ] Update the call site in `View.elm` and the `CLAUDE.md` description of
       the tab row.
-- [ ] Confirm the four titles (Sheet, Facilitator, Cast, Guide) fit on one
-      line in the default panel width; shorten or let the row wrap if not.
+- [ ] Confirm the three titles (Sheet, Cast, Guide) fit on one line in the
+      default panel width.
 
 ### Open questions
 
-- Which glyphs: emoji (❤ / 💀, colour set by the platform) or monochrome text
-  symbols (♥ / ☠, which take the palette's colour)? Monochrome fits the spare
-  look and the danger tint; emoji are more legible at 11–13px.
 - With labels always on, does the tab tooltip still earn its place, or can
   `tip` go too?
 
@@ -2000,46 +1976,59 @@ Only worth doing if the staging loop proves too slow in practice.
 - Should staging get a copy of the live characters and NPCs to test against, or
   start empty? Starting empty is simpler and nothing so far needs real data.
 
-## 30. Playtest the Overcome loop — planned
+## 30. Playtest the Junction loop — planned
 
-> **Section 31 replaces the loop this checklist describes.** Rewrite the
-> checklist for Junctions (31.6) before running it.
-
-Moved out of section 26.4, which shipped the code. Section 26's rules have only
-been exercised by the test suites and by rendering the view in headless Chrome;
-this is the first real run at the table. Not something the code can do.
+Rewritten by 31.6 for section 31's rules (the die ladder, the Junction, direct
+moves and undo); the stone-pool checklist it replaces is in git history.
+Section 31 has been exercised by the test suites and by rendering the view in
+headless Chrome only; this is the first real run at the table. Not something
+the code can do.
 
 - [ ] **One table playtest** against the checklist below, then record what it
       showed here. Run it in a test channel (29.1) unless it is real play.
 
 ### Manual playtest checklist
 
-- A player Highlights, is accepted, and the pool visibly gains a Boon.
-- A player cannot press a move whose cost they cannot pay.
-- Two players press Overcome at once: one wins, the other sees a refusal.
-- Roll → Alter Fate → accepted: the log shows roll, reroll, then the accepted
-  result. A rejected Alter Fate costs the player nothing and they can try again.
-- A second Alter Fate from the same player in one Overcome is refused.
-- Accept with two Boons → a session boon appears; accept with a mixed draw → none;
-  either way the pool is 2/2.
-- Reject → nothing changes and the roll can be pressed again.
-- A session boon is used, shows consumed, cannot be used twice, and the
-  facilitator can unconsume it.
+- The ladder shows the d10 marked, and pressing it rolls: the result appears
+  beside it (`Flow · 7`) and in the log (`Flow — 7 on d10`).
+- Two people press the die at once: one roll lands, the other is refused.
+- A player Highlights from the right half of an aspect: a boon goes, the die
+  steps up, the log line carries `d10 → d12` and an undo link. Undo puts both
+  back.
+- Highlights stack to d20; a fourth Highlight is greyed and refused, and no
+  boon is spent.
+- Complicate from the left half of an aspect: two boons, and a bane reading
+  "Trouble from … — to be worded" that the facilitator words with ✎.
+- Create with words, and with a blank field (`Detail from <name>`).
+- Highlight Context on a context boon (die up) and on a context bane (die
+  down): each shows consumed and cannot be pressed again; undo restores it.
+- After the roll every move but Alter is greyed ("Moves are locked…"), and the
+  undo links on the earlier moves are gone.
+- Alter: two boons, a reroll on the same die; a second Alter by the same
+  character is refused, another character's is not. Undoing it restores the
+  earlier roll and frees the Alter.
+- The facilitator's Reroll is free and on the same die, even after a `‹` `›`
+  step.
+- Accept a Critical Flow → a context boon, the die back to d10; accept a
+  Critical Friction → a context bane; accept a plain result → nothing. Reject →
+  the die stays and the Junction can be rolled again.
+- The split buttons' labels appear on hover, and on a phone both halves show
+  their resting tint and the label on press.
 - Ending a session changes nothing except the history.
 
 ### Open questions to settle in play
 
-- [ ] **Two proposals pending against the same boons.** A player with two boons
-      can queue Alter Fate (2) and Highlight (1); both pass the proposal check,
-      and the second accept 409s. Tolerated for now. If it bites at the table,
-      count the player's own pending costs against what the buttons allow.
-- [ ] **Add Detail's text on a blank proposal and a blank accept.** The worker
-      falls back to a default (`Detail from <name>`); revisit the wording in play.
-- [ ] **Where rolled stones sit in the log.** The log carries each roll and
-      reroll as its own event line; whether the UI should also fold them into
-      one "Overcome" entry is a presentation question.
+- [ ] **Generosity.** Is 60 / 40 Flow / Friction on the d10 too kind? The d8 is
+      50 / 50.
+- [ ] **Equal criticals.** Does a bane making a context boon likelier read as
+      backwards at the table?
+- [ ] **Complicate farming.** It is free and unapproved; the facilitator's undo
+      is the only check.
+- [ ] **Unworded banes.** Does "Trouble from <name>'s <Aspect>" carry a
+      Complicate until the facilitator words it, or should the player word it
+      when they make it?
 
-## 31. Junctions, the die ladder, and direct moves — planned
+## 31. Junctions, the die ladder, and direct moves — done on `feat/31-junction`, not yet merged to `main`
 
 The stone pool goes. Every chance roll becomes a single die whose size moves up
 and down a ladder, the Overcome becomes the **Junction**, session boons and
@@ -2395,13 +2384,18 @@ shape (ADR 0003).
       <Aspect> — to be worded" until worded. The aspect field ✎ opens is
       focused through a new `Effect.Focus`. Suites: client 95, worker 138.
 
-#### 31.6 Copy, glossary and docs
+#### 31.6 Copy, glossary and docs — done
 
-- [ ] `Copy.elm` and `Copy/Terms.elm` follow `RULES.md`; the Guide covers the
+- [x] `Copy.elm` and `Copy/Terms.elm` follow `RULES.md`; the Guide covers the
       ladder and its odds.
-- [ ] `RULES.md` loses its "not yet built" marks; `CLAUDE.md`'s architecture
+- [x] `RULES.md` loses its "not yet built" marks; `CLAUDE.md`'s architecture
       and module sections; `CHANGELOG.md`.
-- [ ] Re-baseline 28 (drop 28.1) and rewrite 30's checklist for Junctions.
+- [x] Re-baseline 28 (drop 28.1) and rewrite 30's checklist for Junctions.
+- [x] The Guide's groups follow play: roles, the die (with the odds table),
+      the Junction, boons and aspects, the moves (with undo), the session.
+      `CopyTermsTest` now fails on any retired word (stone, pool, proposal,
+      Add Detail, Alter Fate, Overcome, withdraw). Suites: client 96,
+      worker 138.
 
 ### Open questions
 
@@ -2420,8 +2414,7 @@ shape (ADR 0003).
   (2026-10-04): ADR 0003**, with persistence derived from a diff of the
   tables, structured log events, and a scaffold step, 31.2a, ahead of the
   die ladder.
-- **Unconsume.** Undo restores a consumed aspect; the separate facilitator
-  unconsume may no longer be needed.
+- **Unconsume — settled in 31.3:** removed; undo restores a consumed aspect.
 - **Complicate abuse.** It is free and now unapproved; the facilitator's undo
   is the only check. Revisit if it is farmed in play.
 - **Stale clients.** A client open across the deploy fails to decode the new

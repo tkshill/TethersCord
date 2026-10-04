@@ -8,11 +8,6 @@ says *what the rules are*.
 **Keep this file current.** Any change to a game rule updates this file in the
 same branch, and `client/src/Copy/Terms.elm` (the in-app glossary) follows it.
 
-> **Status.** Rewritten 2026-10-04 from the section 31 design interview. These
-> are the official rules, but **the app does not implement them yet**: it still
-> runs the stone pool, the Overcome and the proposal queue of section 26 until
-> roadmap section 31 lands. Remove this note when 31.6 ships.
-
 ## The table
 
 - **Facilitator.** Frames scenes, plays the world, and makes direct edits. Not

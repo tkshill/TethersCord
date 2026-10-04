@@ -3,8 +3,9 @@
 A rules-lite tabletop RPG played inside a Discord Activity: a facilitator and a
 few players tell a story together, and a single die decides which way the story
 turns at each junction. `RULES.md` states the rules; this file fixes the words.
-Terms listed under _Avoid_ are retired and may still appear in code until
-roadmap section 31 lands.
+Terms listed under _Avoid_ are retired: they appear in code only where stored
+or legacy data still carries them (`migrateTableState.ts`), and as `fate`, the
+storage and wire name for a character's boons.
 
 ## Language
 
