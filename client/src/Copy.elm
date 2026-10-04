@@ -14,6 +14,7 @@ is the character-creation prompt list, a curated subset of `ASPECTS.md`.
 -}
 
 import Aspect exposing (Aspect(..))
+import ContextAspect exposing (Polarity(..))
 
 
 
@@ -38,21 +39,45 @@ junction =
     "Junction"
 
 
-theDie : String
-theDie =
-    "the die"
-
-
 junctionRolled : String -> String
 junctionRolled who =
     who ++ " rolled"
 
 
-{-| The pending roll's chip in the status strip: `Flow · 7 on d10`.
+{-| The pending roll beside the ladder: `Flow · 7`.
 -}
-rollChip : String -> Int -> String -> String
-rollChip outcome face die =
-    outcome ++ " · " ++ String.fromInt face ++ " on " ++ die
+rollResult : String -> Int -> String
+rollResult outcome face =
+    outcome ++ " · " ++ String.fromInt face
+
+
+{-| The current rung's tooltip while it is the roll button.
+-}
+rollTip : String -> String
+rollTip die =
+    "Roll the Junction on the " ++ die
+
+
+stepUpTip : String
+stepUpTip =
+    "Step the die up a rung"
+
+
+stepDownTip : String
+stepDownTip =
+    "Step the die down a rung"
+
+
+alterTip : String
+alterTip =
+    "Alter: pay 2 boons to reroll on the same die, once this Junction"
+
+
+{-| What Alter costs, in boons (RULES.md "Moves"); the Worker checks it too.
+-}
+alterCost : Int
+alterCost =
+    2
 
 
 rerollsNote : Int -> String
@@ -71,11 +96,6 @@ rerollsNote n =
 rerollButton : String
 rerollButton =
     "Reroll"
-
-
-waitingForFacilitator : String
-waitingForFacilitator =
-    "Waiting for the facilitator…"
 
 
 
@@ -193,11 +213,6 @@ contextAspectConsumed =
     "used"
 
 
-contextAspectUse : String
-contextAspectUse =
-    "Highlight"
-
-
 {-| Facilitator-only: remove a context boon or bane outright.
 -}
 contextAspectRemove : String
@@ -219,13 +234,7 @@ addContextAspect =
 
 
 
--- FACILITATOR PANEL (View/FacilitatorPanel.elm) — the facilitator's direct die
--- steps. The Junction controls are on the top bar's stage.
-
-
-facilitatorPanelTitle : String
-facilitatorPanelTitle =
-    "Facilitator"
+-- JUNCTION CONTROLS (View/TopBar.elm) — the facilitator's accept / reject.
 
 
 accept : String
@@ -240,17 +249,8 @@ reject =
 
 
 
--- MOVES CARD (View/Moves.elm)
-
-
-movesHeading : String
-movesHeading =
-    "Moves"
-
-
-highlightButton : String
-highlightButton =
-    "Highlight"
+-- MOVES — the aspect split buttons (View/Characters.elm), Highlight Context
+-- and Create (View/ContextAspects.elm), Alter (View/TopBar.elm).
 
 
 createPlaceholder : String
@@ -295,9 +295,85 @@ dieAtTop =
     "The die is already at the top of the ladder."
 
 
-complicateButton : String
-complicateButton =
-    "Complicate"
+dieAtEnd : String
+dieAtEnd =
+    "The die is already at that end of the ladder."
+
+
+{-| A context aspect's tooltip while it can be highlighted.
+-}
+highlightContextTip : Polarity -> String
+highlightContextTip polarity =
+    case polarity of
+        Boon ->
+            "Highlight Context: the die steps up, and this boon is consumed"
+
+        Bane ->
+            "Highlight Context: the die steps down, and this bane is consumed"
+
+
+contextAspectConsumedTip : String
+contextAspectConsumedTip =
+    "Consumed: its one use is spent"
+
+
+contextAspectWordingPlaceholder : String
+contextAspectWordingPlaceholder =
+    "Word this context aspect…"
+
+
+{-| A Complicate's bane before the facilitator words it.
+-}
+unwordedFrom : String -> String -> String
+unwordedFrom character aspect =
+    "Trouble from " ++ character ++ "'s " ++ aspect ++ " — to be worded"
+
+
+unworded : String
+unworded =
+    "To be worded"
+
+
+createTip : String
+createTip =
+    "Create: pay 1 boon to make something true about the scene, a context boon in your words"
+
+
+contextBoonToggleTip : String
+contextBoonToggleTip =
+    "Add a context boon"
+
+
+contextBaneToggleTip : String
+contextBaneToggleTip =
+    "Add a context bane"
+
+
+editTip : String
+editTip =
+    "Edit"
+
+
+{-| The two halves of a character aspect's split button.
+-}
+highlightHalf : String
+highlightHalf =
+    "Highlight ☼"
+
+
+complicateHalf : String
+complicateHalf =
+    "☽ Complicate"
+
+
+highlightTip : String
+highlightTip =
+    "Highlight: pay 1 boon to make this aspect matter — the die steps up"
+
+
+complicateTip : String
+complicateTip =
+    "Complicate: this aspect drags you into trouble — gain 2 boons, and a context bane appears"
 
 
 claimASheetForMoves : String
@@ -442,12 +518,6 @@ sheetTabLabel =
 sheetTabTip : String
 sheetTabTip =
     "Sheet, moves & session context"
-
-
-{-| The Facilitator tab's tooltip. -}
-facilitatorTabTip : String
-facilitatorTabTip =
-    "Facilitator controls"
 
 
 castTabLabel : String

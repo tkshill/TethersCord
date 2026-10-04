@@ -2372,20 +2372,28 @@ shape (ADR 0003).
       in the Moves column with "undo" beside each, Highlight Context on each
       context aspect — and 31.5 replaces them. Suites: client 92, worker 138.
 
-#### 31.5 View
+#### 31.5 View — done except the Discord glyph check
 
-- [ ] The ladder in `View.TopBar`: the current-die roll button, the result,
+- [x] The ladder in `View.TopBar`: the current-die roll button, the result,
       Alter / Reroll / Reject / Accept, the facilitator's `‹` `›`.
-- [ ] Aspect split buttons with ✎ on the Sheet; the colour gradients, labels
+- [x] Aspect split buttons with ✎ on the Sheet; the colour gradients, labels
       and touch tint (needs CSS in `client/index.html`: elm-ui's `mouseOver`
       cannot express a gradient).
-- [ ] Context boons and banes as buttons with ✎; Create as the field at the
+- [x] Context boons and banes as buttons with ✎; Create as the field at the
       foot of the context list, with the facilitator's ☼ / ☽ toggle.
-- [ ] Undo links on log lines.
-- [ ] ☼ / ☽ through `Ui.boonMarks` / `Ui.baneMarks` and every hand-written
-      mark. Check the glyphs in the Discord webview on desktop and mobile.
-- [ ] Delete `View.FacilitatorPanel`, `View.Moves` and the proposal strip; the
+- [x] Undo links on log lines.
+- [x] ☼ / ☽ through `Ui.boonMarks` / `Ui.baneMarks` and every hand-written
+      mark.
+- [ ] Check the glyphs, the split buttons' hover labels and the touch tint in
+      the Discord webview on desktop and mobile (29.1's test channel). Seen
+      only in headless Chrome so far, where ☼ renders small at 11–13px.
+- [x] Delete `View.FacilitatorPanel`, `View.Moves` and the proposal strip; the
       tabs become Sheet / Cast / Guide.
+- [x] Settled in 31.5: the facilitator's ✎ on a context aspect opens its
+      field on the current text (an entry in `contextAspectEdits`, so no new
+      model field); a Complicate's blank bane reads "Trouble from <name>'s
+      <Aspect> — to be worded" until worded. The aspect field ✎ opens is
+      focused through a new `Effect.Focus`. Suites: client 95, worker 138.
 
 #### 31.6 Copy, glossary and docs
 

@@ -1,14 +1,15 @@
 module View.TopBar exposing (view)
 
-{-| The status strip across the top of the page (roadmap section 27, mockup 2a):
-one line holding the running session's goal, the die, the Junction control, and
-who the viewer is.
+{-| The status strip across the top of the page (roadmap 27, mockup 2a; the
+ladder from 31.5): one line holding the running session's goal, the die
+ladder, the junction controls, and who the viewer is.
 
-Pressing **Junction** (open to any player) rolls the current die. While that
-roll is pending it sits in a ringed chip beside the die (who rolled and how
-many rerolls is its tooltip), and the facilitator's Reroll / Reject / Accept
-replace the Junction button; a player sees that they are waiting. (31.5 turns
-the die into the full ladder, with the roll button on the current rung.)
+The ladder is the roll button: `d6 d8 [d10] d12 d16 d20`, the current die
+marked, and that one cell pressable — any player, or the facilitator, rolls the
+junction with it. While a roll is pending it stops being a button and the
+result sits beside the ladder (`Flow · 7`); a player sees **Alter**, the
+facilitator **Reroll / Reject / Accept**. The facilitator's `‹` `›` either side
+of the ladder step the die directly, at any time.
 
 Session start / end / goal-edit controls — facilitator-only — open as a row
 beneath the strip when the facilitator clicks the goal (`ToggleSessionControls`),
@@ -22,10 +23,11 @@ import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
-import Die
+import Die exposing (Die)
 import Html.Attributes
 import Junction exposing (Junction)
-import Outcome
+import MoveRecord
+import Outcome exposing (Outcome(..))
 import Types exposing (..)
 import Ui
 import View.Helpers exposing (ViewContext, inputAttrs)
@@ -63,51 +65,123 @@ strip ctx props gs =
         , Border.color Ui.line
         ]
         [ goalSummary ctx.facilitator gs.session
-        , dieAndRoll gs
-        , controls ctx gs.junction
+        , ladder ctx gs
+        , result gs.junction
+        , controls ctx gs
         , who ctx
         ]
 
 
-{-| The current die, then the pending roll, if any, in a ringed chip.
+{-| The ladder, the current die marked and — while no roll is pending — the
+button that rolls the junction. The facilitator's `‹` `›` sit either side.
 -}
-dieAndRoll : GameState -> Element Msg
-dieAndRoll gs =
-    Element.row [ spacing 10, Element.centerY ]
-        [ el
-            [ Font.size 13
-            , Font.semiBold
-            , Element.htmlAttribute (Html.Attributes.title (Copy.dieTip (Die.label gs.die)))
-            ]
-            (text (Die.label gs.die))
-        , case gs.junction of
-            Just j ->
-                el
-                    [ Font.size 12
-                    , Element.paddingXY 6 1
-                    , Border.width 1
-                    , Border.color Ui.accent
-                    , Border.rounded 4
-                    , Element.htmlAttribute
-                        (Html.Attributes.title (Copy.junctionRolled j.rolledBy ++ " · " ++ Copy.rerollsNote j.rerolls))
-                    ]
-                    (text (Copy.rollChip (Outcome.label j.outcome) j.face (Die.label j.die)))
+ladder : ViewContext -> GameState -> Element Msg
+ladder ctx gs =
+    let
+        rung die =
+            if die == gs.die then
+                currentRung ctx gs.junction die
 
-            Nothing ->
-                none
-        ]
+            else
+                el [ Font.size 11, Font.color Ui.inkSoft ] (text (Die.label die))
+
+        arrow direction glyph tip =
+            Ui.withTip tip
+                (Ui.linkButton
+                    { onPress =
+                        Die.step direction gs.die
+                            |> Maybe.andThen (\_ -> Ui.press ctx.inflight (SteppingDie direction) (StepDie direction))
+                    , label = glyph
+                    }
+                )
+    in
+    Element.row [ spacing 6, Element.centerY ]
+        (Ui.onlyWhen ctx.facilitator [ arrow Die.Down "‹" Copy.stepDownTip ]
+            ++ List.map rung Die.ladder
+            ++ Ui.onlyWhen ctx.facilitator [ arrow Die.Up "›" Copy.stepUpTip ]
+        )
 
 
-controls : ViewContext -> Maybe Junction -> Element Msg
-controls ctx junction =
+{-| The current die: the roll button, or — while a roll is pending — a marked
+cell that presses nothing.
+-}
+currentRung : ViewContext -> Maybe Junction -> Die -> Element Msg
+currentRung ctx junction die =
     case junction of
         Nothing ->
-            Ui.primaryButton
-                { onPress = Ui.press ctx.inflight RollingJunction PressJunction
-                , label = Copy.junction
-                }
+            Ui.withTip (Copy.rollTip (Die.label die))
+                (Ui.primaryButton
+                    { onPress = Ui.press ctx.inflight RollingJunction PressJunction
+                    , label = Die.label die
+                    }
+                )
 
         Just _ ->
+            el
+                [ Font.size 12
+                , Font.semiBold
+                , Element.paddingXY 6 2
+                , Border.width 1
+                , Border.color Ui.line
+                , Border.rounded 4
+                , Element.htmlAttribute (Html.Attributes.title (Copy.dieTip (Die.label die)))
+                ]
+                (text (Die.label die))
+
+
+{-| The pending roll beside the ladder: `Flow · 7`, frictions in the danger
+tone, criticals bold. Who rolled, on which die and how many rerolls is its
+tooltip.
+-}
+result : Maybe Junction -> Element Msg
+result junction =
+    case junction of
+        Just j ->
+            el
+                [ Font.size 12
+                , Font.color (outcomeTone j.outcome)
+                , if j.outcome == CriticalFlow || j.outcome == CriticalFriction then
+                    Font.bold
+
+                  else
+                    Font.regular
+                , Element.htmlAttribute
+                    (Html.Attributes.title
+                        (Copy.junctionRolled j.rolledBy ++ " " ++ Die.label j.die ++ " · " ++ Copy.rerollsNote j.rerolls)
+                    )
+                ]
+                (text (Copy.rollResult (Outcome.label j.outcome) j.face))
+
+        Nothing ->
+            none
+
+
+outcomeTone : Outcome -> Element.Color
+outcomeTone outcome =
+    case outcome of
+        CriticalFriction ->
+            Ui.danger
+
+        Friction ->
+            Ui.danger
+
+        Flow ->
+            Ui.accent
+
+        CriticalFlow ->
+            Ui.accent
+
+
+{-| While a roll is pending: the facilitator's Reroll / Reject / Accept, or a
+player's Alter. Nothing otherwise — the ladder is the roll button.
+-}
+controls : ViewContext -> GameState -> Element Msg
+controls ctx gs =
+    case gs.junction of
+        Nothing ->
+            none
+
+        Just junction ->
             if ctx.facilitator then
                 Element.row [ spacing Ui.xs ]
                     [ Ui.ghostButton
@@ -125,7 +199,44 @@ controls ctx junction =
                     ]
 
             else
-                el [ Font.size 11, Font.color Ui.inkSoft ] (text Copy.waitingForFacilitator)
+                alter ctx gs junction
+
+
+{-| A player's Alter: two boons to reroll on the same die, once per character
+per junction. Greyed, with the reason as its tooltip, when they cannot.
+-}
+alter : ViewContext -> GameState -> Junction -> Element Msg
+alter ctx gs junction =
+    let
+        mine =
+            gs.characters |> List.filter (\c -> c.ownerId /= Nothing && c.ownerId == ctx.myId) |> List.head
+
+        ( enabled, tip ) =
+            case mine of
+                Nothing ->
+                    ( False, Copy.claimASheetForMoves )
+
+                Just ch ->
+                    if Junction.hasAltered ch.slot junction then
+                        ( False, Copy.alterAlreadyUsed )
+
+                    else if ch.fate < Copy.alterCost then
+                        ( False, Copy.alterNeedsBoons )
+
+                    else
+                        ( True, Copy.alterTip )
+    in
+    Ui.withTip tip
+        (Ui.ghostButton
+            { onPress =
+                if enabled then
+                    Ui.press ctx.inflight (MakingMove MoveRecord.Alter) MakeAlter
+
+                else
+                    Nothing
+            , label = Copy.alterButton
+            }
+        )
 
 
 {-| The viewer's name, marked `◈` for the facilitator; the tooltip spells out the

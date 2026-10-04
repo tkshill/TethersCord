@@ -414,6 +414,28 @@ suite =
                         |> .inflight
                         |> Expect.equal [ UndoingMove "mv1" ]
             ]
+        , describe "✎ swaps a button for its field"
+            [ test "EditAspect opens that aspect's field and focuses it" <|
+                \_ ->
+                    Main.update (EditAspect 1 Desire) ready
+                        |> (\( next, eff ) -> ( next.aspectEditing, eff ))
+                        |> Expect.equal ( Just ( 1, Desire ), Effect.Focus "aspect-1-desire" )
+            , test "leaving that sheet's field swaps the button back; another sheet's blur does not" <|
+                \_ ->
+                    let
+                        editing =
+                            { ready | aspectEditing = Just ( 1, Desire ) }
+                    in
+                    ( Main.update (CharacterFieldBlur 1) editing |> Tuple.first |> .aspectEditing
+                    , Main.update (CharacterFieldBlur 0) editing |> Tuple.first |> .aspectEditing
+                    )
+                        |> Expect.equal ( Nothing, Just ( 1, Desire ) )
+            , test "EditContextAspect opens the field on the current text and focuses it" <|
+                \_ ->
+                    Main.update (EditContextAspect "f1") withAspect
+                        |> (\( next, eff ) -> ( Dict.get "f1" next.contextAspectEdits, eff ))
+                        |> Expect.equal ( Just "a note", Effect.Focus "context-f1" )
+            ]
         , describe "context boons and banes"
             [ test "editing the text keeps a local draft without posting" <|
                 \_ ->
