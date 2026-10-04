@@ -113,10 +113,10 @@ export function characterLabel(character: CharacterSheet): string {
  * `complicate` target). Called when a sheet changes hands, so an accepted
  * proposal cannot spend or target the wrong character's boons.
  */
-export function clearSlotPendingState(
-  state: GameState,
+export function clearSlotPendingState<T extends Pick<GameState, "proposals">>(
+  state: T,
   slot: number,
-): GameState {
+): T {
   return {
     ...state,
     proposals: state.proposals.filter(

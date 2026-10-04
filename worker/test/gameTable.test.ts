@@ -197,6 +197,29 @@ describe("GameTable state machine", () => {
       const state = await readState(table, fac);
       expect(state.session?.goal).toBe("Second cut");
     });
+
+    it("keeps the in-memory history and the game_sessions row in step (one batch per mutation)", async () => {
+      const table = "gt-session-history";
+      const { token: fac } = await seedAuth(undefined, { facilitator: true });
+
+      await call(table, "/session/start", { token: fac, body: { goal: "First cut" } });
+      await call(table, "/session/goal", { token: fac, body: { goal: "Second cut" } });
+      await call(table, "/session/end", { token: fac });
+
+      const state = await readState(table, fac);
+      const row = await env.DB.prepare(
+        `SELECT id, goal, started_at AS startedAt, ended_at AS endedAt
+         FROM game_sessions WHERE session_id = ?`,
+      )
+        .bind(table)
+        .first();
+      expect(state.sessionHistory).toEqual([row]);
+      expect(state.messages.map((m) => m.content)).toEqual([
+        "Session started — First cut",
+        "Goal updated — Second cut",
+        "Session ended — Second cut",
+      ]);
+    });
   });
 
   describe("claim / release cleanup", () => {

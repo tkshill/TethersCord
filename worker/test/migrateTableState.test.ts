@@ -35,7 +35,7 @@ describe("migrateTableState", () => {
     expect(s.proposals[0]).toMatchObject({ contextAspectId: null, targetSlot: null, text: null });
     // Every session aspect on disk before 23.3 is implicitly a Boon.
     expect(s.contextAspects[0]).toMatchObject({ kind: "Boon", text: "a note" });
-    expect(s.session).toEqual({ id: "s", goal: "g" });
+    expect(s.session).toEqual({ id: "s", goal: "g", startedAt: 0 });
   });
 
   it("reads the pre-26.1 move names and floating-boon fields under their new names", () => {
@@ -113,7 +113,7 @@ describe("migrateTableState", () => {
     );
     expect(s.stonePool.filter((k) => k === "Boon")).toHaveLength(2);
     expect(s.stonePool.filter((k) => k === "Bane")).toHaveLength(5);
-    expect(s.session).toEqual({ id: "s", goal: "g" });
+    expect(s.session).toEqual({ id: "s", goal: "g", startedAt: 0 });
   });
 
   it("reads the names section 31.1 retired under their new names", () => {
@@ -152,5 +152,15 @@ describe("migrateTableState", () => {
     );
     expect(s.junction).toBeNull();
     expect(s.contextAspects.map((a) => a.id)).toEqual(["new"]);
+  });
+
+  it("keeps a stored session's startedAt, and gives an older one 0 for GameTable to backfill", () => {
+    const kept = migrateTableState(
+      { stonePool: [], session: { id: "s", goal: "g", startedAt: 42 } },
+      [],
+    );
+    expect(kept.session?.startedAt).toBe(42);
+    const old = migrateTableState({ stonePool: [], session: { id: "s", goal: "g" } }, []);
+    expect(old.session?.startedAt).toBe(0);
   });
 });

@@ -2282,24 +2282,28 @@ a later step deletes.
 - [x] Both test suites pass (client 97, worker 103: the 101 before plus the two
       migration tests).
 
-#### 31.2a Worker — the rules core scaffold, no behaviour change
+#### 31.2a Worker — the rules core scaffold, no behaviour change — done
 
 The 25.1 restructuring on its own, so that the die ladder lands on the new
 shape (ADR 0003).
 
-- [ ] `worker/src/rules/`: `Table`, `Actor`, `Command`, `Deps`, `Result`,
+- [x] `worker/src/rules/`: `Table`, `Actor`, `Command`, `Deps`, `Result`,
       `LogEvent` and `logText`, and `transition` with an exhaustive dispatch.
-- [ ] `persistDiff(prev, next, log)` and its tests over each D1-mirrored slice
+- [x] `persistDiff(prev, next, log)` and its tests over each D1-mirrored slice
       (sheets, NPCs, locations, the running session, messages and log clear);
       `GameTable.apply` flushes it in one `DB.batch`, then installs, puts and
       broadcasts with no `await` between them.
-- [ ] The route table (P2.2's surviving half): `{ method, path, parse }` to a
+- [x] The route table (P2.2's surviving half): `{ method, path, parse }` to a
       `Command`; role and ownership checks move into the core.
-- [ ] Port chat, log clear, sessions (`SessionState.startedAt`, history kept
+- [x] Port chat, log clear, sessions (`SessionState.startedAt`, history kept
       in memory), sheet edits / boons / claim / release, NPCs and locations,
       and context aspect add / update / delete onto it. Junction, stone and
       proposal handlers stay on `commit` until 31.2b and 31.3.
-- [ ] Both suites pass unchanged; new tests under `worker/test/rules/`.
+- [x] Both suites pass (client 97, worker 131: the 103 before plus 28 under
+      `worker/test/rules/`, a session-history route test and a migration
+      test). The two migration tests that pinned `SessionState`'s shape now
+      include `startedAt`. Context aspect use and unconsume stay on `commit`
+      with the pool.
 
 #### 31.2 Worker — the die ladder
 
