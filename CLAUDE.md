@@ -115,4 +115,5 @@ TypeScript (`client/src/`):
 - Worker code: explicit request validation and authorization at every route.
 - After a change, run the narrowest check: `pnpm run build:client` after Elm, `pnpm run typecheck:worker` after Worker.
 - `RULES.md` is the canonical, current statement of the game rules. Any change to a game rule updates it in the same branch, and `client/src/Copy/Terms.elm` (the in-app glossary) follows it.
+- `CONTEXT.md` is the glossary: the canonical name for every game concept, with retired names under _Avoid_. Name code, copy and log lines after it. Decisions that are hard to reverse and surprising without context get an ADR in `docs/adr/`.
 - `ROADMAP.md` is forward-looking; `CHANGELOG.md` is the record of what shipped — add a bullet to its `[Unreleased]` section for any notable change.
