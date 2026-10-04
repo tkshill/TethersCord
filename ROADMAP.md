@@ -1440,14 +1440,13 @@ question this section is about.
       static screenshot can't show motion); its mouse-subscription gating
       follows the same pattern already exercised elsewhere in `Main.update`.
 
-## 25. Architecture review follow-ups — open, reassess now that section 26 has landed
+## 25. Architecture review follow-ups — open
 
-**Reassess after section 26.** Section 26 (player moves and the Overcome loop)
-goes first and reshapes the very handlers 25.1 restructures — the proposal kinds,
-the roll lifecycle, and the session reset. Its worker tests are what will protect
-25.1's restructuring. 25.3 and 25.4 are client-only and independent; 25.4 is
-scheduled as the first step of 26.3. 25.5 and 25.7 are largely reshaped by 26.2
-(see section 26).
+**Unblocked.** This section waited for section 26, which reshaped the proposal
+kinds, the roll lifecycle and the session reset these items touch. Section 26
+has landed, along with section 27 and the three-column layout after it. Each
+item below was re-checked against `main` on 2026-10-04 and says what is left.
+25.4 shipped inside 26.3; 25.5 is moot.
 
 An architecture review (2026-09-18) looked for places where a module's
 interface is as wide as its implementation, where a rule lives in several
@@ -1456,17 +1455,13 @@ recommended one — a pure rules core behind `GameTable` — as the only one tha
 changes the test surface, and as the one that must be decided *before* P2.2
 would split the handlers in place.
 
-**Re-baseline before starting.** The review read `main @ dee429e`
-(2026-09-10), which predates section 23. Section 23 retired the roll / reroll /
-accept lifecycle, the `Overcome` concept, the session verdict and untethering,
-and the `View.Stones` card; section 24 replaced the three-column shell. So parts
-of the review's "before" pictures no longer exist (`handleAcceptRoll`,
-`routeOvercomeDraw`, `deriveOutcomeKind`, the `carriedBanes` /
-`lastSessionFailed` DO fields, `SessionOutcomeKind`). Each item below is stated
-against the current code, with what the review found and what is left of it. The
-review also refers to a "plan file" and an ADR-0001 recording the settled design
-for candidate 1; neither is in this repository. Re-derive or recover that design
-(a short design pass, not code) before 25.1 starts, and land it as an ADR here.
+The review read `main @ dee429e` (2026-09-10), which predates sections 23 and
+26, so its "before" pictures (`handleAcceptRoll`, `routeOvercomeDraw`,
+`deriveOutcomeKind`, the `carriedBanes` / `lastSessionFailed` DO fields) no
+longer exist. The review also refers to a "plan file" and an ADR-0001 recording
+the settled design for candidate 1; neither is in this repository. Re-derive or
+recover that design (a short design pass, not code) before 25.1 starts, and land
+it as an ADR here.
 
 Same conventions as the rest of the roadmap: one branch per item off `main`,
 `DESIGN_PRINCIPLES.md` as the yardstick, and no behaviour change — every item is
@@ -1474,8 +1469,8 @@ a restructuring, verified by the existing suites plus the new tests it makes
 possible.
 
 - [ ] **25.1 — A pure rules core behind `GameTable`** (the review's top
-      recommendation). Today the rules are interleaved with D1 awaits: a handler
-      does its D1 write, then updates memory, then commits (storage put, message
+      recommendation). The rules are interleaved with D1 awaits: a handler does
+      its D1 write, then updates memory, then commits (storage put, message
       insert, broadcast), so a throw between the two leaves D1 ahead of memory,
       and the rules are reachable only through `SELF.fetch`. The review's shape:
       a `rules/` module exposing `transition(state, command, deps)` over a
@@ -1486,79 +1481,70 @@ possible.
       seams: session, stones, proposals, characters. What it buys: every rule in
       one module (locality), tests that seed the RNG and call `transition`
       directly with no `workerd` or HTTP loop (leverage), and one D1 write path.
-      Still true after section 23: `handleProposalDecision` (`GameTable.ts`
-      1050–1233) is the largest interleave, and `gameLogic.ts` is mostly single-
-      caller leaf helpers. No longer true: the two DO-owned fields outside
-      `GameState` (only the legacy read in `migrateStoneState.ts` remains).
-      **Supersedes P2.2** — that split relocates the interleave into five
-      handler files; this removes it. The route table half of P2.2 survives on
-      its own.
+      Still true: `GameTable.ts` is ~2150 lines, `handleProposalDecision`
+      (`GameTable.ts` ~1051–1250, five move arms) is the largest interleave,
+      and `gameLogic.ts` is mostly single-caller leaf helpers. The Overcome
+      tests in `overcome.test.ts` force draws by shaping the pool, which an
+      injected RNG would make unnecessary. **Supersedes P2.2's handler split** —
+      that split relocates the interleave into handler files; this removes it.
+      The route-table half of P2.2 survives on its own.
 - [ ] **25.2 — One "change a sheet" seam** (absorbed by 25.1). Four handlers
-      hand-copy the replace-by-slot `characters.map` over `this.game.characters`
-      (`GameTable.ts` 1283, 1600, 1638, 1677, 1715) beside the one-statement D1
-      wrappers in `characters.ts` (`setFate`, `setOwner`, `updateFields`,
-      `incrementAspectBane` — the last has no writer since 23.1). The review's
-      fix is a `patchSheet(state, slot, patch)` that returns the next state and
-      queues the write as data, so the in-memory and D1 halves cannot diverge.
-      The review counted nine copies; fewer remain now that the roll paths are
-      gone, but the shape is the same.
+      still hand-copy the replace-by-slot `this.game.characters.map`
+      (`GameTable.ts` ~1779, ~1817, ~1856, ~1894), plus a fate helper (~1302),
+      beside the one-statement D1 wrappers in `characters.ts` (`setFate`,
+      `setOwner`, `updateFields`, and `incrementAspectBane`, which has had no
+      caller since 23.1). The fix is a `patchSheet(state, slot, patch)` that
+      returns the next state and queues the write as data, so the in-memory and
+      D1 halves cannot diverge.
 - [ ] **25.3 — A named edit cursor on the client.** "What is locally edited and
       unsaved" has no name or type: `Model` carries `editingSlot`,
-      `editingEntity` and the dirty sets (`Types.elm`), and `applyServerState`
-      merges the character half and the entity half as near-verbatim copies. The
-      entity half has no tests. Add an `EditCursor` module owning those fields
-      and the protect-merge (`startEditing`, `markDirty`, `blur`, `flushed`,
+      `editingEntity`, `dirtySlots` and `dirtyEntities` (`Types.elm`), and
+      `applyServerState` merges the character half and the entity half as
+      near-verbatim copies. `StateMergeTest.elm` covers only the character
+      half. Add an `EditCursor` module owning those fields and the
+      protect-merge (`startEditing`, `markDirty`, `blur`, `flushed`,
       `protect : EditCursor -> GameState -> GameState -> GameState`), generic
-      over slot / entity id, so the entity half inherits the character tests and
-      `Model` loses several fields for one. Independent of 25.1 — client only,
-      can go first.
-- [x] **25.4 — Typed in-flight action keys** (done as the first step of 26.3: an `Action` custom type in its own `Action.elm`, since `Effect` imports `View`; `Model.inflight` is a `List Action`, `MutationOutcome.family` an `Action.Family`, `Ui.press` polymorphic over the action type, and `inflight` rides on `ViewContext`). In-flight state is a
-      `Set String` keyed by strings like `"stones:add-boon"`, matched by prefix
-      across `Main` (`clearInflight`), `Effect` and the views, so a typo compiles
-      and a family clear is a `String.startsWith`. Replace the key with an
-      `Action` custom type owned by `Effect` and carried in `ViewContext`, so the
-      compiler checks every key and every section can grey its own button, not
-      only the ones handed `inflight` today. `Main.guard` keeps its call sites.
-      Independent of 25.1 — client only. Re-check which `View.*` modules take
-      `inflight` now that `View.Stones` is gone (`SessionAspects` and the
-      top-bar / facilitator views do).
-- [ ] **25.5 — Session reset as data.** Only half of the review's finding
-      survives: the outcome half (`deriveOutcomeKind` recovering a kind by
-      substring search on a sentence) went away with the session verdict. What
-      remains is that "nothing carries between sessions" is two hand-synced
-      lists — the same four fields (`usedAbilities`, `floatingBoons`,
-      `committedBoons`, `proposals`) reset separately in `handleStartSession` and
-      `handleEndSession` — and the "Session start / end clear pending state"
-      note in `CLAUDE.md` must be kept in step with both. One
-      `clearSessionState : GameState -> GameState`. Absorbed by 25.1; if 25.1 is
-      delayed, this is small enough to land alone.
+      over slot / entity id, so the entity half inherits the character tests
+      and `Model` loses several fields for one. Independent of 25.1 — client
+      only, can go first.
+- [x] **25.4 — Typed in-flight action keys** — done as the first step of 26.3:
+      an `Action` custom type in its own `Action.elm` (since `Effect` imports
+      `View`); `Model.inflight` is a `List Action`, `MutationOutcome.family` an
+      `Action.Family`, `Ui.press` polymorphic over the action type, and
+      `inflight` rides on `ViewContext`.
+- **25.5 — Session reset as data — moot.** The finding was that "nothing
+  carries between sessions" lived in two hand-synced lists in
+  `handleStartSession` and `handleEndSession`. Since 26.2 sessions clear
+  nothing: both handlers touch only the goal and the history, so there is no
+  list left to share.
 - [ ] **25.6 — Narrow `Effect`'s backend half** (speculative). The backend half
-      of `Effect.elm` is one constructor per `Api` call — roughly two dozen
-      `Post*` constructors — so it is as wide as its implementation, and some
-      carry raw route data (`PostStones Auth String` a path,
-      `PostProposalDecision` an `"accept"` / `"reject"` string). The review's
-      option: one `Post Auth Request` constructor over a request-description type
-      built in `Api`, keeping the task / port constructors, which are where tests
-      get their leverage. A new endpoint would touch `Api` only and route strings
-      would leave `Main`. Speculative: do it only if the wide constructor list
-      keeps costing edits after 25.3 / 25.4.
+      of `Effect.elm` is one constructor per `Api` call — 30 `Post*`
+      constructors after section 26 — so it is as wide as its implementation,
+      and `PostProposalDecision` still carries an `"accept"` / `"reject"`
+      string. The review's option: one `Post Auth Request` constructor over a
+      request-description type built in `Api`, keeping the task / port
+      constructors, which are where tests get their leverage. A new endpoint
+      would touch `Api` only and route strings would leave `Main`.
+      Speculative: do it only if the wide constructor list keeps costing edits
+      after 25.3.
 - [ ] **25.7 — Worker `Proposal` as a discriminated union** (absorbed by 25.1's
-      proposals branch). The client already models the union (`Kind.elm`); the
-      worker flattens it to nullable columns and re-checks per arm
-      (`slot: number | null`, `floatingId`, `targetSlot`, the `proposal.slot ??
-      -1` sentinel at `GameTable.ts:1116`), and `switch (kind)` has no
-      exhaustiveness check, so a missing arm accepts silently. Target shape:
-      `AddBoon | Pledge {slot} | Ability {slot, kind, target?} | UseFloating
-      {slot, floatingId}` with a `never` check. `migrateStoneState.ts` must read
-      already-stored flat proposals into it.
+      proposals branch). The client already models the kinds (`Kind.elm`); the
+      worker's `Proposal` (`worker/src/types.ts`) is one flat record with
+      nullable `slot`, `sessionAspectId`, `targetSlot` (legacy `complicate`
+      only) and `text` (`add-detail` only), re-checked per arm, and
+      `switch (proposal.kind)` has no exhaustiveness check, so a missing arm
+      accepts silently. Target shape: `Highlight {slot} | Complicate {slot,
+      targetSlot?} | AddDetail {slot, text?} | Alter {slot} | UseSessionBoon
+      {slot, sessionAspectId}` with a `never` check. `migrateStoneState.ts`
+      must read already-stored flat proposals into it.
 
 ### Sequencing
 
-- **25.3 and 25.4** are client-only, independent of everything else, and can
-  ship in either order at any time.
-- **25.1** is the big one and needs its design pass first; **25.2, 25.5 and
-  25.7** ride with it (each is a step it makes cheap, and each can also land as
-  a preparatory PR ahead of it if that keeps the diff reviewable).
+- **25.3** is client-only, independent of everything else, and can ship at any
+  time.
+- **25.1** is the big one and needs its design pass first; **25.2 and 25.7**
+  ride with it (each is a step it makes cheap, and each can also land as a
+  preparatory PR ahead of it if that keeps the diff reviewable).
 - **25.6** waits.
 - P2.2 stays on the Phase 3 list only for its route-table half; retire it once
   25.1 lands.
@@ -1812,7 +1798,7 @@ Branches 26.1 → 26.2 → 26.3 → 26.4, each off `main`, merged before the nex
 starts; a section-26 docs branch (this file and `RULES.md`) goes first. §25.4
 lands as the first commit of 26.3. Nothing deploys until asked.
 
-## 27. Minimalist two-panel UI (mockup 2a) — done
+## 27. Minimalist UI (mockup 2a), and the layout follow-ups after it — done
 
 Reworks the section-24 layout to the dense "2a" mockup from the design project
 (*Two Panel Redesign*): the cards go away, leaving hairlines between regions.
@@ -1843,7 +1829,40 @@ Where the mockup and the rules disagree, the rules win. Deliberate adaptations:
 - The mockup's "Moves — 3 of 4 left" counter is a retired per-session limit; the
   Moves tab's tooltip shows the viewer's boons instead.
 - Game events in the log are not tinted as in the mockup: the Worker logs them as
-  the acting user's own messages, with no system marker to key on.
+  the acting user's own messages, with no system marker to key on. (Superseded
+  below: messages now carry a `kind`.)
+
+### After section 27 — shipped without a section of their own
+
+The layout above is what section 27 shipped. Playtesting it led to a run of
+smaller follow-ups, recorded in `CHANGELOG.md` under [Unreleased] rather than
+here; the current layout is described in `CLAUDE.md`. In order:
+
+- [x] **Tool panel follow-ups.** The facilitator got a read-only Moves preview
+      of the selected character; Context moved up beside Moves; sheet fields got
+      more spacing; the panel's default width went from 320px to 480px.
+- [x] **Table events stand apart from chat.** Messages carry a `kind`
+      (`chat` / `event`, migration `0010_message_kind.sql`); event lines render
+      muted, italic and smaller behind a hairline, so typed chat is easy to
+      find. This supersedes the last adaptation above.
+- [x] **Sheet, Moves and Context stacked in one tool.** The separate Moves and
+      Context tabs went; the tool strip became Sheet, Facilitator (facilitator
+      only), Cast and Guide.
+- [x] **Tool panel on the wide side.** The split became a share of the window
+      width instead of a pixel width.
+- [x] **No stray horizontal scrollbar** in the tool panel or the log: vertical
+      scroll regions hide horizontal overflow.
+- [x] **Three equal columns.** The tool panel, then Moves with the session
+      context, then the log. The draggable divider is gone, and only the
+      session context and the log scroll.
+- [x] **Moves pinned under the session context** in the middle column;
+      Highlight, Complicate and Alter Fate share a line, with Add Detail and its
+      field beneath. Alter Fate is always shown and pressable only during an
+      Overcome.
+- [x] **Complicate is about your own character** — a rules change, recorded in
+      `RULES.md`: the proposer's own character gains two boons, and the move no
+      longer names another character.
+- [x] **Character sheet fields wrap** instead of running past the column edge.
 
 ## 28. Heart and skull marks, labelled tool tabs — next
 
