@@ -8,13 +8,15 @@ against.
 
 **Phase 1** (sections 1–16, 19, 21, 22) is shipped — each section is the record
 of what landed and the decisions taken along the way. **Phase 2** (sections
-23–30) is the current plan: section 23 was a deliberate simplification for the
+23–31) is the current plan: section 23 was a deliberate simplification for the
 testing phase, moving stone and resource management onto the facilitator by hand
 and rebuilding the view as three viewport-sized columns (section 24 then made it
 two panels); section 26 gave the players their moves back and restored the
 Overcome roll in a simpler form, and `RULES.md` states the resulting rules;
-section 27 reworked the UI to the minimalist mockup. Sections 23, 24, 26 and 27
-are shipped; 25 and 28–30 are open. **Phase 3**, at the end,
+section 27 reworked the UI to the minimalist mockup; section 31 replaces the
+stone pool with a die ladder, renames the Overcome the Junction, and turns moves
+into direct actions the facilitator can undo. Sections 23, 24, 26 and 27 are
+shipped; 25 and 28–31 are open. **Phase 3**, at the end,
 collects everything else still open, moved out of the Phase 1 sections so the
 outstanding-but-not-next work sits in one list — it kept its original `P2.x`
 item labels since they're referenced from `CLAUDE.md` and commit messages, so
@@ -1870,6 +1872,9 @@ Two small visual changes to the section-27 UI.
 
 ### 28.1 Boons and banes as hearts and skulls
 
+> **Superseded by section 31**, which uses sun and moon marks (☼ / ☽) and
+> removes the pool marks entirely. 28.2 stands.
+
 The `+` / `−` marks read as arithmetic rather than as game pieces, and a run of
 them is hard to count at a glance. Replace them with a pictorial pair — hearts
 for boons, skulls for banes (exact glyphs open; see below).
@@ -1992,6 +1997,9 @@ Only worth doing if the staging loop proves too slow in practice.
 
 ## 30. Playtest the Overcome loop — planned
 
+> **Section 31 replaces the loop this checklist describes.** Rewrite the
+> checklist for Junctions (31.6) before running it.
+
 Moved out of section 26.4, which shipped the code. Section 26's rules have only
 been exercised by the test suites and by rendering the view in headless Chrome;
 this is the first real run at the table. Not something the code can do.
@@ -2026,13 +2034,316 @@ this is the first real run at the table. Not something the code can do.
       reroll as its own event line; whether the UI should also fold them into
       one "Overcome" entry is a presentation question.
 
+## 31. Junctions, the die ladder, and direct moves — planned
+
+The stone pool goes. Every chance roll becomes a single die whose size moves up
+and down a ladder, the Overcome becomes the **Junction**, session boons and
+banes become **context boons and banes**, and every player move becomes a direct
+action the facilitator can undo, in place of a proposal the facilitator
+approves. The approval queue, the Moves panel and the Facilitator tab are
+removed.
+
+Settled in a design interview on 2026-10-04. **`RULES.md` is rewritten in
+31.0 and stays the canonical statement of the rules; this section is the plan
+and the reasoning.** The change is large and touches the wire, the Durable
+Object state and most of the client, so it is planned as a deliberate
+refactor with explicit translation layers, not a re-skin of the existing
+models.
+
+### Decisions — the rules
+
+- **The die ladder.** `d6 → d8 → d10 → d12 → d16 → d20`. The base die is
+  **d10**. A boon steps the die up one rung, a bane steps it down one rung.
+- **Reading a roll**, the same thresholds on every die:
+  - 1–2 is a **Critical Friction**; 3–4 is a **Friction**.
+  - 5 or more is a **Flow**; the top two faces of the die are a **Critical
+    Flow** (9–10 on a d10, 15–16 on a d16).
+  - On a d6 every Flow is a Critical Flow (5–6); there is no plain Flow.
+- **The two criticals are always equally likely** (two faces in N). Stepping
+  down makes the roll more volatile in both directions — context boons *and*
+  context banes become likelier — and stepping up steadies it. Kept on purpose:
+  a bane is not only a penalty, which fits principle 8.
+- **Base odds are 60 / 40** Flow / Friction on the d10. Deliberately a little
+  generous; it can be lowered after play.
+
+  | Die | Crit Friction | Friction | Flow | Crit Flow | Any Friction |
+  | --- | --- | --- | --- | --- | --- |
+  | d6 | 33% | 33% | 0% | 33% | 67% |
+  | d8 | 25% | 25% | 25% | 25% | 50% |
+  | d10 | 20% | 20% | 40% | 20% | 40% |
+  | d12 | 17% | 17% | 50% | 17% | 33% |
+  | d16 | 12.5% | 12.5% | 62.5% | 12.5% | 25% |
+  | d20 | 10% | 10% | 70% | 10% | 20% |
+
+- **The ends of the ladder refuse.** A boon at d20 or a bane at d6 cannot be
+  used: the control is disabled and the Worker refuses it. Nothing is wasted.
+- **The Junction** ("the story is at a junction between two paths"; renames the
+  Overcome). Any player, or the facilitator, rolls the current die. One roll
+  pending at a time. The facilitator then:
+  - **Rerolls** for free, on the same die;
+  - **Accepts**: the die resets to d10, and a Critical Flow creates a context
+    boon, a Critical Friction a context bane — from the final roll only, so a
+    reroll never creates one;
+  - **Rejects**: the roll is discarded, the die stays where it was.
+- **Preparation happens before the roll, officially.** Every Highlight,
+  Complicate, Add Detail and context boon or bane use is made *before* the
+  Junction is rolled. Once the result is up, the only player move is **Alter
+  Fate**. This is intended: it rewards proactive play and stops boons being
+  spent only after a Friction. **The Worker enforces it** (409 on any move
+  except Alter while a Junction is pending); the client disables the controls.
+  The facilitator's direct corrections (die arrows, a character's boons,
+  editing text) stay open.
+- **Character boons are unchanged** as the move currency (`fate` in storage).
+- **Context boons and context banes** rename session boons and banes, with the
+  same `consumed` mark. **Anyone** may use either one directly, with no
+  approval: a context boon steps the die up, a context bane steps it down, and
+  it is marked consumed.
+- **Moves are direct, and undoable.** There is no proposal queue any more.
+
+  | Move | Where | Cost | Effect |
+  | --- | --- | --- | --- |
+  | **Highlight** | right half of one of your aspects | 1 boon | die up one rung |
+  | **Complicate** | left half of one of your aspects | none | +2 boons, and a context bane with blank text for the facilitator to fill, tagged with the aspect |
+  | **Add Detail** | the field under the context list | 1 boon | a context boon with the player's text (blank falls back to `Detail from <name>`) |
+  | **Use a context boon / bane** | click it | none | die up / down one rung; marked consumed |
+  | **Alter Fate** | status strip, beside the result | 2 boons | reroll the pending Junction on the same die; once per character per Junction |
+
+  Highlights stack: three take a d10 to a d20.
+- **Undo replaces approval.** The facilitator may undo any move; a player may
+  undo their own (this replaces withdraw). Undo reverses **that move's own
+  effects**, not the table's state before it, so later moves survive:
+  - Highlight: die down a rung, boon refunded.
+  - Complicate: 2 boons taken back, its context bane deleted.
+  - Add Detail: its context boon deleted, boon refunded.
+  - Context boon / bane use: unconsumed, die back a rung.
+  - Alter Fate: the previous result restored, 2 boons refunded, the
+    once-per-Junction allowance freed.
+
+  A reverse step that would run off the ladder stops at the end.
+- **The undo window closes when the Junction is rolled** — preparation is
+  then locked. An Alter can be undone until its Junction is accepted or
+  rejected.
+- **The facilitator acts directly**: steps the die with `‹` `›` beside the
+  ladder (each step logged, `d10 → d12`), adds a context boon or bane free
+  through the same field players use for Add Detail (with a ☼ / ☽ toggle), and
+  edits any context text (unlogged).
+- **The log.** Every move, use, step and undo is a line, and every line that
+  changes the die carries `from → to`. A roll reads `Flow — 7 on d10`. An undo
+  reads `Highlight undone — <name> — d12 → d10`.
+
+### Decisions — the interface
+
+- **The ladder is the roll button.** The status strip shows
+  `d6 d8 [d10] d12 d16 d20` with the current die marked; the current die is the
+  button that rolls the Junction. Only that cell is pressable. While a roll is
+  pending it shows the result beside it (`Flow · 7`) and stops being a button;
+  players see **Alter**, the facilitator **Reroll / Reject / Accept**. The
+  facilitator's `‹` `›` sit either side of the ladder. The ladder replaces the
+  pool marks.
+- **Aspects are split buttons.** On your own claimed sheet each non-empty
+  aspect is a button: the right half Highlights (green, gradient running right
+  to left, labelled `Highlight ☼`), the left half Complicates (red, gradient
+  running left to right, labelled `☽ Complicate`). Because red / green is the
+  commonest colour-blind confusion, each half also shows its label on hover or
+  press; on touch both halves carry a faint resting tint, since there is no
+  hover. Halves grey out when unaffordable, at a ladder end, or while a
+  Junction is pending.
+- **Click to act, ✎ to edit.** An aspect shows as its button with a small ✎
+  beside it; ✎ swaps in the text field, and leaving the field saves and swaps
+  back. Context boons and banes use the same pattern (✎ for the facilitator
+  only), and are disabled once consumed.
+- **Add Detail is the field at the foot of the context list**, which scrolls.
+  For a player it is Add Detail (costs a boon, makes a context boon); for the
+  facilitator it carries the ☼ / ☽ toggle and is free.
+- **Removed:** the Facilitator tab (its pool controls became the ladder arrows,
+  its proposal queue is gone), the proposal strip under the tools, and the
+  Moves panel. The tool tabs are **Sheet / Cast / Guide**.
+- **Sun and moon marks.** ☼ (U+263C) for boons, ☽ (U+263D) for banes, on
+  character boons and context boons and banes, keeping the danger tint on banes
+  so the two differ by more than shape. This supersedes the hearts / skulls
+  idea in 28.1.
+- **Undo lives in the log.** A move's log line carries an `undo` link for the
+  facilitator and for the player who made it, until the window closes or the
+  move is undone.
+
+### Decisions — the architecture
+
+- **Rename end to end.** Client and Worker deploy atomically, so the wire takes
+  the new names rather than being translated in the client:
+  `gameState.junction`, `gameState.die`, `gameState.contextAspects`,
+  `gameState.moves`; routes `/junction/{roll,reroll,accept,reject,alter}`,
+  `/die/{step-up,step-down}`, `/context-aspects/*`, `/moves/*`,
+  `/moves/:id/undo`. Every proposal route and `KEY_STONES`'s `stonePool`,
+  `overcome`, `sessionAspects` and `proposals` fields go.
+- **Three translation layers, each named in one place**, so a renamed concept
+  can always be traced:
+  1. **Vocabulary** — a `CONTEXT.md` glossary with a "renamed and retired
+     terms" table (Overcome → Junction, session boon / bane → context boon /
+     bane, stone pool → die ladder, proposal → move + undo, `fate` → boons),
+     plus an ADR for the dice decision. `RULES.md` and `Copy/Terms.elm` follow.
+  2. **Stored state** — `migrateStoneState.ts` becomes `migrateTableState.ts`,
+     with one commented mapping per legacy shape: no `die` → d10; a pending
+     stone Overcome → dropped; `sessionAspects` → `contextAspects` (consumed
+     kept); pending proposals → dropped. The storage key string stays
+     `"stones"` (only the constant is renamed); changing it would need its own
+     migration for nothing.
+  3. **The client's wire boundary** — every decoder in one `Api/Decode.elm`
+     whose header maps wire names to Elm names; `Kind`'s decoder moves there
+     (and `Kind` itself goes with the proposals). An unknown die size fails the
+     decode rather than defaulting.
+- **The Worker owns the rules.** It computes `outcome` and sends
+  `{ die, face, outcome }`; the client never classifies a face. The ladder
+  exists in both languages (the client needs it to disable controls at the
+  ends), pinned by a shared fixture test.
+- **Client domain modules** replace `Roll.elm`: `Die` (the ladder type,
+  `stepUp` / `stepDown : Die -> Maybe Die`, `label`), `Outcome`, `Junction`,
+  `ContextAspect` (with `Polarity = Boon | Bane`) and `MoveRecord`. The view
+  sees these, never a raw number or wire string.
+- **Undoable moves are Durable Object state**, not D1: `moves` is a list of
+  `{ id, kind, actorId, slot, aspect?, effects, messageId }` in the
+  `KEY_STONES` blob, broadcast, cleared when a Junction is rolled (Alter
+  entries when it is accepted or rejected). The client finds each move's log
+  line by `messageId`. No D1 migration is needed anywhere in this section.
+- **A pure `dice.ts`** (`LADDER`, `step`, `rollDie(die, rng)`, `classify`) with
+  unit tests, and an overridable dice source on `GameTable` (set through
+  `runInDurableObject`) so route tests force a known face instead of shaping a
+  pool.
+- **Deploy between sessions**, after a run in the test channel (29.1): the
+  migration drops a pending roll and pending proposals, and a client left open
+  across the deploy must be reloaded.
+
+### What this reverses or supersedes
+
+- **§26's proposal model** (every move but Overcome approved by the
+  facilitator; costs checked at proposal and accept; withdraw) — replaced by
+  direct moves and undo. **§26's "no pool changes after the roll is a table
+  rule"** — now a Worker guard, since no approval step stands in the way.
+- **The shared stone pool** and its reset to two Boon and two Bane; the
+  facilitator's `/stones/{add,remove}`.
+- **Complicate** gains a context bane; it no longer pays out with nothing on the
+  table.
+- **28.1** (hearts and skulls) — superseded by the sun and moon marks above.
+  **28.2** (labelled tabs) is unaffected, and now covers three tabs.
+- **30** (playtest the Overcome loop) — its checklist describes the stone pool;
+  rewrite it for Junctions in 31.6 before it is run.
+- **25.6**'s `PostProposalDecision` string and **25.7** (Worker `Proposal` as a
+  discriminated union) — moot once proposals are deleted. **25.1** overlaps
+  heavily; see the open questions.
+
+### Work order
+
+One integration branch, `feat/31-junction`, cut from `main`; each subsection is
+its own branch merged into it (`--no-ff`), and the integration branch merges to
+`main` once, when 31 is complete. `main` stays deployable throughout, so a
+hotfix for the live table can still ship. The order avoids renaming code that
+a later step deletes.
+
+#### 31.0 Rules and vocabulary — docs only
+
+- [ ] Rewrite `RULES.md` for the die ladder, the Junction, direct moves and
+      undo, and context boons and banes (marked as not yet built until 31.6).
+- [ ] `CONTEXT.md` glossary with the renamed / retired terms table
+      (`mattpocock-skills:domain-modeling`).
+- [ ] ADR: the die ladder replaces the stone pool, and undo replaces approval.
+
+#### 31.1 Pure rename — no behaviour change
+
+- [ ] Overcome → Junction and session aspect → context aspect everywhere: wire
+      fields, routes, Worker types and handlers, client types, `Msg` /
+      `Effect` / `Action` names, tests, copy. Proposals and the pool are left
+      alone, since 31.2 and 31.3 delete them.
+- [ ] `migrateTableState.ts` (renamed) reads `sessionAspects` into
+      `contextAspects` and an Overcome into a Junction; a test for each.
+- [ ] Both test suites pass with only renamed identifiers.
+
+#### 31.2 Worker — the die ladder
+
+- [ ] `dice.ts` test-first: ladder, step with refusal at the ends, `rollDie`
+      with an injected source, `classify`.
+- [ ] `gameState.die` replaces `stonePool`; the Junction carries
+      `{ rolledBy, die, face, outcome, rerolls, alteredSlots }`; accept resets
+      to d10 and creates a context aspect from a critical; reject leaves the
+      die.
+- [ ] `/die/{step-up,step-down}` (facilitator, logged) replace
+      `/stones/{add,remove}`; context aspect use steps the die.
+- [ ] Migration: no `die` → d10, a pending stone Overcome → dropped.
+- [ ] The overridable dice source on `GameTable`; `junction.test.ts` drives
+      the loop with forced faces.
+
+#### 31.3 Worker — direct moves and undo
+
+- [ ] `/moves/{highlight,complicate,add-detail,alter}` and
+      `/context-aspects/:id/use` act immediately for any player, with costs
+      checked once (400) and ladder ends refused (409). Highlight and
+      Complicate carry the aspect.
+- [ ] The Junction gate: every move except Alter 409s while a Junction is
+      pending.
+- [ ] `gameState.moves`, `/moves/:id/undo` (facilitator, or the move's own
+      player), the window closing on roll, Alter's on accept or reject.
+- [ ] Delete `Proposal`, `ProposalKind`, `handleProposalDecision`, the
+      proposal and withdraw routes, `/context-aspects/:id/unconsume` (undo
+      covers it — confirm in review), and their tests. Migration drops stored
+      proposals.
+
+#### 31.4 Client domain and wire
+
+- [ ] `Die`, `Outcome`, `Junction`, `ContextAspect`, `MoveRecord` modules;
+      `Roll.elm` and `Kind.elm` deleted.
+- [ ] `Api/Decode.elm` as the one wire boundary, with the ladder parity
+      fixture.
+- [ ] `Msg`, `Effect`, `Action` (`StonesFamily` → `DieFamily`, the proposal
+      families gone, an `UndoFamily`) and `update`; `UpdateTest` and the
+      decoder tests follow.
+
+#### 31.5 View
+
+- [ ] The ladder in `View.TopBar`: the current-die roll button, the result,
+      Alter / Reroll / Reject / Accept, the facilitator's `‹` `›`.
+- [ ] Aspect split buttons with ✎ on the Sheet; the colour gradients, labels
+      and touch tint (needs CSS in `client/index.html`: elm-ui's `mouseOver`
+      cannot express a gradient).
+- [ ] Context boons and banes as buttons with ✎; Add Detail as the field at the
+      foot of the context list, with the facilitator's ☼ / ☽ toggle.
+- [ ] Undo links on log lines.
+- [ ] ☼ / ☽ through `Ui.boonMarks` / `Ui.baneMarks` and every hand-written
+      mark. Check the glyphs in the Discord webview on desktop and mobile.
+- [ ] Delete `View.FacilitatorPanel`, `View.Moves` and the proposal strip; the
+      tabs become Sheet / Cast / Guide.
+
+#### 31.6 Copy, glossary and docs
+
+- [ ] `Copy.elm` and `Copy/Terms.elm` follow `RULES.md`; the Guide covers the
+      ladder and its odds.
+- [ ] `RULES.md` loses its "not yet built" marks; `CLAUDE.md`'s architecture
+      and module sections; `CHANGELOG.md`.
+- [ ] Re-baseline 28 (drop 28.1) and rewrite 30's checklist for Junctions.
+
+### Open questions
+
+- **Generosity.** Is 60 / 40 at d10 too kind? Lower the base die (d8 is
+  50 / 50) if play says so.
+- **Equal criticals.** Does volatility at the bottom of the ladder feel right
+  at the table, or do players read a bane making context boons likelier as
+  backwards?
+- **25.1's `rules/` transition module.** 31.2 and 31.3 rewrite most of the
+  rules handlers anyway. Writing the new Junction and move logic straight into
+  a pure `transition(state, command, deps)` shape would land most of 25.1 for
+  little extra; keeping 31 narrower leaves 25.1 as a later rewrite of fresh
+  code. Decide before 31.2.
+- **Unconsume.** Undo restores a consumed aspect; the separate facilitator
+  unconsume may no longer be needed.
+- **Complicate abuse.** It is free and now unapproved; the facilitator's undo
+  is the only check. Revisit if it is farmed in play.
+- **Stale clients.** A client open across the deploy fails to decode the new
+  state. Is a "reload the Activity" note on a decode failure worth adding?
+
 # Phase 3 — potential future plans
 
 Everything still open, moved out of the Phase 1 sections above so it sits in one
 list. Same conventions: each item is its own branch off `main` with a
 professional commit message, and `DESIGN_PRINCIPLES.md` is the yardstick. Items
 are roughly in value-over-effort order; the last two are explicitly not planned
-or not scheduled. The open Phase 2 sections above (25, 28–30) come first;
+or not scheduled. The open Phase 2 sections above (25, 28–31) come first;
 everything here is further out. An item that later work resolved or made moot
 says so in place rather than vanishing, since its label may be cited elsewhere.
 
