@@ -32,10 +32,10 @@ An **aspect** is a statement that is true in the fiction. There are two kinds.
   now). They are always true; highlighting one makes it matter for a junction.
 - **Context aspects.** Statements about the situation, owned by nobody. Each is
   a **context boon** or a **context bane** and carries one use.
-  - **Where they come from.** An accepted Critical Flow creates a context boon,
-    an accepted Critical Friction a context bane. **Add Detail** creates a
-    context boon, **Complicate** a context bane. The facilitator can create
-    either kind directly at any time.
+  - **Where they come from.** An accepted Critical Flow adds a context boon,
+    an accepted Critical Friction a context bane. **Create** adds a context
+    boon, **Complicate** a context bane. The facilitator can add either kind
+    directly at any time.
   - **Consumed.** Highlighting one spends its use. It is not deleted: it stays
     on the table, visibly consumed, and cannot be highlighted again.
   - **Lifetime.** They stay until the facilitator deletes them. Ending a
@@ -90,7 +90,7 @@ could go two ways: one easier for the characters (flow), one harder (friction).
 The app does not model the declaring. It models what follows.
 
 1. **Prepare.** Players make their moves: Highlight, Highlight Context,
-   Complicate, Add Detail. The facilitator steps the die or highlights context
+   Complicate, Create. The facilitator steps the die or highlights context
    aspects directly. Everyone plays the scene in voice. **All of this happens
    before the roll.**
 2. **Roll.** Any player, or the facilitator, rolls the die. It needs no
@@ -104,20 +104,20 @@ The app does not model the declaring. It models what follows.
    reroll directly, for free. Either way the roll is on the same die.
 5. **Resolve.** The facilitator **accepts** or **rejects** the roll.
    - **Accept.** The last roll stands. The die returns to the d10. A Critical
-     Flow creates a context boon; a Critical Friction creates a context bane;
-     any other outcome creates nothing. The facilitator words the new context
+     Flow adds a context boon; a Critical Friction adds a context bane; any
+     other outcome adds nothing. The facilitator words the new context
      aspect in their own time.
    - **Reject.** The roll is discarded. The die stays where it was and nothing
      else changes. The junction can be rolled again.
 
-Only the accepted roll creates a context aspect: rerolls and Alters never do.
+Only the accepted roll adds a context aspect: rerolls and Alters never do.
 Every roll, reroll and the final accept or reject is a line in the message log,
 and a roll reads as its outcome, face and die ("Flow — 7 on d10").
 
 ## Moves
 
 There are five moves: **Highlight**, **Highlight Context**, **Complicate**,
-**Add Detail** and **Alter Fate**. Use these names in copy and in code.
+**Create** and **Alter Fate**. Use these names in copy and in code.
 Rolling a junction is not a move.
 
 A move takes effect immediately. A move that costs boons cannot be made unless
@@ -128,7 +128,7 @@ the player holds enough. Every move is a line in the log.
 | **Highlight** | Player, on one of their character aspects | 1 boon | The die steps up. |
 | **Highlight Context** | Anyone, on an unconsumed context aspect | none | A context boon steps the die up; a context bane steps it down. It is consumed. |
 | **Complicate** | Player, on one of their character aspects | none | The character gains two boons, and a context bane appears for the facilitator to word. |
-| **Add Detail** | Player | 1 boon | A context boon is created with the player's wording. |
+| **Create** | Player | 1 boon | A context boon is added in the player's words. |
 | **Alter Fate** | Player, after a roll | 2 boons | The roll is rerolled on the same die. |
 
 - **Highlight** — show how one of your character aspects shapes what happens
@@ -140,7 +140,7 @@ the player holds enough. Every move is a line in the log.
   character into something dangerous, destructive, or derailing. You gain two
   boons, and the trouble becomes a context bane. This is the only compel
   mechanic.
-- **Add Detail** — establish something true about the scene. If you leave it
+- **Create** — establish something true about the scene. If you leave it
   blank it is recorded as a detail from you, and the facilitator can reword it.
 - **Alter Fate** — pay two boons to suggest an alternate action and reroll. Only
   after a roll and before the junction ends. **Each character may Alter Fate
@@ -154,7 +154,7 @@ the player holds enough. Every move is a line in the log.
   - Highlight: the die steps down, the boon is refunded.
   - Highlight Context: the aspect is unconsumed, the die steps back.
   - Complicate: the two boons are taken back, the context bane is deleted.
-  - Add Detail: the context boon is deleted, the boon is refunded.
+  - Create: the context boon is deleted, the boon is refunded.
   - Alter Fate: the previous roll is restored, the two boons are refunded, and
     the character may Alter Fate again.
 - A step back that would pass the end of the ladder stops at the end.
@@ -176,7 +176,7 @@ the player holds enough. Every move is a line in the log.
 | Reroll a junction, free | no | yes |
 | Step the die up or down directly | no | yes |
 | Grant or remove a character's boons | no | yes |
-| Create a context boon or bane directly, free | no | yes |
+| Add a context boon or bane directly, free | no | yes |
 | Word, reword or delete a context aspect | no | yes |
 | Start or end a session, edit the goal | no | yes |
 
