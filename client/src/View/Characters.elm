@@ -196,7 +196,7 @@ aspectInput editable examplesOpen ch aspect fieldTag value =
                     [ Element.centerY
                     , Font.size 12
                     , Element.htmlAttribute
-                        (Html.Attributes.title (String.fromInt count ++ " " ++ Format.pluralize count Copy.baneStone ++ " on this aspect"))
+                        (Html.Attributes.title (String.fromInt count ++ " " ++ Format.pluralize count Copy.baneLabel ++ " on this aspect"))
                     ]
                     (Ui.baneMarks count)
                 ]

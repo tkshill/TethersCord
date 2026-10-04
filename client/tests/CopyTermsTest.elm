@@ -50,7 +50,7 @@ suite =
             \_ ->
                 let
                     retired =
-                        [ "compel", "pledge", "floating", "once per session", "once-per-session", "insight", "the bag", "untether" ]
+                        [ "compel", "pledge", "floating", "once per session", "once-per-session", "insight", "the bag", "untether", "stone", "pool", "proposal", "propose", "add detail", "alter fate", "overcome", "withdraw" ]
 
                     mentions t =
                         let
@@ -65,13 +65,17 @@ suite =
                     |> Expect.equalLists []
         , test "every term a view looks up for a tooltip exists" <|
             \_ ->
-                [ "Session", "Context boon", "Aspect", "Highlight", "Complicate", "Add Detail", "Alter Fate" ]
+                [ "Archetype", "Desire", "Quest", "Condition", "Junction", "Context aspect", "Highlight", "Complicate", "Create", "Alter" ]
                     |> List.filter (\name -> Terms.termShort name == "")
                     |> Expect.equalLists []
         , test "termShort returns \"\" for an unknown name" <|
             \_ ->
                 Terms.termShort "Nonsense"
                     |> Expect.equal ""
+        , test "the ladder's odds cover every rung, in order" <|
+            \_ ->
+                List.map .die Terms.ladderOdds
+                    |> Expect.equal [ "d6", "d8", "d10", "d12", "d16", "d20" ]
         ]
 
 
