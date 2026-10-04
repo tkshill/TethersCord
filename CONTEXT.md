@@ -105,14 +105,14 @@ _Avoid_: result (for the outcome specifically), success, failure
 An outcome of 5 or more: the story takes the easier path.
 
 **Critical Flow**:
-A Flow on one of the die's two highest faces. Accepting it creates a context
+A Flow on one of the die's two highest faces. Accepting it adds a context
 boon.
 
 **Friction**:
 An outcome of 4 or less: the story takes the harder path.
 
 **Critical Friction**:
-A Friction on a 1 or a 2. Accepting it creates a context bane.
+A Friction on a 1 or a 2. Accepting it adds a context bane.
 
 **Accept / reject**:
 The facilitator's ruling that ends a junction. Accepting keeps the last roll
@@ -122,7 +122,7 @@ and resets the die to the base die; rejecting discards it and leaves the die.
 
 **Move**:
 Something a player does that has a cost or an effect and can be undone. There
-are five: Highlight, Highlight Context, Complicate, Add Detail and Alter Fate.
+are five: Highlight, Highlight Context, Complicate, Create and Alter Fate.
 Rolling a junction is not a move.
 _Avoid_: proposal, ability, action
 
@@ -140,10 +140,10 @@ Drawing trouble from one of your character aspects: your character gains two
 boons and a context bane appears for the facilitator to word.
 _Avoid_: compel, suggest compel
 
-**Add Detail**:
-Spending a boon to establish something true about the scene, creating a context
-boon.
-_Avoid_: gain insight
+**Create**:
+Spending a boon to establish something true about the scene, which becomes a
+context boon in the player's words.
+_Avoid_: Add Detail, gain insight
 
 **Alter Fate**:
 Spending two boons to reroll a junction's pending roll on the same die; the
@@ -178,9 +178,9 @@ _Avoid_: history (the session history is the list of past sessions)
 - A **Character** has exactly three **character aspects** and a count of **boons**.
 - A **Junction** has one or more **rolls**, each on the **die** at that time, each
   with a **face** and an **outcome**; the last roll is the one accepted.
-- An accepted **Critical Flow** or **Critical Friction** creates one **context
-  aspect**; **Complicate** creates a **context bane**; **Add Detail** creates a
-  **context boon**; the **facilitator** may create either.
+- An accepted **Critical Flow** or **Critical Friction** adds one **context
+  aspect**; **Complicate** adds a **context bane**; **Create** adds a
+  **context boon**; the **facilitator** may add either as a direct edit.
 - **Highlight** and **Complicate** each name one of the player's own **character
   aspects**; **Highlight Context** names one **context aspect**.
 
@@ -200,5 +200,8 @@ _Avoid_: history (the session history is the list of past sessions)
   the session that made them.
 - "Boon" meant a character's currency, a pool stone and a session boon at once;
   it now means only the currency.
+- "Add Detail" was renamed **Create**, a single verb like the other moves. Because
+  Create is a move, other ways a context aspect comes into being are described
+  as *adding* one, never *creating* it.
 - "Use a context" was named **Highlight Context** so that every die step a
   player makes from an aspect is a Highlight of some kind.

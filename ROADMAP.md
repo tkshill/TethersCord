@@ -2081,12 +2081,12 @@ models.
   Overcome). Any player, or the facilitator, rolls the current die. One roll
   pending at a time. The facilitator then:
   - **Rerolls** for free, on the same die;
-  - **Accepts**: the die resets to d10, and a Critical Flow creates a context
+  - **Accepts**: the die resets to d10, and a Critical Flow adds a context
     boon, a Critical Friction a context bane — from the final roll only, so a
-    reroll never creates one;
+    reroll never adds one;
   - **Rejects**: the roll is discarded, the die stays where it was.
 - **Preparation happens before the roll, officially.** Every Highlight,
-  Highlight Context, Complicate and Add Detail is made *before* the
+  Highlight Context, Complicate and Create is made *before* the
   Junction is rolled. Once the result is up, the only player move is **Alter
   Fate**. This is intended: it rewards proactive play and stops boons being
   spent only after a Friction. **The Worker enforces it** (409 on any move
@@ -2105,7 +2105,7 @@ models.
   | --- | --- | --- | --- |
   | **Highlight** | right half of one of your aspects | 1 boon | die up one rung |
   | **Complicate** | left half of one of your aspects | none | +2 boons, and a context bane with blank text for the facilitator to fill, tagged with the aspect |
-  | **Add Detail** | the field under the context list | 1 boon | a context boon with the player's text (blank falls back to `Detail from <name>`) |
+  | **Create** | the field under the context list | 1 boon | a context boon with the player's text (blank falls back to `Detail from <name>`) |
   | **Highlight Context** | click a context boon / bane | none | die up / down one rung; marked consumed |
   | **Alter Fate** | status strip, beside the result | 2 boons | reroll the pending Junction on the same die; once per character per Junction |
 
@@ -2115,7 +2115,7 @@ models.
   effects**, not the table's state before it, so later moves survive:
   - Highlight: die down a rung, boon refunded.
   - Complicate: 2 boons taken back, its context bane deleted.
-  - Add Detail: its context boon deleted, boon refunded.
+  - Create: its context boon deleted, boon refunded.
   - Highlight Context: unconsumed, die back a rung.
   - Alter Fate: the previous result restored, 2 boons refunded, the
     once-per-Junction allowance freed.
@@ -2126,7 +2126,7 @@ models.
   rejected.
 - **The facilitator acts directly**: steps the die with `‹` `›` beside the
   ladder (each step logged, `d10 → d12`), adds a context boon or bane free
-  through the same field players use for Add Detail (with a ☼ / ☽ toggle), and
+  through the same field players use for Create (with a ☼ / ☽ toggle), and
   edits any context text (unlogged).
 - **The log.** Every move, use, step and undo is a line, and every line that
   changes the die carries `from → to`. A roll reads `Flow — 7 on d10`. An undo
@@ -2153,8 +2153,8 @@ models.
   beside it; ✎ swaps in the text field, and leaving the field saves and swaps
   back. Context boons and banes use the same pattern (✎ for the facilitator
   only), and are disabled once consumed.
-- **Add Detail is the field at the foot of the context list**, which scrolls.
-  For a player it is Add Detail (costs a boon, makes a context boon); for the
+- **Create is the field at the foot of the context list**, which scrolls.
+  For a player it is Create (costs a boon, makes a context boon); for the
   facilitator it carries the ☼ / ☽ toggle and is free.
 - **Removed:** the Facilitator tab (its pool controls became the ladder arrows,
   its proposal queue is gone), the proposal strip under the tools, and the
@@ -2248,7 +2248,9 @@ a later step deletes.
       (character aspects and context aspects); "boon" alone means only the
       character currency; the move that spends a context aspect is **Highlight
       Context**, giving five moves: Highlight, Highlight Context, Complicate,
-      Add Detail, Alter Fate.
+      Create (renamed from Add Detail, a single verb like the rest), Alter
+      Fate. A context aspect that appears any other way is *added*, never
+      *created*.
 - [x] `docs/adr/0001-die-ladder-replaces-stone-pool.md` and
       `docs/adr/0002-undo-replaces-approval.md`.
 
@@ -2268,7 +2270,7 @@ a later step deletes.
       with an injected source, `classify`.
 - [ ] `gameState.die` replaces `stonePool`; the Junction carries
       `{ rolledBy, die, face, outcome, rerolls, alteredSlots }`; accept resets
-      to d10 and creates a context aspect from a critical; reject leaves the
+      to d10 and adds a context aspect from a critical; reject leaves the
       die.
 - [ ] `/die/{step-up,step-down}` (facilitator, logged) replace
       `/stones/{add,remove}`; context aspect use steps the die.
@@ -2278,7 +2280,7 @@ a later step deletes.
 
 #### 31.3 Worker — direct moves and undo
 
-- [ ] `/moves/{highlight,highlight-context,complicate,add-detail,alter}` act
+- [ ] `/moves/{highlight,highlight-context,complicate,create,alter}` act
       immediately for any player, with costs
       checked once (400) and ladder ends refused (409). Highlight and
       Complicate carry the aspect.
@@ -2308,7 +2310,7 @@ a later step deletes.
 - [ ] Aspect split buttons with ✎ on the Sheet; the colour gradients, labels
       and touch tint (needs CSS in `client/index.html`: elm-ui's `mouseOver`
       cannot express a gradient).
-- [ ] Context boons and banes as buttons with ✎; Add Detail as the field at the
+- [ ] Context boons and banes as buttons with ✎; Create as the field at the
       foot of the context list, with the facilitator's ☼ / ☽ toggle.
 - [ ] Undo links on log lines.
 - [ ] ☼ / ☽ through `Ui.boonMarks` / `Ui.baneMarks` and every hand-written
