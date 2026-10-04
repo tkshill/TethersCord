@@ -2086,7 +2086,7 @@ models.
     reroll never creates one;
   - **Rejects**: the roll is discarded, the die stays where it was.
 - **Preparation happens before the roll, officially.** Every Highlight,
-  Complicate, Add Detail and context boon or bane use is made *before* the
+  Highlight Context, Complicate and Add Detail is made *before* the
   Junction is rolled. Once the result is up, the only player move is **Alter
   Fate**. This is intended: it rewards proactive play and stops boons being
   spent only after a Friction. **The Worker enforces it** (409 on any move
@@ -2095,9 +2095,10 @@ models.
   editing text) stay open.
 - **Character boons are unchanged** as the move currency (`fate` in storage).
 - **Context boons and context banes** rename session boons and banes, with the
-  same `consumed` mark. **Anyone** may use either one directly, with no
-  approval: a context boon steps the die up, a context bane steps it down, and
-  it is marked consumed.
+  same `consumed` mark. Together they are **context aspects** — aspects, like
+  a character's, but owned by nobody. **Anyone** may **Highlight Context** on
+  either one, with no approval: a context boon steps the die up, a context bane
+  steps it down, and it is marked consumed.
 - **Moves are direct, and undoable.** There is no proposal queue any more.
 
   | Move | Where | Cost | Effect |
@@ -2105,7 +2106,7 @@ models.
   | **Highlight** | right half of one of your aspects | 1 boon | die up one rung |
   | **Complicate** | left half of one of your aspects | none | +2 boons, and a context bane with blank text for the facilitator to fill, tagged with the aspect |
   | **Add Detail** | the field under the context list | 1 boon | a context boon with the player's text (blank falls back to `Detail from <name>`) |
-  | **Use a context boon / bane** | click it | none | die up / down one rung; marked consumed |
+  | **Highlight Context** | click a context boon / bane | none | die up / down one rung; marked consumed |
   | **Alter Fate** | status strip, beside the result | 2 boons | reroll the pending Junction on the same die; once per character per Junction |
 
   Highlights stack: three take a d10 to a d20.
@@ -2115,7 +2116,7 @@ models.
   - Highlight: die down a rung, boon refunded.
   - Complicate: 2 boons taken back, its context bane deleted.
   - Add Detail: its context boon deleted, boon refunded.
-  - Context boon / bane use: unconsumed, die back a rung.
+  - Highlight Context: unconsumed, die back a rung.
   - Alter Fate: the previous result restored, 2 boons refunded, the
     once-per-Junction allowance freed.
 
@@ -2240,11 +2241,16 @@ a later step deletes.
 
 #### 31.0 Rules and vocabulary — docs only
 
-- [ ] Rewrite `RULES.md` for the die ladder, the Junction, direct moves and
-      undo, and context boons and banes (marked as not yet built until 31.6).
-- [ ] `CONTEXT.md` glossary with the renamed / retired terms table
-      (`mattpocock-skills:domain-modeling`).
-- [ ] ADR: the die ladder replaces the stone pool, and undo replaces approval.
+- [x] Rewrite `RULES.md` for the die ladder, the Junction, direct moves and
+      undo, and context aspects (marked as not yet built until 31.6).
+- [x] `CONTEXT.md` glossary, with every retired term under _Avoid_. Settled in
+      the same pass: **aspect** is the umbrella for any statement that is true
+      (character aspects and context aspects); "boon" alone means only the
+      character currency; the move that spends a context aspect is **Highlight
+      Context**, giving five moves: Highlight, Highlight Context, Complicate,
+      Add Detail, Alter Fate.
+- [x] `docs/adr/0001-die-ladder-replaces-stone-pool.md` and
+      `docs/adr/0002-undo-replaces-approval.md`.
 
 #### 31.1 Pure rename — no behaviour change
 
@@ -2272,8 +2278,8 @@ a later step deletes.
 
 #### 31.3 Worker — direct moves and undo
 
-- [ ] `/moves/{highlight,complicate,add-detail,alter}` and
-      `/context-aspects/:id/use` act immediately for any player, with costs
+- [ ] `/moves/{highlight,highlight-context,complicate,add-detail,alter}` act
+      immediately for any player, with costs
       checked once (400) and ladder ends refused (409). Highlight and
       Complicate carry the aspect.
 - [ ] The Junction gate: every move except Alter 409s while a Junction is

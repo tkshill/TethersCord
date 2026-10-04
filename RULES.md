@@ -1,152 +1,187 @@
 # Rules
 
-The current game rules as the app implements them. This is the canonical
-player-facing statement of the mechanics: `DESIGN_PRINCIPLES.md` says *why* the
-game is shaped this way, `ROADMAP.md` says what is planned, and this file says
-*what the rules are right now*.
+The current game rules. This is the canonical player-facing statement of the
+mechanics: `DESIGN_PRINCIPLES.md` says *why* the game is shaped this way,
+`CONTEXT.md` fixes the words, `ROADMAP.md` says what is planned, and this file
+says *what the rules are*.
 
 **Keep this file current.** Any change to a game rule updates this file in the
 same branch, and `client/src/Copy/Terms.elm` (the in-app glossary) follows it.
-Where a section below describes a rule that has been decided but not yet built,
-it is marked .
 
-> **Status.** Written 2026-09-18 from the section 26 design pass. The Worker
-> implements every rule below (roadmap 26.2, with tests), the client exposes them
-> (26.3), and the in-app glossary and copy follow this file (26.4). What is left
-> is a table playtest.
+> **Status.** Rewritten 2026-10-04 from the section 31 design interview. These
+> are the official rules, but **the app does not implement them yet**: it still
+> runs the stone pool, the Overcome and the proposal queue of section 26 until
+> roadmap section 31 lands. Remove this note when 31.6 ships.
 
 ## The table
 
-- **Facilitator.** Frames scenes, plays the world, and rules on the moves
-  players propose. Not a leader (principle 3, principle 7). The facilitator acts
-  directly; every other player proposes and waits.
-- **Player.** Runs one character. Edits their own sheet and sends messages
-  freely. Every other change to shared state is a **move**, and a move waits for
-  the facilitator to accept or reject it.
+- **Facilitator.** Frames scenes, plays the world, and makes direct edits. Not
+  a leader (principle 3, principle 7). The facilitator can undo any move.
+- **Player.** Runs one character. Edits their own sheet, sends messages, and
+  makes moves. A move takes effect at once; nobody approves it.
 - What the table agrees is true, is true (principle 4). The app records the
   outcome of a rule; it does not settle the fiction.
 
-## Boons, Banes, and the pool
+## Aspects
 
-- **Stone.** The unit of chance. A stone is a **Boon** (favourable) or a **Bane**
-  (unfavourable).
-- **Character boons.** Each character holds a personal count of boons (stored as
-  `fate`). Boons are the currency players spend on moves. The facilitator can
-  grant or remove them directly.
-- **The pool.** One shared pool of stones that every Overcome draws from. It
-  **starts at two Boon and two Bane** and returns to exactly that after every
-  resolved Overcome. Nothing else resets it, and nothing carries between
-  Overcomes: the skew that leftover stones caused in playtest is the reason.
-- Players change the pool only by moves (Highlight, using a session boon). The
-  facilitator changes it directly: add or remove a Boon or a Bane, or use a
-  session boon or bane (below).
+An **aspect** is a statement that is true in the fiction. There are two kinds.
 
-## The Overcome 
+- **Character aspects.** Every character has three: **Archetype** (who the
+  character is to the world), **Desire** (what they want badly enough to risk
+  things for) and **Quest** (the concrete thing they are trying to do right
+  now). They are always true; highlighting one makes it matter for a junction.
+- **Context aspects.** Statements about the situation, owned by nobody. Each is
+  a **context boon** or a **context bane** and carries one use.
+  - **Where they come from.** An accepted Critical Flow creates a context boon,
+    an accepted Critical Friction a context bane. **Add Detail** creates a
+    context boon, **Complicate** a context bane. The facilitator can create
+    either kind directly at any time.
+  - **Consumed.** Highlighting one spends its use. It is not deleted: it stays
+    on the table, visibly consumed, and cannot be highlighted again.
+  - **Lifetime.** They stay until the facilitator deletes them. Ending a
+    session does not clear them.
 
-An **Overcome** is a fork the facilitator declares at the table: a moment where
-the plot could go more than one way. The app does not model the declaring. It
-models what follows.
+## Boons
 
-1. **Prepare.** Players add Boons to the pool with **Highlight**. The
-   facilitator adds Banes: directly, or by using a session bane. Everyone plays
-   the scene in voice.
-2. **Roll.** The table picks one player, who presses **Overcome**. Any player
-   (or the facilitator) may press it. It needs no approval and it draws two
-   stones from the pool. Only one roll can be pending at a time.
-3. **After the roll, the pool is frozen.** No move that creates, removes, or
-   moves boons or banes in the pool is allowed until the Overcome is resolved.
-   *This is a table rule.* The app does not stop a player or facilitator from
-   breaking it.
-4. **Alter.** Players may spend **Alter Fate** to reroll (below). The
-   facilitator may reroll directly, for free.
-5. **Resolve.** The facilitator either **accepts** or **rejects** the result.
-   - **Accept.** The pool returns to two Boon and two Bane. If the final draw
-     was two Boons, a **session boon** is created automatically. If it was two
-     Banes, a **session bane** is created. A mixed draw creates nothing. The
-     facilitator can edit the new session aspect's text afterwards, in their own
-     time.
-   - **Reject.** The roll is discarded. The pool is not reset and nothing else
-     changes. Players may press Overcome again.
+- Each character holds a count of **boons**: the currency players spend on
+  moves. Complicate earns them. The facilitator can grant or remove them
+  directly.
+- "Boon" on its own always means this currency, never a context boon.
 
-Every roll, reroll, and the final accept or reject is a line in the message log,
-so the log reads as: roll result, any reroll results, then the accepted result.
+## The die
 
-## Moves 
+- One **die** decides every junction. Its size moves along the **ladder**:
 
-The five official move names are **Highlight**, **Overcome**, **Complicate**,
-**Add Detail**, and **Alter Fate**. Use these names in copy and in code.
+  **d6 → d8 → d10 → d12 → d16 → d20**
 
-Every move except Overcome is a **proposal**: the player raises it, the
-facilitator accepts or rejects it, and both steps are written to the log. A
-player can withdraw their own pending proposal. Moves have no once-per-session
-limit; they are limited by **cost** and, for Alter Fate, by the rules below.
+- The **base die** is the **d10**. The die returns to it whenever a junction is
+  accepted.
+- A boon **steps the die up** one rung; a bane **steps it down** one rung. A step
+  past either end of the ladder is not allowed: nothing is spent and nothing
+  happens.
+- **Reading a roll.** The same thresholds on every die:
 
-A move that costs boons cannot be proposed unless the player holds enough: the
-button is disabled, and the server refuses the proposal too. The cost is
-**paid on approval only**; rejection costs nothing. It is checked again at
-approval, in case the player's boons changed while the proposal waited.
+  | Face | Outcome |
+  | --- | --- |
+  | 1–2 | **Critical Friction** |
+  | 3–4 | **Friction** |
+  | 5 and up | **Flow** |
+  | the die's two highest faces | **Critical Flow** |
 
-| Move | Who | Cost | On approval |
+  On a d6 every Flow is a Critical Flow (5–6).
+- **Flow** is the easier path for the characters; **Friction** the harder one,
+  with more difficulty or conflict.
+- **The two criticals are always equally likely.** A smaller die makes the
+  story more volatile both ways; a larger die steadies it.
+
+  | Die | Critical Friction | Friction | Flow | Critical Flow |
+  | --- | --- | --- | --- | --- |
+  | d6 | 33% | 33% | 0% | 33% |
+  | d8 | 25% | 25% | 25% | 25% |
+  | d10 | 20% | 20% | 40% | 20% |
+  | d12 | 17% | 17% | 50% | 17% |
+  | d16 | 12.5% | 12.5% | 62.5% | 12.5% |
+  | d20 | 10% | 10% | 70% | 10% |
+
+## The junction
+
+A **junction** is a point the facilitator declares at the table, where the story
+could go two ways: one easier for the characters (flow), one harder (friction).
+The app does not model the declaring. It models what follows.
+
+1. **Prepare.** Players make their moves: Highlight, Highlight Context,
+   Complicate, Add Detail. The facilitator steps the die or highlights context
+   aspects directly. Everyone plays the scene in voice. **All of this happens
+   before the roll.**
+2. **Roll.** Any player, or the facilitator, rolls the die. It needs no
+   approval. Only one junction is pending at a time.
+3. **After the roll, preparation is over.** The only move left is **Alter
+   Fate**. Nothing else can change the die, spend boons, or highlight an aspect
+   until the junction ends. This is deliberate: boons are spent proactively,
+   not only after a Friction. The app enforces it. (The facilitator's direct
+   edits stay available, for corrections.)
+4. **Alter.** Players may spend **Alter Fate** to reroll. The facilitator may
+   reroll directly, for free. Either way the roll is on the same die.
+5. **Resolve.** The facilitator **accepts** or **rejects** the roll.
+   - **Accept.** The last roll stands. The die returns to the d10. A Critical
+     Flow creates a context boon; a Critical Friction creates a context bane;
+     any other outcome creates nothing. The facilitator words the new context
+     aspect in their own time.
+   - **Reject.** The roll is discarded. The die stays where it was and nothing
+     else changes. The junction can be rolled again.
+
+Only the accepted roll creates a context aspect: rerolls and Alters never do.
+Every roll, reroll and the final accept or reject is a line in the message log,
+and a roll reads as its outcome, face and die ("Flow — 7 on d10").
+
+## Moves
+
+There are five moves: **Highlight**, **Highlight Context**, **Complicate**,
+**Add Detail** and **Alter Fate**. Use these names in copy and in code.
+Rolling a junction is not a move.
+
+A move takes effect immediately. A move that costs boons cannot be made unless
+the player holds enough. Every move is a line in the log.
+
+| Move | Who | Cost | Effect |
 | --- | --- | --- | --- |
-| **Highlight** | Player | 1 boon | One boon moves from the player to the pool. One boon per proposal. |
-| **Overcome** | Any player | none | Not a proposal. Draws two stones. See above. |
-| **Complicate** | Player | none | The player's own character gains two boons. |
-| **Add Detail** | Player | 1 boon | A session boon is created. The text comes from the player (it may be blank) and the facilitator can edit it before accepting. |
-| **Alter Fate** | Player, during a pending roll | 2 boons | The pending roll is rerolled. |
+| **Highlight** | Player, on one of their character aspects | 1 boon | The die steps up. |
+| **Highlight Context** | Anyone, on an unconsumed context aspect | none | A context boon steps the die up; a context bane steps it down. It is consumed. |
+| **Complicate** | Player, on one of their character aspects | none | The character gains two boons, and a context bane appears for the facilitator to word. |
+| **Add Detail** | Player | 1 boon | A context boon is created with the player's wording. |
+| **Alter Fate** | Player, after a roll | 2 boons | The roll is rerolled on the same die. |
 
-- **Highlight** — note how an aspect of the scene will shape the outcome, and put
-  a boon in the pool. Not allowed to be *resolved* in the middle of a pending
-  roll (a table rule, above).
-- **Complicate** — suggest a way your own character could do something
-  dangerous, destructive, or derailing, and gain two boons for it. This is the
-  only compel mechanic; the word "compel" is retired.
-- **Add Detail** — establish something true about the scene. Either suggest the
-  detail yourself, or ask the facilitator for one. The result is a session boon
-  anyone can spend later.
-- **Alter Fate** — pay two boons to suggest an alternate action at a fork and
-  reroll. Only usable while an Overcome has a roll pending (after at least one
-  roll). **One pending Alter Fate proposal at a time.** **Each player may
-  succeed at Alter Fate once per Overcome.** A rejected Alter Fate does not use up
-  the attempt and removes no boons. The once-per-Overcome allowance resets when
-  the Overcome is accepted or rejected.
+- **Highlight** — show how one of your character aspects shapes what happens
+  next. Highlights stack: each steps the die one rung.
+- **Highlight Context** — bring a context aspect to bear. Highlighting a context
+  bane makes the junction riskier and more volatile; that is a choice a player
+  may make.
+- **Complicate** — suggest a way one of your character aspects drags your
+  character into something dangerous, destructive, or derailing. You gain two
+  boons, and the trouble becomes a context bane. This is the only compel
+  mechanic.
+- **Add Detail** — establish something true about the scene. If you leave it
+  blank it is recorded as a detail from you, and the facilitator can reword it.
+- **Alter Fate** — pay two boons to suggest an alternate action and reroll. Only
+  after a roll and before the junction ends. **Each character may Alter Fate
+  once per junction.**
 
-### What players and facilitator each do directly
+### Undo
+
+- The facilitator can undo **any** move; a player can undo **their own**.
+- Undo reverses that move's own effects and nothing else, so moves made since
+  are kept:
+  - Highlight: the die steps down, the boon is refunded.
+  - Highlight Context: the aspect is unconsumed, the die steps back.
+  - Complicate: the two boons are taken back, the context bane is deleted.
+  - Add Detail: the context boon is deleted, the boon is refunded.
+  - Alter Fate: the previous roll is restored, the two boons are refunded, and
+    the character may Alter Fate again.
+- A step back that would pass the end of the ladder stops at the end.
+- **Undo is open during preparation only**: it closes when the junction is
+  rolled. An Alter Fate can be undone until its junction is accepted or
+  rejected.
+- An undo is a line in the log.
+
+### What players and facilitator each do
 
 | | Player | Facilitator |
 | --- | --- | --- |
 | Edit own character sheet | yes | yes |
 | Send messages | yes | yes |
-| Press Overcome | yes | yes |
-| Propose a move | yes | not needed |
-| Accept / reject a proposal | no | yes |
-| Accept / reject an Overcome result | no | yes |
-| Reroll the pending roll, free | no | yes |
+| Roll the junction | yes | yes |
+| Make a move | yes | not needed |
+| Undo a move | own | any |
+| Accept / reject a junction | no | yes |
+| Reroll a junction, free | no | yes |
+| Step the die up or down directly | no | yes |
 | Grant or remove a character's boons | no | yes |
-| Add or remove a Boon or Bane in the pool | no | yes |
-| Create, edit, delete a session boon or bane | no | yes |
-| Use a session bane (or boon) directly | no | yes |
-| Undo a mistaken "consumed" mark | no | yes |
+| Create a context boon or bane directly, free | no | yes |
+| Word, reword or delete a context aspect | no | yes |
 | Start or end a session, edit the goal | no | yes |
 
-## Session boons and session banes 
-
-A **session boon** or **session bane** is a note of something true in the
-fiction, owned by nobody, that can be spent into the pool.
-
-- **Where they come from.** The system creates one when an Overcome that drew two
-  of a kind is accepted. Add Detail creates a session boon. The facilitator can
-  create either kind directly at any time, and delete any of them at any time.
-- **Spending one.**
-  - A **player** selects a session boon, which raises a proposal. On approval a
-    Boon enters the pool.
-  - The **facilitator** uses a session bane (or a session boon) directly, with no
-    approval. A Bane enters the pool.
-- **Consumed.** Spending a session boon or bane does not delete it. It is marked
-  **consumed**, visibly, and a consumed one cannot be spent again. The
-  facilitator can **unconsume** one; that is a correction for a table
-  miscommunication (something was moved into the pool that should not have
-  been), not part of the game's mechanics.
-- **Lifetime.** They stay until deleted. Ending a session does not clear them.
+The facilitator's direct edits are logged when they move the die, and are
+reversed by editing back rather than by undo.
 
 ## Sessions and the goal
 
@@ -155,18 +190,14 @@ fiction, owned by nobody, that can be spent into the pool.
   nothing is rolled to decide whether it was met. The facilitator can edit it at
   any time.
 - Starting or ending a session records the goal and dates in the session history
-  and does nothing else: it does not touch the pool, proposals, or session
-  boons and banes.
+  and does nothing else: it does not touch the die, moves, or context aspects.
 - The **message log** is the persistent record of what happened. Session logs
   are a later feature.
 
 ## Characters
 
-- A character has three **aspects**: **Archetype** (who the character is to the
-  world), **Desire** (what they want badly enough to risk things for), and
-  **Quest** (the concrete thing they are trying to do right now), plus a
-  **condition** line: one evolving sentence about what strain is doing to them.
-- Aspects are always true; a Highlight makes one relevant for a roll.
+- A character has three **character aspects** (above) and a **condition** line:
+  one evolving sentence about what strain is doing to them.
 - There is no death mechanic and no numeric rating (principles 5 and 6).
 - **Aspect Banes are not part of the game at present.** The sheet columns exist
   but nothing writes them. They return only if playtest shows they add to
@@ -174,7 +205,7 @@ fiction, owned by nobody, that can be spent into the pool.
 
 ## Open
 
+- Whether 60 / 40 Flow / Friction at the d10 is too generous.
+- Whether equally likely criticals feel right at the table.
 - Advancement and aspect banes (above). Not decided.
 - Session logs beyond the message log. Later.
-- Whether an Overcome should ever be a framed, targeted action again. Currently
-  not: the facilitator calls it at the table.
