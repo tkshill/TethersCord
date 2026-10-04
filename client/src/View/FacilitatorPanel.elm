@@ -6,7 +6,7 @@ player. The tab's tooltip carries a count of waiting proposals, and `strip` keep
 the oldest one one click from Accept / Reject under any other tool, so a proposal
 is never buried behind the tab that holds the full queue.
 
-The Overcome — roll, reroll, accept, reject — is not here: it is shared table
+The Junction — roll, reroll, accept, reject — is not here: it is shared table
 state, so it lives on the status strip in `View.TopBar`.
 -}
 
@@ -180,8 +180,8 @@ proposalRow inflight drafts gs p =
                 (inputAttrs ++ [ width fill ])
                 { onChange = ProposalDraftChanged p.id
                 , text = draft
-                , placeholder = Just (Input.placeholder [] (text Copy.sessionAspectContextPlaceholder))
-                , label = Input.labelHidden "Session boon wording"
+                , placeholder = Just (Input.placeholder [] (text Copy.contextAspectContextPlaceholder))
+                , label = Input.labelHidden "Context boon wording"
                 }
 
           else
@@ -214,9 +214,9 @@ describeProposal gs p =
         Kind.Complicate ->
             Copy.proposalComplicate
 
-        Kind.UseSessionBoon ->
-            p.sessionAspectId
-                |> Maybe.andThen (\id -> gs.sessionAspects |> List.filter (\a -> a.id == id) |> List.head)
+        Kind.UseContextBoon ->
+            p.contextAspectId
+                |> Maybe.andThen (\id -> gs.contextAspects |> List.filter (\a -> a.id == id) |> List.head)
                 |> Maybe.map .text
-                |> Maybe.withDefault Copy.proposalUseSessionBoonGone
-                |> Copy.proposalUseSessionBoon
+                |> Maybe.withDefault Copy.proposalUseContextBoonGone
+                |> Copy.proposalUseContextBoon

@@ -10,6 +10,13 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **The Overcome is now the Junction, and session boons and banes are context
+  boons and banes** (roadmap 31.1, a rename only — the rules are unchanged).
+  The new names run through the app's text, the log, the wire format and the
+  routes (`/junction/*`, `/context-aspects/*`, `/moves/use-context-boon`).
+  State stored by an earlier build is read under the new names on load,
+  including a pending roll and queued proposals. A client left open across the
+  deploy needs reloading.
 - **Complicate is about your own character**: the move no longer names another
   character. Proposing it suggests a complication for your own character, and
   on approval that character gains two boons. One button instead of one per

@@ -112,9 +112,9 @@ init flags =
       , sessionControlsExpanded = False
       , proposalDrafts = Dict.empty
       , addDetailDraft = ""
-      , sessionAspectEdits = Dict.empty
-      , newSessionAspectNote = ""
-      , newSessionAspectKind = Boon
+      , contextAspectEdits = Dict.empty
+      , newContextAspectNote = ""
+      , newContextAspectKind = Boon
       , loadingHistory = False
       , noMoreHistory = False
       , aspectExamplesOpen = Nothing
@@ -436,19 +436,19 @@ update msg model =
         ProposalResolved _ (Err _) ->
             fail "Failed to resolve the proposal." (clearInflight ProposalFamily model)
 
-        -- The Overcome loop (26.2). Anyone may roll; the rest are the
+        -- The Junction loop (26.2). Anyone may roll; the rest are the
         -- facilitator's, and the Worker enforces that.
-        PressOvercome ->
-            guard RollingOvercome model Effect.PostOvercomeRoll
+        PressJunction ->
+            guard RollingJunction model Effect.PostJunctionRoll
 
-        RerollOvercome ->
-            guard RerollingOvercome model Effect.PostOvercomeReroll
+        RerollJunction ->
+            guard RerollingJunction model Effect.PostJunctionReroll
 
-        AcceptOvercome ->
-            guard AcceptingOvercome model Effect.PostOvercomeAccept
+        AcceptJunction ->
+            guard AcceptingJunction model Effect.PostJunctionAccept
 
-        RejectOvercome ->
-            guard RejectingOvercome model Effect.PostOvercomeReject
+        RejectJunction ->
+            guard RejectingJunction model Effect.PostJunctionReject
 
         -- Player moves: each is queued as a proposal for the facilitator. The
         -- Moves card disables a button the player cannot afford; the Worker
@@ -476,8 +476,8 @@ update msg model =
         ProposeAlter ->
             guard (RaisingMove Kind.Alter) model Effect.PostAlter
 
-        ProposeUseSessionBoon sessionAspectId ->
-            guard (RaisingMove Kind.UseSessionBoon) model (\auth -> Effect.PostUseSessionBoon auth sessionAspectId)
+        ProposeUseContextBoon contextAspectId ->
+            guard (RaisingMove Kind.UseContextBoon) model (\auth -> Effect.PostUseContextBoon auth contextAspectId)
 
         AddDetailDraftChanged s ->
             ( { model | addDetailDraft = s }, Effect.None )
@@ -547,71 +547,71 @@ update msg model =
                     ( model, Effect.None )
 
         -- Facilitator-only hand-edits of the shared pool, independent of an
-        -- Overcome and of each other.
+        -- Junction and of each other.
         AddStone stone ->
             guard (AddingStone stone) model (\auth -> Effect.PostAddStone auth stone)
 
         RemoveStone stone ->
             guard (RemovingStone stone) model (\auth -> Effect.PostRemoveStone auth stone)
 
-        SessionAspectDraftChanged s ->
-            ( { model | newSessionAspectNote = s }, Effect.None )
+        ContextAspectDraftChanged s ->
+            ( { model | newContextAspectNote = s }, Effect.None )
 
-        SessionAspectKindChanged kind ->
-            ( { model | newSessionAspectKind = kind }, Effect.None )
+        ContextAspectKindChanged kind ->
+            ( { model | newContextAspectKind = kind }, Effect.None )
 
-        AddSessionAspect ->
-            if String.trim model.newSessionAspectNote == "" then
+        AddContextAspect ->
+            if String.trim model.newContextAspectNote == "" then
                 ( model, Effect.None )
 
             else
-                guard AddingSessionAspect
-                    { model | newSessionAspectNote = "" }
-                    (\auth -> Effect.PostAddSessionAspect auth model.newSessionAspectKind model.newSessionAspectNote)
+                guard AddingContextAspect
+                    { model | newContextAspectNote = "" }
+                    (\auth -> Effect.PostAddContextAspect auth model.newContextAspectKind model.newContextAspectNote)
 
-        UseSessionAspect sessionAspectId ->
-            guard (UsingSessionAspect sessionAspectId)
+        UseContextAspect contextAspectId ->
+            guard (UsingContextAspect contextAspectId)
                 model
-                (\auth -> Effect.PostUseSessionAspect auth sessionAspectId)
+                (\auth -> Effect.PostUseContextAspect auth contextAspectId)
 
-        UnconsumeSessionAspect sessionAspectId ->
-            guard (UnconsumingSessionAspect sessionAspectId)
+        UnconsumeContextAspect contextAspectId ->
+            guard (UnconsumingContextAspect contextAspectId)
                 model
-                (\auth -> Effect.PostUnconsumeSessionAspect auth sessionAspectId)
+                (\auth -> Effect.PostUnconsumeContextAspect auth contextAspectId)
 
-        SessionAspectTextChanged sessionAspectId s ->
-            ( { model | sessionAspectEdits = Dict.insert sessionAspectId s model.sessionAspectEdits }
+        ContextAspectTextChanged contextAspectId s ->
+            ( { model | contextAspectEdits = Dict.insert contextAspectId s model.contextAspectEdits }
             , Effect.None
             )
 
         -- Saved when the field loses focus, and only if it actually changed.
-        SaveSessionAspectText sessionAspectId ->
-            case Dict.get sessionAspectId model.sessionAspectEdits of
+        SaveContextAspectText contextAspectId ->
+            case Dict.get contextAspectId model.contextAspectEdits of
                 Nothing ->
                     ( model, Effect.None )
 
                 Just draft ->
                     let
                         released =
-                            { model | sessionAspectEdits = Dict.remove sessionAspectId model.sessionAspectEdits }
+                            { model | contextAspectEdits = Dict.remove contextAspectId model.contextAspectEdits }
 
                         current =
                             model.gameState
-                                |> Maybe.andThen (\gs -> gs.sessionAspects |> List.filter (\a -> a.id == sessionAspectId) |> List.head)
+                                |> Maybe.andThen (\gs -> gs.contextAspects |> List.filter (\a -> a.id == contextAspectId) |> List.head)
                                 |> Maybe.map .text
                     in
                     if String.trim draft == "" || Just (String.trim draft) == current then
                         ( released, Effect.None )
 
                     else
-                        guard (EditingSessionAspect sessionAspectId)
+                        guard (EditingContextAspect contextAspectId)
                             released
-                            (\auth -> Effect.PostUpdateSessionAspect auth sessionAspectId (String.trim draft))
+                            (\auth -> Effect.PostUpdateContextAspect auth contextAspectId (String.trim draft))
 
-        DeleteSessionAspect sessionAspectId ->
-            guard (DeletingSessionAspect sessionAspectId)
+        DeleteContextAspect contextAspectId ->
+            guard (DeletingContextAspect contextAspectId)
                 model
-                (\auth -> Effect.PostDeleteSessionAspect auth sessionAspectId)
+                (\auth -> Effect.PostDeleteContextAspect auth contextAspectId)
 
         -- Field edits update the local sheet at once and mark the slot dirty; the
         -- write is deferred to a single debounced flush (`FieldSaveDue`).

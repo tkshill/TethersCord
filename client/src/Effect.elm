@@ -43,10 +43,10 @@ type Effect
       -- Mutations (204-only; the result arrives on the socket)
     | PostMessage Auth String
     | PostClearMessages Auth
-    | PostOvercomeRoll Auth
-    | PostOvercomeReroll Auth
-    | PostOvercomeAccept Auth
-    | PostOvercomeReject Auth
+    | PostJunctionRoll Auth
+    | PostJunctionReroll Auth
+    | PostJunctionAccept Auth
+    | PostJunctionReject Auth
     | PostHighlight Auth
     | PostFate Auth Int Int
     | PostCharacterUpdate Auth Int CharacterSheet
@@ -57,14 +57,14 @@ type Effect
     | PostComplicate Auth
     | PostAddDetail Auth (Maybe String)
     | PostAlter Auth
-    | PostUseSessionBoon Auth String
+    | PostUseContextBoon Auth String
     | PostAddStone Auth Stone
     | PostRemoveStone Auth Stone
-    | PostAddSessionAspect Auth Stone String
-    | PostDeleteSessionAspect Auth String
-    | PostUseSessionAspect Auth String
-    | PostUnconsumeSessionAspect Auth String
-    | PostUpdateSessionAspect Auth String String
+    | PostAddContextAspect Auth Stone String
+    | PostDeleteContextAspect Auth String
+    | PostUseContextAspect Auth String
+    | PostUnconsumeContextAspect Auth String
+    | PostUpdateContextAspect Auth String String
     | PostStartSession Auth String
     | PostSessionGoal Auth String
     | PostEndSession Auth
@@ -115,17 +115,17 @@ perform flags effect =
         PostClearMessages auth ->
             Api.postClearMessages flags auth logCleared
 
-        PostOvercomeRoll auth ->
-            Api.postOvercome flags auth "roll" overcomeUpdated
+        PostJunctionRoll auth ->
+            Api.postJunction flags auth "roll" junctionUpdated
 
-        PostOvercomeReroll auth ->
-            Api.postOvercome flags auth "reroll" overcomeUpdated
+        PostJunctionReroll auth ->
+            Api.postJunction flags auth "reroll" junctionUpdated
 
-        PostOvercomeAccept auth ->
-            Api.postOvercome flags auth "accept" overcomeUpdated
+        PostJunctionAccept auth ->
+            Api.postJunction flags auth "accept" junctionUpdated
 
-        PostOvercomeReject auth ->
-            Api.postOvercome flags auth "reject" overcomeUpdated
+        PostJunctionReject auth ->
+            Api.postJunction flags auth "reject" junctionUpdated
 
         PostHighlight auth ->
             Api.postHighlight flags auth moveRaised
@@ -157,8 +157,8 @@ perform flags effect =
         PostAlter auth ->
             Api.postAlter flags auth moveRaised
 
-        PostUseSessionBoon auth sessionAspectId ->
-            Api.postUseSessionBoon flags auth sessionAspectId moveRaised
+        PostUseContextBoon auth contextAspectId ->
+            Api.postUseContextBoon flags auth contextAspectId moveRaised
 
         PostAddStone auth stone ->
             Api.postAddStone flags auth stone stonesUpdated
@@ -166,20 +166,20 @@ perform flags effect =
         PostRemoveStone auth stone ->
             Api.postRemoveStone flags auth stone stonesUpdated
 
-        PostAddSessionAspect auth kind text ->
-            Api.postAddSessionAspect flags auth kind text stonesUpdated
+        PostAddContextAspect auth kind text ->
+            Api.postAddContextAspect flags auth kind text stonesUpdated
 
-        PostDeleteSessionAspect auth sessionAspectId ->
-            Api.postDeleteSessionAspect flags auth sessionAspectId stonesUpdated
+        PostDeleteContextAspect auth contextAspectId ->
+            Api.postDeleteContextAspect flags auth contextAspectId stonesUpdated
 
-        PostUseSessionAspect auth sessionAspectId ->
-            Api.postUseSessionAspect flags auth sessionAspectId stonesUpdated
+        PostUseContextAspect auth contextAspectId ->
+            Api.postUseContextAspect flags auth contextAspectId stonesUpdated
 
-        PostUnconsumeSessionAspect auth sessionAspectId ->
-            Api.postUnconsumeSessionAspect flags auth sessionAspectId stonesUpdated
+        PostUnconsumeContextAspect auth contextAspectId ->
+            Api.postUnconsumeContextAspect flags auth contextAspectId stonesUpdated
 
-        PostUpdateSessionAspect auth sessionAspectId text ->
-            Api.postUpdateSessionAspect flags auth sessionAspectId text stonesUpdated
+        PostUpdateContextAspect auth contextAspectId text ->
+            Api.postUpdateContextAspect flags auth contextAspectId text stonesUpdated
 
         PostStartSession auth goal ->
             Api.postStartSession flags auth goal sessionUpdated
@@ -227,9 +227,9 @@ moveRaised =
     MutationDone { family = MoveFamily, failMsg = "Couldn't raise that move." }
 
 
-overcomeUpdated : Result Http.Error () -> Msg
-overcomeUpdated =
-    MutationDone { family = OvercomeFamily, failMsg = "Couldn't update the Overcome." }
+junctionUpdated : Result Http.Error () -> Msg
+junctionUpdated =
+    MutationDone { family = JunctionFamily, failMsg = "Couldn't update the Junction." }
 
 
 sessionUpdated : Result Http.Error () -> Msg

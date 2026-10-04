@@ -2,7 +2,7 @@ module ApiDecodersTest exposing (suite)
 
 {-| The `Api.decodeGameState` decoder against a full captured wire payload. One
 snapshot exercises every sub-decoder, including the shapes that are easy to get
-wrong: a pending Overcome, session aspects with their consumed flag, and a
+wrong: a pending Junction, context aspects with their consumed flag, and a
 proposal of each `kind`.
 -}
 
@@ -47,10 +47,10 @@ suite =
                 decoded
                     |> Result.map .stonePool
                     |> Expect.equal (Ok [ Boon, Bane, Boon ])
-        , test "reads a pending Overcome, and null as none" <|
+        , test "reads a pending Junction, and null as none" <|
             \_ ->
                 decoded
-                    |> Result.map .overcome
+                    |> Result.map .junction
                     |> Expect.equal
                         (Ok
                             (Just
@@ -61,12 +61,12 @@ suite =
                                 }
                             )
                         )
-        , test "reads a null Overcome as no roll pending" <|
+        , test "reads a null Junction as no roll pending" <|
             \_ ->
                 Fixtures.snapshotJson
-                    |> String.replace """"overcome": { "rolledBy": "Ada", "stones": ["Boon", "Bane"], "rerolls": 1, "alteredSlots": [1] }""" """"overcome": null"""
+                    |> String.replace """"junction": { "rolledBy": "Ada", "stones": ["Boon", "Bane"], "rerolls": 1, "alteredSlots": [1] }""" """"junction": null"""
                     |> Decode.decodeString Api.decodeGameState
-                    |> Result.map .overcome
+                    |> Result.map .junction
                     |> Expect.equal (Ok Nothing)
         , test "reads every proposal kind, with nullable slot/targetSlot" <|
             \_ ->
@@ -77,24 +77,24 @@ suite =
                             [ ( Kind.Alter, Just 1, Nothing )
                             , ( Kind.Highlight, Just 1, Nothing )
                             , ( Kind.Complicate, Just 1, Just 2 )
-                            , ( Kind.UseSessionBoon, Just 1, Nothing )
+                            , ( Kind.UseContextBoon, Just 1, Nothing )
                             , ( Kind.AddDetail, Just 1, Nothing )
                             ]
                         )
-        , test "carries the use-session-boon proposal's sessionAspectId and an Add Detail's suggested text" <|
+        , test "carries the use-context-boon proposal's contextAspectId and an Add Detail's suggested text" <|
             \_ ->
                 decoded
                     |> Result.map
                         (\gs ->
-                            ( List.filterMap .sessionAspectId gs.proposals
+                            ( List.filterMap .contextAspectId gs.proposals
                             , List.filterMap .text gs.proposals
                             )
                         )
                     |> Expect.equal (Ok ( [ "f1" ], [ "the door is barred" ] ))
-        , test "reads session aspects: kind, text, and whether each is consumed" <|
+        , test "reads context aspects: kind, text, and whether each is consumed" <|
             \_ ->
                 decoded
-                    |> Result.map (.sessionAspects >> List.map (\b -> { id = b.id, kind = b.kind, text = b.text, consumed = b.consumed }))
+                    |> Result.map (.contextAspects >> List.map (\b -> { id = b.id, kind = b.kind, text = b.text, consumed = b.consumed }))
                     |> Expect.equal
                         (Ok
                             [ { id = "f1", kind = Bane, text = "the rope still holds", consumed = False }

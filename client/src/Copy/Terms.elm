@@ -27,8 +27,8 @@ groupedTerms =
     [ ( "Roles", [ table, facilitator, player ] )
     , ( "The session", [ session, goal ] )
     , ( "Stones & the pool", [ stone, boon, bane, thePool ] )
-    , ( "The Overcome", [ overcome, proposal ] )
-    , ( "Moves", [ highlight, complicate, addDetail, alterFate, sessionBoon ] )
+    , ( "The Junction", [ junction, proposal ] )
+    , ( "Moves", [ highlight, complicate, addDetail, alterFate, contextBoon ] )
     , ( "Aspects & growth", [ aspect, archetype, desire, quest, condition ] )
     ]
 
@@ -69,7 +69,7 @@ facilitator =
     { term = "Facilitator"
     , short = "Frames scenes, plays the world, and rules on the moves players propose."
     , long =
-        "An asymmetric role, not a leader. The facilitator presents situations, plays everyone who is not a player character, and accepts or rejects the moves players propose. They act directly where players propose and wait: rolling and rerolling an Overcome, granting boons, adjusting the pool, and planting session boons and banes."
+        "An asymmetric role, not a leader. The facilitator presents situations, plays everyone who is not a player character, and accepts or rejects the moves players propose. They act directly where players propose and wait: rolling and rerolling a Junction, granting boons, adjusting the pool, and planting context boons and banes."
     }
 
 
@@ -91,7 +91,7 @@ session =
     { term = "Session"
     , short = "One game day, with a goal the table names and works toward."
     , long =
-        "A session runs from the facilitator starting it, with a goal, to ending it. The goal is table talk: nothing is rolled to judge whether it was met. Starting or ending a session records the goal and dates and nothing else — the pool, waiting proposals, and session boons and banes all carry across."
+        "A session runs from the facilitator starting it, with a goal, to ending it. The goal is table talk: nothing is rolled to judge whether it was met. Starting or ending a session records the goal and dates and nothing else — the pool, waiting proposals, and context boons and banes all carry across."
     }
 
 
@@ -113,7 +113,7 @@ stone =
     { term = "Stone"
     , short = "The unit of chance — either a Boon or a Bane."
     , long =
-        "Every Overcome is resolved by drawing two stones from the pool. There are only two kinds, Boon and Bane, so an outcome is read from the fiction rather than compared against a number."
+        "Every Junction is resolved by drawing two stones from the pool. There are only two kinds, Boon and Bane, so an outcome is read from the fiction rather than compared against a number."
     }
 
 
@@ -131,29 +131,29 @@ bane =
     { term = "Bane"
     , short = "An unfavourable stone; the facilitator adds Banes to the pool."
     , long =
-        "The bad result of a draw. Banes in the pool make an Overcome riskier. Players put Boons into the pool; the facilitator puts Banes in, directly or by using a session bane. Nothing marks a character's aspects with Banes at present."
+        "The bad result of a draw. Banes in the pool make a Junction riskier. Players put Boons into the pool; the facilitator puts Banes in, directly or by using a context bane. Nothing marks a character's aspects with Banes at present."
     }
 
 
 thePool : Term
 thePool =
     { term = "The pool"
-    , short = "The shared stones an Overcome draws from — two Boon and two Bane, reset after each."
+    , short = "The shared stones a Junction draws from — two Boon and two Bane, reset after each."
     , long =
-        "One shared set of stones. It starts at two Boon and two Bane, and returns to exactly that whenever an Overcome is accepted, so nothing carries from one Overcome to the next. In between, players add Boons (Highlight, or using a session boon) and the facilitator adds Banes."
+        "One shared set of stones. It starts at two Boon and two Bane, and returns to exactly that whenever a Junction is accepted, so nothing carries from one Junction to the next. In between, players add Boons (Highlight, or using a context boon) and the facilitator adds Banes."
     }
 
 
 
--- THE OVERCOME
+-- THE JUNCTION
 
 
-overcome : Term
-overcome =
-    { term = "Overcome"
+junction : Term
+junction =
+    { term = "Junction"
     , short = "A fork at the table: prepare the pool, roll two stones, the facilitator accepts or rejects."
     , long =
-        "The facilitator declares a fork where the plot could go more than one way. The table prepares the pool, then one player presses Overcome to draw two stones. From that roll until the facilitator resolves it, the pool is frozen — a table rule the app does not enforce. Accepting resets the pool, and if two Boons or two Banes came up, plants a session boon or bane. Rejecting discards the roll and changes nothing else."
+        "The facilitator declares a fork where the plot could go more than one way. The table prepares the pool, then one player presses Junction to draw two stones. From that roll until the facilitator resolves it, the pool is frozen — a table rule the app does not enforce. Accepting resets the pool, and if two Boons or two Banes came up, plants a context boon or bane. Rejecting discards the roll and changes nothing else."
     }
 
 
@@ -162,7 +162,7 @@ proposal =
     { term = "Proposal"
     , short = "A move waiting for the facilitator to accept or reject."
     , long =
-        "Players do not change shared state directly. Highlight, Complicate, Add Detail, Alter Fate and using a session boon are proposals that queue for the facilitator; nothing happens, and nothing is paid, until one is accepted, and you can withdraw your own while it waits. Overcome is the exception: it needs no approval."
+        "Players do not change shared state directly. Highlight, Complicate, Add Detail, Alter Fate and using a context boon are proposals that queue for the facilitator; nothing happens, and nothing is paid, until one is accepted, and you can withdraw your own while it waits. Junction is the exception: it needs no approval."
     }
 
 
@@ -175,7 +175,7 @@ highlight =
     { term = "Highlight"
     , short = "Pay 1 boon: an aspect shapes the outcome, and the pool gains a Boon."
     , long =
-        "Note how an aspect of the scene will shape the outcome. It costs you one boon, paid when the facilitator accepts, and puts one Boon into the pool. Do it before the roll: once an Overcome is rolled, the pool is frozen until it is resolved."
+        "Note how an aspect of the scene will shape the outcome. It costs you one boon, paid when the facilitator accepts, and puts one Boon into the pool. Do it before the roll: once a Junction is rolled, the pool is frozen until it is resolved."
     }
 
 
@@ -191,27 +191,27 @@ complicate =
 addDetail : Term
 addDetail =
     { term = "Add Detail"
-    , short = "Pay 1 boon to establish something true about the scene — it becomes a session boon."
+    , short = "Pay 1 boon to establish something true about the scene — it becomes a context boon."
     , long =
-        "Propose a fact about the scene: suggest the wording yourself, or leave it blank and ask the facilitator for one. It costs one boon when accepted, and the result is a session boon anyone can spend later."
+        "Propose a fact about the scene: suggest the wording yourself, or leave it blank and ask the facilitator for one. It costs one boon when accepted, and the result is a context boon anyone can spend later."
     }
 
 
 alterFate : Term
 alterFate =
     { term = "Alter Fate"
-    , short = "Pay 2 boons to reroll a pending Overcome."
+    , short = "Pay 2 boons to reroll a pending Junction."
     , long =
-        "Pay two boons to suggest an alternate action at the fork, and reroll. It works only while an Overcome has a roll pending, once per player per Overcome, and one at a time. A rejected Alter Fate costs nothing and does not use up your attempt."
+        "Pay two boons to suggest an alternate action at the fork, and reroll. It works only while a Junction has a roll pending, once per player per Junction, and one at a time. A rejected Alter Fate costs nothing and does not use up your attempt."
     }
 
 
-sessionBoon : Term
-sessionBoon =
-    { term = "Session boon"
-    , short = "Something established as true, spendable into the pool — a session boon or a session bane."
+contextBoon : Term
+contextBoon =
+    { term = "Context boon"
+    , short = "Something established as true, spendable into the pool — a context boon or a context bane."
     , long =
-        "A note of something true in the fiction. An accepted Overcome that drew a matched pair makes one, Add Detail makes a session boon, and the facilitator can plant either kind at any time. Spending one adds a stone of its kind to the pool and marks it used: it stays on the table, visibly consumed, and cannot be spent again. Players spend session boons through a proposal; the facilitator uses session banes directly. They stay until the facilitator removes them — ending a session does not clear them."
+        "A note of something true in the fiction. An accepted Junction that drew a matched pair makes one, Add Detail makes a context boon, and the facilitator can plant either kind at any time. Spending one adds a stone of its kind to the pool and marks it used: it stays on the table, visibly consumed, and cannot be spent again. Players spend context boons through a proposal; the facilitator uses context banes directly. They stay until the facilitator removes them — ending a session does not clear them."
     }
 
 

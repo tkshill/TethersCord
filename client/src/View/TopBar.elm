@@ -2,12 +2,12 @@ module View.TopBar exposing (view)
 
 {-| The status strip across the top of the page (roadmap section 27, mockup 2a):
 one line holding the running session's goal, the shared pool as a run of `+` /
-`−` marks, the Overcome control, and who the viewer is.
+`−` marks, the Junction control, and who the viewer is.
 
-The pool marks show what is left in the pool. Pressing **Overcome** (open to any
+The pool marks show what is left in the pool. Pressing **Junction** (open to any
 player) draws two stones: while that roll is pending they sit in a ringed chip
 beside the pool marks (who drew and how many rerolls is its tooltip), and the
-facilitator's Reroll / Reject / Accept replace the Overcome button; a player sees
+facilitator's Reroll / Reject / Accept replace the Junction button; a player sees
 that they are waiting. Alter Fate is a player move, so it lives in the Moves
 tool, and its proposal in the facilitator's queue — not here.
 
@@ -63,19 +63,19 @@ strip ctx props gs =
         ]
         [ goalSummary ctx.facilitator gs.session
         , pool gs
-        , controls ctx gs.overcome
+        , controls ctx gs.junction
         , who ctx
         ]
 
 
-{-| The pool as marks, less whatever a pending Overcome has drawn out of it,
+{-| The pool as marks, less whatever a pending Junction has drawn out of it,
 then the draw itself in a ringed chip.
 -}
 pool : GameState -> Element Msg
 pool gs =
     let
         drawn =
-            gs.overcome |> Maybe.map .stones |> Maybe.withDefault []
+            gs.junction |> Maybe.map .stones |> Maybe.withDefault []
 
         inPool =
             Roll.without drawn gs.stonePool
@@ -89,7 +89,7 @@ pool gs =
             , Element.htmlAttribute (Html.Attributes.title (Copy.bagTip (count Boon inPool) (count Bane inPool)))
             ]
             [ Ui.boonMarks (count Boon inPool), Ui.baneMarks (count Bane inPool) ]
-        , case gs.overcome of
+        , case gs.junction of
             Just o ->
                 Element.row
                     [ Font.size 14
@@ -98,7 +98,7 @@ pool gs =
                     , Border.color Ui.accent
                     , Border.rounded 4
                     , Element.htmlAttribute
-                        (Html.Attributes.title (Copy.overcomeDrew o.rolledBy ++ " · " ++ Copy.rerollsNote o.rerolls))
+                        (Html.Attributes.title (Copy.junctionDrew o.rolledBy ++ " · " ++ Copy.rerollsNote o.rerolls))
                     ]
                     (List.map stoneMark o.stones)
 
@@ -117,28 +117,28 @@ stoneMark stone =
             Ui.baneMarks 1
 
 
-controls : ViewContext -> Maybe Overcome -> Element Msg
-controls ctx overcome =
-    case overcome of
+controls : ViewContext -> Maybe Junction -> Element Msg
+controls ctx junction =
+    case junction of
         Nothing ->
             Ui.primaryButton
-                { onPress = Ui.press ctx.inflight RollingOvercome PressOvercome
-                , label = Copy.overcome
+                { onPress = Ui.press ctx.inflight RollingJunction PressJunction
+                , label = Copy.junction
                 }
 
         Just _ ->
             if ctx.facilitator then
                 Element.row [ spacing Ui.xs ]
                     [ Ui.ghostButton
-                        { onPress = Ui.press ctx.inflight RerollingOvercome RerollOvercome
+                        { onPress = Ui.press ctx.inflight RerollingJunction RerollJunction
                         , label = Copy.rerollButton
                         }
                     , Ui.ghostButton
-                        { onPress = Ui.press ctx.inflight RejectingOvercome RejectOvercome
+                        { onPress = Ui.press ctx.inflight RejectingJunction RejectJunction
                         , label = Copy.reject
                         }
                     , Ui.primaryButton
-                        { onPress = Ui.press ctx.inflight AcceptingOvercome AcceptOvercome
+                        { onPress = Ui.press ctx.inflight AcceptingJunction AcceptJunction
                         , label = Copy.accept
                         }
                     ]

@@ -27,7 +27,7 @@ import View.Helpers exposing (ViewContext, inputAttrs, placeholder)
 import View.Log
 import View.Moves
 import View.Session
-import View.SessionAspects
+import View.ContextAspects
 import View.TopBar
 
 
@@ -218,7 +218,7 @@ toolBody ctx model gs tab =
             View.Guide.view
 
 
-{-| The middle column: the session context (session boons and banes, past
+{-| The middle column: the session context (context boons and banes, past
 sessions) filling it and scrolling on its own, then the Moves pinned beneath at
 their natural height.
 -}
@@ -233,10 +233,10 @@ movesPanel ctx model gs =
         ]
         [ Ui.divider (String.toUpper Copy.contextTabLabel)
         , Ui.scrollArea
-            [ View.SessionAspects.view ctx
-                { sessionAspectDraft = model.newSessionAspectNote
-                , sessionAspectKind = model.newSessionAspectKind
-                , edits = model.sessionAspectEdits
+            [ View.ContextAspects.view ctx
+                { contextAspectDraft = model.newContextAspectNote
+                , contextAspectKind = model.newContextAspectKind
+                , edits = model.contextAspectEdits
                 }
                 gs
             , View.Session.view ctx gs

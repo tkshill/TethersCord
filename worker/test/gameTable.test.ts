@@ -62,7 +62,7 @@ describe("GameTable state machine", () => {
 
       await call(table, "/stones/add", { token: fac, body: { kind: "Boon" } });
       // A plain message runs the same mutation path but touches nothing in the
-      // stone slice; saveStoneState skips the write.
+      // table-state slice; saveTableState skips the write.
       await call(table, "/message", { token: fac, body: { content: "hello" } });
       await call(table, "/stones/add", { token: fac, body: { kind: "Boon" } });
 
@@ -78,7 +78,7 @@ describe("GameTable state machine", () => {
       const { token: fac } = await seedAuth(undefined, { facilitator: true });
 
       await call(table, "/message", { token: fac, body: { content: "hello" } });
-      await call(table, "/overcome/roll", { token: fac });
+      await call(table, "/junction/roll", { token: fac });
 
       const state = await readState(table, fac);
       expect(state.messages.map((m) => m.kind)).toEqual(["chat", "event"]);
@@ -377,15 +377,15 @@ describe("GameTable state machine", () => {
         facilitator: true,
       });
 
-      const created = await call(table, "/session-aspects", {
+      const created = await call(table, "/context-aspects", {
         token: fac,
         body: { kind: "Boon", text: "the vault door is ajar" },
       });
       expect(created.status).toBe(204);
 
       let state = await readState(table, fac);
-      expect(state.sessionAspects).toHaveLength(1);
-      expect(state.sessionAspects[0]).toMatchObject({
+      expect(state.contextAspects).toHaveLength(1);
+      expect(state.contextAspects[0]).toMatchObject({
         kind: "Boon",
         text: "the vault door is ajar",
         createdByName: facName,
@@ -393,15 +393,15 @@ describe("GameTable state machine", () => {
       expect(state.messages.at(-1)?.content).toBe(
         "Session note added (Boon) — the vault door is ajar",
       );
-      const id = state.sessionAspects[0].id;
+      const id = state.contextAspects[0].id;
 
-      const deleted = await call(table, `/session-aspects/${id}/delete`, {
+      const deleted = await call(table, `/context-aspects/${id}/delete`, {
         token: fac,
       });
       expect(deleted.status).toBe(204);
 
       state = await readState(table, fac);
-      expect(state.sessionAspects).toHaveLength(0);
+      expect(state.contextAspects).toHaveLength(0);
       expect(state.messages.at(-1)?.content).toBe(
         "Session note removed (Boon) — the vault door is ajar",
       );
@@ -411,14 +411,14 @@ describe("GameTable state machine", () => {
       const table = "gt-facilitator-floating-bane";
       const { token: fac } = await seedAuth(undefined, { facilitator: true });
 
-      const created = await call(table, "/session-aspects", {
+      const created = await call(table, "/context-aspects", {
         token: fac,
         body: { kind: "Bane", text: "the guard suspects something" },
       });
       expect(created.status).toBe(204);
 
       const state = await readState(table, fac);
-      expect(state.sessionAspects[0]).toMatchObject({
+      expect(state.contextAspects[0]).toMatchObject({
         kind: "Bane",
         text: "the guard suspects something",
       });
@@ -431,20 +431,20 @@ describe("GameTable state machine", () => {
       const table = "gt-facilitator-floating-bad";
       const { token: fac } = await seedAuth(undefined, { facilitator: true });
 
-      const badKind = await call(table, "/session-aspects", {
+      const badKind = await call(table, "/context-aspects", {
         token: fac,
         body: { kind: "Coin", text: "nope" },
       });
       expect(badKind.status).toBe(400);
 
-      const blank = await call(table, "/session-aspects", {
+      const blank = await call(table, "/context-aspects", {
         token: fac,
         body: { kind: "Boon", text: "   " },
       });
       expect(blank.status).toBe(400);
 
       const missing = crypto.randomUUID();
-      const del = await call(table, `/session-aspects/${missing}/delete`, {
+      const del = await call(table, `/context-aspects/${missing}/delete`, {
         token: fac,
       });
       expect(del.status).toBe(404);
@@ -455,20 +455,20 @@ describe("GameTable state machine", () => {
       const { token: fac } = await seedAuth(undefined, { facilitator: true });
       const { token: player } = await seedAuth();
 
-      const create = await call(table, "/session-aspects", {
+      const create = await call(table, "/context-aspects", {
         token: player,
         body: { kind: "Boon", text: "nope" },
       });
       expect(create.status).toBe(403);
 
-      const created = await call(table, "/session-aspects", {
+      const created = await call(table, "/context-aspects", {
         token: fac,
         body: { kind: "Boon", text: "a real one" },
       });
       expect(created.status).toBe(204);
-      const id = (await readState(table, fac)).sessionAspects[0].id;
+      const id = (await readState(table, fac)).contextAspects[0].id;
 
-      const del = await call(table, `/session-aspects/${id}/delete`, {
+      const del = await call(table, `/context-aspects/${id}/delete`, {
         token: player,
       });
       expect(del.status).toBe(403);

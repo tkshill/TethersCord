@@ -5,13 +5,13 @@ import type {
   DurableObjectState,
 } from "@cloudflare/workers-types";
 import type {
-  AddSessionAspectInput,
+  AddContextAspectInput,
   AddOrRemoveStoneInput,
   AspectName,
   EntityInput,
   EntityKind,
   Env,
-  SessionAspect,
+  ContextAspect,
   GameState,
   Message,
   MessageKind,
@@ -28,7 +28,7 @@ import type {
   UpdateCharacterInput,
   UpdateFateInput,
   UpdateSessionGoalInput,
-  UseSessionBoonInput,
+  UseContextBoonInput,
 } from "./types";
 import {
   characterLabel,
@@ -40,10 +40,10 @@ import {
   removeStones,
 } from "./gameLogic";
 import {
-  type LegacyStoneState,
-  type StoneState,
-  migrateStoneState,
-} from "./migrateStoneState";
+  type LegacyTableState,
+  type TableState,
+  migrateTableState,
+} from "./migrateTableState";
 import {
   type CharacterRow,
   rowToCharacterSheet,
@@ -52,7 +52,7 @@ import {
   updateFields,
 } from "./characters";
 
-// The shape the shared pool starts in, and returns to whenever an Overcome is
+// The shape the shared pool starts in, and returns to whenever a Junction is
 // accepted. Between accepts the pool only changes through moves and the
 // facilitator's direct edits; a roll only ever reads it.
 const INITIAL_STONE_POOL: readonly StoneKind[] = ["Boon", "Bane", "Boon", "Bane"];
@@ -90,7 +90,9 @@ const MAX_GOAL_LENGTH = 500;
 
 /** Durable Object storage keys. */
 const KEY_SESSION_ID = "sessionId";
-const KEY_STONES = "stones";
+// The table-state blob. The key string predates the rename and stays, since
+// changing it would orphan every stored blob for no gain.
+const KEY_TABLE_STATE = "stones";
 
 /**
  * How long a resolved token → `AuthInfo` is trusted from memory before the
@@ -279,32 +281,32 @@ export class GameTable implements DurableObject {
       return this.withLock(() => this.handleComplicate(authInfo));
     }
 
-    if (url.pathname === "/moves/use-session-boon" && request.method === "POST") {
-      return this.withLock(() => this.handleUseSessionBoon(request, authInfo));
+    if (url.pathname === "/moves/use-context-boon" && request.method === "POST") {
+      return this.withLock(() => this.handleUseContextBoon(request, authInfo));
     }
 
-    if (url.pathname === "/overcome/roll" && request.method === "POST") {
-      return this.withLock(() => this.handleOvercomeRoll(authInfo));
+    if (url.pathname === "/junction/roll" && request.method === "POST") {
+      return this.withLock(() => this.handleJunctionRoll(authInfo));
     }
 
-    if (url.pathname === "/overcome/accept" && request.method === "POST") {
+    if (url.pathname === "/junction/accept" && request.method === "POST") {
       return (
         facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleOvercomeAccept(authInfo))
+        this.withLock(() => this.handleJunctionAccept(authInfo))
       );
     }
 
-    if (url.pathname === "/overcome/reject" && request.method === "POST") {
+    if (url.pathname === "/junction/reject" && request.method === "POST") {
       return (
         facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleOvercomeReject(authInfo))
+        this.withLock(() => this.handleJunctionReject(authInfo))
       );
     }
 
-    if (url.pathname === "/overcome/reroll" && request.method === "POST") {
+    if (url.pathname === "/junction/reroll" && request.method === "POST") {
       return (
         facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleOvercomeReroll(authInfo))
+        this.withLock(() => this.handleJunctionReroll(authInfo))
       );
     }
 
@@ -322,37 +324,37 @@ export class GameTable implements DurableObject {
       );
     }
 
-    if (url.pathname === "/session-aspects" && request.method === "POST") {
+    if (url.pathname === "/context-aspects" && request.method === "POST") {
       return (
         facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleAddSessionAspect(request, authInfo))
+        this.withLock(() => this.handleAddContextAspect(request, authInfo))
       );
     }
 
-    const sessionAspectMatch = url.pathname.match(
-      new RegExp(`^/session-aspects/(${UUID})/(update|delete|use|unconsume)$`),
+    const contextAspectMatch = url.pathname.match(
+      new RegExp(`^/context-aspects/(${UUID})/(update|delete|use|unconsume)$`),
     );
-    if (sessionAspectMatch && request.method === "POST") {
-      const [, sessionAspectId, action] = sessionAspectMatch;
+    if (contextAspectMatch && request.method === "POST") {
+      const [, contextAspectId, action] = contextAspectMatch;
       return (
         facilitatorOnly(authInfo) ??
         this.withLock(() => {
           switch (action) {
             case "update":
-              return this.handleUpdateSessionAspect(
+              return this.handleUpdateContextAspect(
                 request,
-                sessionAspectId,
+                contextAspectId,
               );
             case "use":
-              return this.handleUseSessionAspect(sessionAspectId, authInfo);
+              return this.handleUseContextAspect(contextAspectId, authInfo);
             case "unconsume":
-              return this.handleUnconsumeSessionAspect(
-                sessionAspectId,
+              return this.handleUnconsumeContextAspect(
+                contextAspectId,
                 authInfo,
               );
             default:
-              return this.handleDeleteSessionAspect(
-                sessionAspectId,
+              return this.handleDeleteContextAspect(
+                contextAspectId,
                 authInfo,
               );
           }
@@ -509,7 +511,7 @@ export class GameTable implements DurableObject {
 
   /**
    * The trailer every mutating handler shares: install the new state, persist
-   * the stone slice (a byte-identical slice is skipped, so this is cheap even on
+   * the table-state slice (a byte-identical slice is skipped, so this is cheap even on
    * a character- or entity-only change), append a log line if one was given,
    * broadcast, and return the 204 ack. A handler's own diff is then just the
    * `next` it builds.
@@ -519,7 +521,7 @@ export class GameTable implements DurableObject {
     logLine?: AddMessageInput,
   ): Promise<Response> {
     this.gameState = next;
-    await this.saveStoneState(next);
+    await this.saveTableState(next);
     if (logLine) {
       await this.appendMessage(logLine);
     }
@@ -552,7 +554,7 @@ export class GameTable implements DurableObject {
       );
     }
 
-    // These six reads are independent — different tables plus the KEY_STONES
+    // These six reads are independent — different tables plus the KEY_TABLE_STATE
     // blob — so they run concurrently. Meaningful on the Free-tier cold path.
     const [messageRows, characters, stones, sessionHistory, npcs, locations] =
       await Promise.all([
@@ -569,7 +571,7 @@ export class GameTable implements DurableObject {
           .bind(sessionId, MESSAGE_WINDOW)
           .all<Message>(),
         this.loadOrCreateCharacters(sessionId),
-        this.loadStoneState(),
+        this.loadTableState(),
         this.loadSessionHistory(sessionId),
         this.loadEntities(sessionId, "npcs"),
         this.loadEntities(sessionId, "locations"),
@@ -583,8 +585,8 @@ export class GameTable implements DurableObject {
       sessionId,
       messages,
       stonePool: stones.stonePool,
-      overcome: stones.overcome,
-      sessionAspects: stones.sessionAspects,
+      junction: stones.junction,
+      contextAspects: stones.contextAspects,
       proposals: stones.proposals,
       session: stones.session,
       sessionHistory,
@@ -593,9 +595,9 @@ export class GameTable implements DurableObject {
       locations,
     };
 
-    // Seed the write-skip baseline so an unchanged stone slice is not
+    // Seed the write-skip baseline so an unchanged table-state slice is not
     // re-persisted on the first mutation after a cold start.
-    this.lastSavedStones = JSON.stringify(this.stoneSlice(this.gameState));
+    this.lastSavedTableState = JSON.stringify(this.tableSlice(this.gameState));
 
     // Equal to `storedSessionId` by the guard above; every later request in this
     // object's lifetime compares against it instead of re-reading storage.
@@ -607,45 +609,45 @@ export class GameTable implements DurableObject {
    * it lives in its own storage. Keeping it in memory loses it every time the
    * DO hibernates, which is roughly ten seconds after a table goes quiet.
    */
-  private async loadStoneState(): Promise<StoneState> {
-    const stored = await this.state.storage.get<LegacyStoneState>(KEY_STONES);
-    const migrated = migrateStoneState(stored, INITIAL_STONE_POOL);
+  private async loadTableState(): Promise<TableState> {
+    const stored = await this.state.storage.get<LegacyTableState>(KEY_TABLE_STATE);
+    const migrated = migrateTableState(stored, INITIAL_STONE_POOL);
     // A cold table writes the base blob once; a stored one is left as-is and
     // persisted by the first mutation that actually changes it.
     if (!stored) {
-      await this.state.storage.put(KEY_STONES, migrated);
+      await this.state.storage.put(KEY_TABLE_STATE, migrated);
     }
     return migrated;
   }
 
   /**
-   * The serialised `StoneState` as last written to storage. `saveStoneState`
-   * compares against this and skips the `put` when nothing in the stone slice
+   * The serialised `TableState` as last written to storage. `saveTableState`
+   * compares against this and skips the `put` when nothing in the table-state slice
    * actually changed — a plain chat post, for instance, runs through the same
    * mutation path but touches none of it.
    */
-  private lastSavedStones: string | null = null;
+  private lastSavedTableState: string | null = null;
 
-  private stoneSlice(state: GameState): StoneState {
+  private tableSlice(state: GameState): TableState {
     return {
       stonePool: state.stonePool,
-      overcome: state.overcome,
-      sessionAspects: state.sessionAspects,
+      junction: state.junction,
+      contextAspects: state.contextAspects,
       proposals: state.proposals,
       session: state.session,
     };
   }
 
-  private async saveStoneState(state: GameState): Promise<void> {
-    const slice = this.stoneSlice(state);
+  private async saveTableState(state: GameState): Promise<void> {
+    const slice = this.tableSlice(state);
 
     const serialised = JSON.stringify(slice);
-    if (serialised === this.lastSavedStones) {
+    if (serialised === this.lastSavedTableState) {
       return;
     }
 
-    await this.state.storage.put(KEY_STONES, slice);
-    this.lastSavedStones = serialised;
+    await this.state.storage.put(KEY_TABLE_STATE, slice);
+    this.lastSavedTableState = serialised;
   }
 
   /**
@@ -845,15 +847,15 @@ export class GameTable implements DurableObject {
 
   /**
    * Alter Fate: the caller proposes to pay boons to reroll the pending
-   * Overcome. Only possible while one is pending (after at least one roll),
-   * once per player per Overcome, and one proposal at a time. Costs
+   * Junction. Only possible while one is pending (after at least one roll),
+   * once per player per Junction, and one proposal at a time. Costs
    * `ALTER_COST` boons, paid on approval; a rejection costs nothing and does
    * not use up the attempt.
    */
   private async handleAlter(authInfo: AuthInfo): Promise<Response> {
-    const overcome = this.game.overcome;
-    if (!overcome) {
-      return new Response("Alter Fate needs a pending Overcome", {
+    const junction = this.game.junction;
+    if (!junction) {
+      return new Response("Alter Fate needs a pending Junction", {
         status: 409,
       });
     }
@@ -866,8 +868,8 @@ export class GameTable implements DurableObject {
     if (character.fate < ALTER_COST) {
       return new Response("You need two boons to Alter Fate", { status: 400 });
     }
-    if (overcome.alteredSlots.includes(character.slot)) {
-      return new Response("You have already altered fate this Overcome", {
+    if (junction.alteredSlots.includes(character.slot)) {
+      return new Response("You have already altered fate this Junction", {
         status: 409,
       });
     }
@@ -890,7 +892,7 @@ export class GameTable implements DurableObject {
   /**
    * Add Detail: the caller proposes to establish something true about the scene,
    * either suggesting the wording or leaving it for the facilitator. It costs 1
-   * boon, paid on approval; an accepted one plants a session boon.
+   * boon, paid on approval; an accepted one plants a context boon.
    */
   private async handleAddDetail(
     request: Request,
@@ -947,20 +949,20 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * Use Session Boon: the caller proposes to spend an unconsumed session boon.
+   * Use Context Boon: the caller proposes to spend an unconsumed context boon.
    * It costs nothing; on approval the boon is marked consumed and a Boon
-   * enters the pool. Session banes are the facilitator's to use directly, so a
+   * enters the pool. Context banes are the facilitator's to use directly, so a
    * player cannot propose one.
    */
-  private async handleUseSessionBoon(
+  private async handleUseContextBoon(
     request: Request,
     authInfo: AuthInfo,
   ): Promise<Response> {
-    const input = (await readJson(request)) as UseSessionBoonInput | null;
-    const sessionAspectId =
-      typeof input?.sessionAspectId === "string" ? input.sessionAspectId : "";
-    if (!sessionAspectId) {
-      return new Response("sessionAspectId is required", { status: 400 });
+    const input = (await readJson(request)) as UseContextBoonInput | null;
+    const contextAspectId =
+      typeof input?.contextAspectId === "string" ? input.contextAspectId : "";
+    if (!contextAspectId) {
+      return new Response("contextAspectId is required", { status: 400 });
     }
 
     const character = this.game.characters.find(
@@ -969,52 +971,52 @@ export class GameTable implements DurableObject {
     if (!character) {
       return new Response("Claim a character sheet first", { status: 400 });
     }
-    const aspect = this.game.sessionAspects.find(
-      (f) => f.id === sessionAspectId,
+    const aspect = this.game.contextAspects.find(
+      (f) => f.id === contextAspectId,
     );
     if (!aspect) {
-      return new Response("No such session boon", { status: 404 });
+      return new Response("No such context boon", { status: 404 });
     }
     if (aspect.kind !== "Boon") {
-      return new Response("Only the facilitator can use a session bane", {
+      return new Response("Only the facilitator can use a context bane", {
         status: 400,
       });
     }
     if (aspect.consumed) {
-      return new Response("That session boon is already consumed", {
+      return new Response("That context boon is already consumed", {
         status: 409,
       });
     }
     if (
       this.game.proposals.some(
         (p) =>
-          p.kind === "use-session-boon" && p.sessionAspectId === sessionAspectId,
+          p.kind === "use-context-boon" && p.contextAspectId === contextAspectId,
       )
     ) {
-      return new Response("That session boon is already proposed", {
+      return new Response("That context boon is already proposed", {
         status: 409,
       });
     }
 
     return this.addProposal(
       {
-        kind: "use-session-boon",
+        kind: "use-context-boon",
         proposerId: authInfo.discordUserId,
         proposerName: authInfo.username,
         slot: character.slot,
-        sessionAspectId,
+        contextAspectId,
       },
       authInfo,
-      `${characterLabel(character)} proposes Use Session Boon`,
+      `${characterLabel(character)} proposes Use Context Boon`,
     );
   }
 
   private async addProposal(
     fields: Omit<
       Proposal,
-      "id" | "createdAt" | "sessionAspectId" | "targetSlot" | "text"
+      "id" | "createdAt" | "contextAspectId" | "targetSlot" | "text"
     > & {
-      sessionAspectId?: string | null;
+      contextAspectId?: string | null;
       targetSlot?: number | null;
       text?: string | null;
     },
@@ -1022,14 +1024,14 @@ export class GameTable implements DurableObject {
     logLine?: string,
   ): Promise<Response> {
     const {
-      sessionAspectId = null,
+      contextAspectId = null,
       targetSlot = null,
       text = null,
       ...rest
     } = fields;
     const proposal: Proposal = {
       ...rest,
-      sessionAspectId,
+      contextAspectId,
       targetSlot,
       text,
       id: crypto.randomUUID(),
@@ -1094,9 +1096,9 @@ export class GameTable implements DurableObject {
         }
 
         case "alter": {
-          const overcome = state.overcome;
-          if (!overcome) {
-            return new Response("No Overcome is pending", { status: 409 });
+          const junction = state.junction;
+          if (!junction) {
+            return new Response("No Junction is pending", { status: 409 });
           }
           const proposerSheet =
             proposal.slot === null
@@ -1116,11 +1118,11 @@ export class GameTable implements DurableObject {
               proposerSheet.slot,
               -ALTER_COST,
             ),
-            overcome: {
-              ...overcome,
+            junction: {
+              ...junction,
               stones: chosen,
-              rerolls: overcome.rerolls + 1,
-              alteredSlots: [...overcome.alteredSlots, proposerSheet.slot],
+              rerolls: junction.rerolls + 1,
+              alteredSlots: [...junction.alteredSlots, proposerSheet.slot],
             },
           };
           logLine = `Alter Fate accepted — ${characterLabel(
@@ -1147,7 +1149,7 @@ export class GameTable implements DurableObject {
             boundedString(body?.text, MAX_GOAL_LENGTH).trim() ||
             proposal.text ||
             `Detail from ${proposal.proposerName}`;
-          const aspect: SessionAspect = {
+          const aspect: ContextAspect = {
             id: crypto.randomUUID(),
             kind: "Boon",
             text,
@@ -1162,7 +1164,7 @@ export class GameTable implements DurableObject {
               proposerSheet.slot,
               -ADD_DETAIL_COST,
             ),
-            sessionAspects: [...state.sessionAspects, aspect],
+            contextAspects: [...state.contextAspects, aspect],
           };
           logLine = `Add Detail accepted — ${characterLabel(
             proposerSheet,
@@ -1195,9 +1197,9 @@ export class GameTable implements DurableObject {
           break;
         }
 
-        case "use-session-boon": {
-          const aspect = state.sessionAspects.find(
-            (f) => f.id === proposal.sessionAspectId,
+        case "use-context-boon": {
+          const aspect = state.contextAspects.find(
+            (f) => f.id === proposal.contextAspectId,
           );
           const proposerSheet =
             proposal.slot === null
@@ -1207,18 +1209,18 @@ export class GameTable implements DurableObject {
             return this.proposalTargetGone();
           }
           if (aspect.consumed) {
-            return new Response("That session boon is already consumed", {
+            return new Response("That context boon is already consumed", {
               status: 409,
             });
           }
           state = {
             ...state,
             stonePool: [...state.stonePool, "Boon"],
-            sessionAspects: state.sessionAspects.map((f) =>
+            contextAspects: state.contextAspects.map((f) =>
               f.id === aspect.id ? { ...f, consumed: true } : f,
             ),
           };
-          logLine = `Use Session Boon accepted — ${characterLabel(
+          logLine = `Use Context Boon accepted — ${characterLabel(
             proposerSheet,
           )} spends ${aspect.text}; the pool gains a Boon`;
           break;
@@ -1247,7 +1249,7 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * An accepted proposal whose character / session aspect has since gone (a
+   * An accepted proposal whose character / context aspect has since gone (a
    * released or reslotted sheet). Return an error and leave the proposal
    * queued rather than dropping it with no effect and no log line.
    */
@@ -1303,20 +1305,20 @@ export class GameTable implements DurableObject {
   }
 
   /**
-   * Overcome (26.2): any player presses it, no approval needed. Draws two
+   * Junction (26.2): any player presses it, no approval needed. Draws two
    * stones from the pool without touching the pool, and leaves the result
    * pending until the facilitator accepts or rejects it. One at a time.
    */
-  private async handleOvercomeRoll(authInfo: AuthInfo): Promise<Response> {
-    if (this.game.overcome) {
-      return new Response("An Overcome is already pending", { status: 409 });
+  private async handleJunctionRoll(authInfo: AuthInfo): Promise<Response> {
+    if (this.game.junction) {
+      return new Response("A Junction is already pending", { status: 409 });
     }
 
     const { chosen } = pickTwoRandom(this.game.stonePool);
     return this.commit(
       {
         ...this.game,
-        overcome: {
+        junction: {
           rolledBy: authInfo.username,
           stones: chosen,
           rerolls: 0,
@@ -1327,98 +1329,98 @@ export class GameTable implements DurableObject {
         authorId: authInfo.discordUserId,
         authorName: authInfo.username,
         role: authInfo.role,
-        content: `Overcome — ${authInfo.username} rolled: ${describeStones(chosen)}`,
+        content: `Junction — ${authInfo.username} rolled: ${describeStones(chosen)}`,
       },
     );
   }
 
   /**
-   * The facilitator accepts the pending Overcome. The pool returns to its
+   * The facilitator accepts the pending Junction. The pool returns to its
    * starting shape whatever was added to it, and a matched pair plants a
-   * session boon (two Boons) or session bane (two Banes) for the facilitator to
+   * context boon (two Boons) or context bane (two Banes) for the facilitator to
    * word later; a mixed draw plants nothing.
    */
-  private async handleOvercomeAccept(authInfo: AuthInfo): Promise<Response> {
-    const overcome = this.game.overcome;
-    if (!overcome) {
-      return new Response("No Overcome is pending", { status: 409 });
+  private async handleJunctionAccept(authInfo: AuthInfo): Promise<Response> {
+    const junction = this.game.junction;
+    if (!junction) {
+      return new Response("No Junction is pending", { status: 409 });
     }
 
-    const kind = pairKind(overcome.stones);
-    const sessionAspects = kind
+    const kind = pairKind(junction.stones);
+    const contextAspects = kind
       ? [
-          ...this.game.sessionAspects,
+          ...this.game.contextAspects,
           {
             id: crypto.randomUUID(),
             kind,
-            text: `${kind} from ${overcome.rolledBy}'s Overcome`,
-            createdByName: overcome.rolledBy,
+            text: `${kind} from ${junction.rolledBy}'s Junction`,
+            createdByName: junction.rolledBy,
             createdAt: Date.now(),
             consumed: false,
           },
         ]
-      : this.game.sessionAspects;
-    const added = kind ? ` (session ${kind.toLowerCase()} added)` : "";
+      : this.game.contextAspects;
+    const added = kind ? ` (context ${kind.toLowerCase()} added)` : "";
 
     return this.commit(
       {
         ...this.game,
-        overcome: null,
-        // A queued Alter Fate is only meaningful during the Overcome it was
+        junction: null,
+        // A queued Alter Fate is only meaningful during the Junction it was
         // raised for.
         proposals: this.game.proposals.filter((p) => p.kind !== "alter"),
         stonePool: [...INITIAL_STONE_POOL],
-        sessionAspects,
+        contextAspects,
       },
       {
         authorId: authInfo.discordUserId,
         authorName: authInfo.username,
         role: authInfo.role,
-        content: `Overcome accepted — ${describeStones(overcome.stones)}${added}`,
+        content: `Junction accepted — ${describeStones(junction.stones)}${added}`,
       },
     );
   }
 
   /**
-   * The facilitator rejects the pending Overcome: the roll is discarded and
+   * The facilitator rejects the pending Junction: the roll is discarded and
    * nothing else changes — the pool keeps whatever was added to it, and no
-   * session aspect is created — so the table can roll again.
+   * context aspect is created — so the table can roll again.
    */
-  private async handleOvercomeReject(authInfo: AuthInfo): Promise<Response> {
-    if (!this.game.overcome) {
-      return new Response("No Overcome is pending", { status: 409 });
+  private async handleJunctionReject(authInfo: AuthInfo): Promise<Response> {
+    if (!this.game.junction) {
+      return new Response("No Junction is pending", { status: 409 });
     }
 
     return this.commit(
       {
         ...this.game,
-        overcome: null,
+        junction: null,
         proposals: this.game.proposals.filter((p) => p.kind !== "alter"),
       },
       {
         authorId: authInfo.discordUserId,
         authorName: authInfo.username,
         role: authInfo.role,
-        content: "Overcome rejected — the roll is discarded",
+        content: "Junction rejected — the roll is discarded",
       },
     );
   }
 
   /**
-   * The facilitator's own reroll of the pending Overcome: free and immediate,
+   * The facilitator's own reroll of the pending Junction: free and immediate,
    * with no proposal. Players reroll only through Alter Fate.
    */
-  private async handleOvercomeReroll(authInfo: AuthInfo): Promise<Response> {
-    const overcome = this.game.overcome;
-    if (!overcome) {
-      return new Response("No Overcome is pending", { status: 409 });
+  private async handleJunctionReroll(authInfo: AuthInfo): Promise<Response> {
+    const junction = this.game.junction;
+    if (!junction) {
+      return new Response("No Junction is pending", { status: 409 });
     }
 
     const { chosen } = pickTwoRandom(this.game.stonePool);
     return this.commit(
       {
         ...this.game,
-        overcome: { ...overcome, stones: chosen, rerolls: overcome.rerolls + 1 },
+        junction: { ...junction, stones: chosen, rerolls: junction.rerolls + 1 },
       },
       {
         authorId: authInfo.discordUserId,
@@ -1478,11 +1480,11 @@ export class GameTable implements DurableObject {
    * a Detail / Gain Insight creates (always a Boon), without routing through
    * that ability's proposal.
    */
-  private async handleAddSessionAspect(
+  private async handleAddContextAspect(
     request: Request,
     authInfo: AuthInfo,
   ): Promise<Response> {
-    const input = (await readJson(request)) as AddSessionAspectInput | null;
+    const input = (await readJson(request)) as AddContextAspectInput | null;
     const kind = input?.kind;
     if (kind !== "Boon" && kind !== "Bane") {
       return new Response("kind must be Boon or Bane", { status: 400 });
@@ -1492,7 +1494,7 @@ export class GameTable implements DurableObject {
       return new Response("text is required", { status: 400 });
     }
 
-    const aspect: SessionAspect = {
+    const aspect: ContextAspect = {
       id: crypto.randomUUID(),
       kind,
       text,
@@ -1502,7 +1504,7 @@ export class GameTable implements DurableObject {
     };
 
     return this.commit(
-      { ...this.game, sessionAspects: [...this.game.sessionAspects, aspect] },
+      { ...this.game, contextAspects: [...this.game.contextAspects, aspect] },
       {
         authorId: authInfo.discordUserId,
         authorName: authInfo.username,
@@ -1512,14 +1514,14 @@ export class GameTable implements DurableObject {
     );
   }
 
-  /** Facilitator-only: rewrite one session aspect's text. Silent, like a typo fix. */
-  private async handleUpdateSessionAspect(
+  /** Facilitator-only: rewrite one context aspect's text. Silent, like a typo fix. */
+  private async handleUpdateContextAspect(
     request: Request,
-    sessionAspectId: string,
+    contextAspectId: string,
   ): Promise<Response> {
-    const aspect = this.game.sessionAspects.find((f) => f.id === sessionAspectId);
+    const aspect = this.game.contextAspects.find((f) => f.id === contextAspectId);
     if (!aspect) {
-      return new Response("No such session boon", { status: 404 });
+      return new Response("No such context boon", { status: 404 });
     }
     const input = (await readJson(request)) as { text?: unknown } | null;
     const text = boundedString(input?.text, MAX_GOAL_LENGTH).trim();
@@ -1529,27 +1531,27 @@ export class GameTable implements DurableObject {
 
     return this.commit({
       ...this.game,
-      sessionAspects: this.game.sessionAspects.map((f) =>
-        f.id === sessionAspectId ? { ...f, text } : f,
+      contextAspects: this.game.contextAspects.map((f) =>
+        f.id === contextAspectId ? { ...f, text } : f,
       ),
     });
   }
 
   /**
-   * Facilitator-only: spend a session aspect into the pool directly, no
+   * Facilitator-only: spend a context aspect into the pool directly, no
    * approval. The pool gains a stone of the aspect's kind and the aspect is
    * marked consumed — kept, visibly, so it cannot be spent twice.
    */
-  private async handleUseSessionAspect(
-    sessionAspectId: string,
+  private async handleUseContextAspect(
+    contextAspectId: string,
     authInfo: AuthInfo,
   ): Promise<Response> {
-    const aspect = this.game.sessionAspects.find((f) => f.id === sessionAspectId);
+    const aspect = this.game.contextAspects.find((f) => f.id === contextAspectId);
     if (!aspect) {
-      return new Response("No such session boon", { status: 404 });
+      return new Response("No such context boon", { status: 404 });
     }
     if (aspect.consumed) {
-      return new Response("That session boon is already consumed", {
+      return new Response("That context boon is already consumed", {
         status: 409,
       });
     }
@@ -1558,15 +1560,15 @@ export class GameTable implements DurableObject {
       {
         ...this.game,
         stonePool: [...this.game.stonePool, aspect.kind],
-        sessionAspects: this.game.sessionAspects.map((f) =>
-          f.id === sessionAspectId ? { ...f, consumed: true } : f,
+        contextAspects: this.game.contextAspects.map((f) =>
+          f.id === contextAspectId ? { ...f, consumed: true } : f,
         ),
       },
       {
         authorId: authInfo.discordUserId,
         authorName: authInfo.username,
         role: authInfo.role,
-        content: `Session ${aspect.kind.toLowerCase()} used — ${aspect.text}`,
+        content: `Context ${aspect.kind.toLowerCase()} used — ${aspect.text}`,
       },
     );
   }
@@ -1576,30 +1578,30 @@ export class GameTable implements DurableObject {
    * miscommunication (a stone was spent that should not have been), not part of
    * the game — so it does not touch the pool.
    */
-  private async handleUnconsumeSessionAspect(
-    sessionAspectId: string,
+  private async handleUnconsumeContextAspect(
+    contextAspectId: string,
     authInfo: AuthInfo,
   ): Promise<Response> {
-    const aspect = this.game.sessionAspects.find((f) => f.id === sessionAspectId);
+    const aspect = this.game.contextAspects.find((f) => f.id === contextAspectId);
     if (!aspect) {
-      return new Response("No such session boon", { status: 404 });
+      return new Response("No such context boon", { status: 404 });
     }
     if (!aspect.consumed) {
-      return new Response("That session boon is not consumed", { status: 409 });
+      return new Response("That context boon is not consumed", { status: 409 });
     }
 
     return this.commit(
       {
         ...this.game,
-        sessionAspects: this.game.sessionAspects.map((f) =>
-          f.id === sessionAspectId ? { ...f, consumed: false } : f,
+        contextAspects: this.game.contextAspects.map((f) =>
+          f.id === contextAspectId ? { ...f, consumed: false } : f,
         ),
       },
       {
         authorId: authInfo.discordUserId,
         authorName: authInfo.username,
         role: authInfo.role,
-        content: `Session ${aspect.kind.toLowerCase()} unconsumed — ${aspect.text}`,
+        content: `Context ${aspect.kind.toLowerCase()} unconsumed — ${aspect.text}`,
       },
     );
   }
@@ -1609,20 +1611,20 @@ export class GameTable implements DurableObject {
    * "use" state distinct from this now that a roll no longer draws from
    * anything but the pool (23.1) — the lifecycle is just create and delete.
    */
-  private async handleDeleteSessionAspect(
-    sessionAspectId: string,
+  private async handleDeleteContextAspect(
+    contextAspectId: string,
     authInfo: AuthInfo,
   ): Promise<Response> {
-    const aspect = this.game.sessionAspects.find((f) => f.id === sessionAspectId);
+    const aspect = this.game.contextAspects.find((f) => f.id === contextAspectId);
     if (!aspect) {
-      return new Response("No such session boon", { status: 404 });
+      return new Response("No such context boon", { status: 404 });
     }
 
     return this.commit(
       {
         ...this.game,
-        sessionAspects: this.game.sessionAspects.filter(
-          (f) => f.id !== sessionAspectId,
+        contextAspects: this.game.contextAspects.filter(
+          (f) => f.id !== contextAspectId,
         ),
       },
       {
@@ -1656,7 +1658,7 @@ export class GameTable implements DurableObject {
       .run();
 
     // Starting a session records the goal and nothing else: the pool,
-    // proposals, session boons and banes, and any pending Overcome all carry
+    // proposals, context boons and banes, and any pending Junction all carry
     // across (RULES.md, "Sessions and the goal").
     return this.commit(
       { ...this.game, session: { id, goal } },

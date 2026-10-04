@@ -30,12 +30,12 @@ baneStone =
     "Bane"
 
 
--- OVERCOME STAGE (View/TopBar.elm, roadmap 26.3)
+-- JUNCTION STAGE (View/TopBar.elm, roadmap 26.3)
 
 
-overcome : String
-overcome =
-    "Overcome"
+junction : String
+junction =
+    "Junction"
 
 
 thePool : String
@@ -43,8 +43,8 @@ thePool =
     "the pool"
 
 
-overcomeDrew : String -> String
-overcomeDrew who =
+junctionDrew : String -> String
+junctionDrew who =
     who ++ " drew"
 
 
@@ -170,58 +170,58 @@ sessionHistoryTitle =
 
 
 
--- SESSION BOONS & BANES CARD (View/SessionAspects.elm)
+-- SESSION BOONS & BANES CARD (View/ContextAspects.elm)
 
 
-noSessionAspects : String
-noSessionAspects =
-    "No session boons or banes yet."
+noContextAspects : String
+noContextAspects =
+    "No context boons or banes yet."
 
 
-{-| The mark on a session boon or bane that has been spent into the pool. It
+{-| The mark on a context boon or bane that has been spent into the pool. It
 stays on the table, visibly consumed, and cannot be spent again.
 -}
-sessionAspectConsumed : String
-sessionAspectConsumed =
+contextAspectConsumed : String
+contextAspectConsumed =
     "used"
 
 
 {-| Facilitator-only: clear a consumed mark, to correct a table miscommunication.
 -}
-sessionAspectUnconsume : String
-sessionAspectUnconsume =
+contextAspectUnconsume : String
+contextAspectUnconsume =
     "Unconsume"
 
 
-sessionAspectUse : String
-sessionAspectUse =
+contextAspectUse : String
+contextAspectUse =
     "Use"
 
 
-{-| Facilitator-only: remove a session boon or bane outright.
+{-| Facilitator-only: remove a context boon or bane outright.
 -}
-sessionAspectRemove : String
-sessionAspectRemove =
+contextAspectRemove : String
+contextAspectRemove =
     "Remove"
 
 
-{-| Facilitator-only: the field and button that plant a session boon or bane
+{-| Facilitator-only: the field and button that plant a context boon or bane
 directly, below the existing ones.
 -}
-addSessionAspectPlaceholder : String
-addSessionAspectPlaceholder =
-    "Add a session boon or bane…"
+addContextAspectPlaceholder : String
+addContextAspectPlaceholder =
+    "Add a context boon or bane…"
 
 
-addSessionAspect : String
-addSessionAspect =
+addContextAspect : String
+addContextAspect =
     "Add"
 
 
 
 -- FACILITATOR PANEL (View/FacilitatorPanel.elm) — direct pool edits and the
 -- queue of proposals awaiting a decision, in their own facilitator-only section
--- of the left panel. The Overcome controls are on the top bar's stage.
+-- of the left panel. The Junction controls are on the top bar's stage.
 
 
 facilitatorPanelTitle : String
@@ -244,9 +244,9 @@ noProposals =
     "Nothing is waiting on you."
 
 
-sessionAspectContextPlaceholder : String
-sessionAspectContextPlaceholder =
-    "Wording for the session boon…"
+contextAspectContextPlaceholder : String
+contextAspectContextPlaceholder =
+    "Wording for the context boon…"
 
 
 reject : String
@@ -265,12 +265,12 @@ proposalHighlight =
 
 proposalAlter : String
 proposalAlter =
-    "Alter Fate — pays 2 boons, rerolls the Overcome"
+    "Alter Fate — pays 2 boons, rerolls the Junction"
 
 
 proposalAddDetail : String
 proposalAddDetail =
-    "Add Detail — pays 1 boon, makes a session boon"
+    "Add Detail — pays 1 boon, makes a context boon"
 
 
 proposalComplicate : String
@@ -278,14 +278,14 @@ proposalComplicate =
     "Complicate — gains 2 boons"
 
 
-proposalUseSessionBoon : String -> String
-proposalUseSessionBoon note =
-    "Use Session Boon — " ++ note ++ "; the pool gains a Boon"
+proposalUseContextBoon : String -> String
+proposalUseContextBoon note =
+    "Use Context Boon — " ++ note ++ "; the pool gains a Boon"
 
 
-proposalUseSessionBoonGone : String
-proposalUseSessionBoonGone =
-    "a session boon that is gone"
+proposalUseContextBoonGone : String
+proposalUseContextBoonGone =
+    "a context boon that is gone"
 
 
 {-| The header note beside the Facilitator accordion title: how many proposals
@@ -332,7 +332,7 @@ alterNeedsBoons =
 
 alterAlreadyUsed : String
 alterAlreadyUsed =
-    "You have already altered fate this Overcome."
+    "You have already altered fate this Junction."
 
 
 alterAlreadyProposed : String
@@ -345,8 +345,8 @@ needsABoon =
     "You need a boon."
 
 
-useSessionBoonButton : String
-useSessionBoonButton =
+useContextBoonButton : String
+useContextBoonButton =
     "Use boon"
 
 
@@ -355,9 +355,9 @@ complicateButton =
     "Complicate"
 
 
-noSessionBoons : String
-noSessionBoons =
-    "No unspent session boons."
+noContextBoons : String
+noContextBoons =
+    "No unspent context boons."
 
 
 claimASheetForMoves : String

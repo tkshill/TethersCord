@@ -75,8 +75,8 @@ export function pickTwoRandom(pool: StoneKind[]): PendingRoll {
 
 /**
  * The kind a drawn pair names, when both stones match: two Boons give a Boon,
- * two Banes a Bane. A mixed draw names nothing. Decides which session aspect,
- * if any, an accepted Overcome creates.
+ * two Banes a Bane. A mixed draw names nothing. Decides which context aspect,
+ * if any, an accepted Junction creates.
  */
 export function pairKind(stones: StoneKind[]): StoneKind | null {
   return stones.length === 2 && stones[0] === stones[1] ? stones[0] : null;
@@ -93,8 +93,8 @@ export function moveName(kind: ProposalKind): string {
       return "Add Detail";
     case "alter":
       return "Alter Fate";
-    case "use-session-boon":
-      return "Use Session Boon";
+    case "use-context-boon":
+      return "Use Context Boon";
   }
 }
 

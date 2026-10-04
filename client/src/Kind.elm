@@ -6,7 +6,7 @@ module Kind exposing
 
 {-| The kind of a queued `Proposal`, at parity with the Worker's `ProposalKind`
 union (`worker/src/types.ts`): a typed name for what a player asked the
-facilitator to rule on. These are the five official move names except Overcome,
+facilitator to rule on. These are the five official move names except Junction,
 which needs no approval and so is never a proposal (`RULES.md`).
 
 Kept in its own module (rather than in `Types` beside `Msg`) because several
@@ -26,7 +26,7 @@ type ProposalKind
     | Complicate
     | AddDetail
     | Alter
-    | UseSessionBoon
+    | UseContextBoon
 
 
 proposalKindToString : ProposalKind -> String
@@ -44,8 +44,8 @@ proposalKindToString kind =
         Alter ->
             "alter"
 
-        UseSessionBoon ->
-            "use-session-boon"
+        UseContextBoon ->
+            "use-context-boon"
 
 
 proposalKindFromString : String -> Maybe ProposalKind
@@ -63,8 +63,8 @@ proposalKindFromString s =
         "alter" ->
             Just Alter
 
-        "use-session-boon" ->
-            Just UseSessionBoon
+        "use-context-boon" ->
+            Just UseContextBoon
 
         _ ->
             Nothing

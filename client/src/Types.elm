@@ -7,8 +7,8 @@ module Types exposing
     , Connection(..)
     , EntityField(..)
     , EntityKind(..)
-    , Overcome
-    , SessionAspect
+    , Junction
+    , ContextAspect
     , Flags
     , GameState
     , Message
@@ -110,13 +110,13 @@ type alias Message =
     }
 
 
-{-| The Overcome in progress: one roll waiting on the facilitator to accept or
+{-| The Junction in progress: one roll waiting on the facilitator to accept or
 reject it (roadmap 26.2). `stones` is the current draw — a reroll replaces it —
 `rerolls` counts redraws, and `alteredSlots` lists the characters whose Alter Fate
-has already been accepted this Overcome (each may succeed at one). The pool is not
+has already been accepted this Junction (each may succeed at one). The pool is not
 touched by a roll, so nothing here shows the pool.
 -}
-type alias Overcome =
+type alias Junction =
     { rolledBy : String
     , stones : List Stone
     , rerolls : Int
@@ -133,9 +133,9 @@ characterAtSlot slot characters =
     characters |> List.filter (\c -> c.slot == slot) |> List.head
 
 
-{-| A player move waiting on the facilitator (Overcome is not one — it needs no
-approval). See `Kind.ProposalKind` for the kinds. `sessionAspectId` names the
-boon for `UseSessionBoon`; `targetSlot` is set only on an older `Complicate`
+{-| A player move waiting on the facilitator (Junction is not one — it needs no
+approval). See `Kind.ProposalKind` for the kinds. `contextAspectId` names the
+boon for `UseContextBoon`; `targetSlot` is set only on an older `Complicate`
 that named another character; `text` is an Add Detail's suggested wording, if
 the player gave one.
 -}
@@ -145,19 +145,19 @@ type alias Proposal =
     , proposerId : String
     , proposerName : String
     , slot : Maybe Int
-    , sessionAspectId : Maybe String
+    , contextAspectId : Maybe String
     , targetSlot : Maybe Int
     , text : Maybe String
     }
 
 
-{-| A session boon or session bane: a note of something true in the fiction,
+{-| A context boon or context bane: a note of something true in the fiction,
 owned by nobody, that can be spent into the pool. It comes from an accepted
-Overcome pair, an accepted Add Detail (always a Boon) or the facilitator.
+Junction pair, an accepted Add Detail (always a Boon) or the facilitator.
 Spending it marks it `consumed` rather than deleting it, and a consumed one
 cannot be spent again (roadmap 26.2).
 -}
-type alias SessionAspect =
+type alias ContextAspect =
     { id : String
     , kind : Stone
     , text : String
@@ -348,12 +348,12 @@ type alias GameState =
     { sessionId : String
     , messages : List Message
     , stonePool : List Stone
-    , overcome : Maybe Overcome
+    , junction : Maybe Junction
     , proposals : List Proposal
     , session : Maybe Session
     , characters : List CharacterSheet
     , sessionHistory : List SessionSummary
-    , sessionAspects : List SessionAspect
+    , contextAspects : List ContextAspect
     , npcs : List TableEntity
     , locations : List TableEntity
     }
@@ -435,17 +435,17 @@ type alias Model =
     -- The player's own suggested wording in the Moves card's Add Detail field.
     , addDetailDraft : String
 
-    -- Unsaved edits to a session aspect's text, keyed by aspect id; saved when
+    -- Unsaved edits to a context aspect's text, keyed by aspect id; saved when
     -- the field loses focus.
-    , sessionAspectEdits : Dict String String
+    , contextAspectEdits : Dict String String
 
-    -- Draft text in the facilitator's "add a session boon or bane" field —
+    -- Draft text in the facilitator's "add a context boon or bane" field —
     -- planting one directly, not through a move.
-    , newSessionAspectNote : String
+    , newContextAspectNote : String
 
-    -- Which kind the facilitator's next planted session boon or bane will be
+    -- Which kind the facilitator's next planted context boon or bane will be
     -- (23.3) — toggled by the Boon / Bane picker next to the draft field.
-    , newSessionAspectKind : Stone
+    , newContextAspectKind : Stone
 
     -- A `GET /messages/history` fetch for older log rows is in flight.
     , loadingHistory : Bool
@@ -532,15 +532,15 @@ type Msg
     | WithdrawProposal String
     | ProposalResolved String (Result Http.Error ())
     | ProposalDraftChanged String String
-    | PressOvercome
-    | RerollOvercome
-    | AcceptOvercome
-    | RejectOvercome
+    | PressJunction
+    | RerollJunction
+    | AcceptJunction
+    | RejectJunction
     | ProposeHighlight
     | ProposeComplicate
     | ProposeAddDetail
     | ProposeAlter
-    | ProposeUseSessionBoon String
+    | ProposeUseContextBoon String
     | AddDetailDraftChanged String
     | SessionGoalChanged String
     | SessionGoalEditChanged String
@@ -557,14 +557,14 @@ type Msg
     | RetryGetGameState
     | AddStone Stone
     | RemoveStone Stone
-    | SessionAspectDraftChanged String
-    | SessionAspectKindChanged Stone
-    | AddSessionAspect
-    | DeleteSessionAspect String
-    | UseSessionAspect String
-    | UnconsumeSessionAspect String
-    | SessionAspectTextChanged String String
-    | SaveSessionAspectText String
+    | ContextAspectDraftChanged String
+    | ContextAspectKindChanged Stone
+    | AddContextAspect
+    | DeleteContextAspect String
+    | UseContextAspect String
+    | UnconsumeContextAspect String
+    | ContextAspectTextChanged String String
+    | SaveContextAspectText String
     | CharacterFieldInput Int CharacterField String
     | CharacterFieldBlur Int
     | FieldSaveDue Int

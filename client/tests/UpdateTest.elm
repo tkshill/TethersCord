@@ -27,9 +27,9 @@ stonesDone =
     MutationDone { family = StonesFamily, failMsg = "Failed to update stones." }
 
 
-overcomeDone : Result Http.Error () -> Msg
-overcomeDone =
-    MutationDone { family = OvercomeFamily, failMsg = "Couldn't update the Overcome." }
+junctionDone : Result Http.Error () -> Msg
+junctionDone =
+    MutationDone { family = JunctionFamily, failMsg = "Couldn't update the Junction." }
 
 
 {-| Model after a successful auth + first snapshot: authorised, with game state.
@@ -47,7 +47,7 @@ m =
     Fixtures.model
 
 
-{-| `ready`, with one session boon on the table to edit or spend.
+{-| `ready`, with one context boon on the table to edit or spend.
 -}
 withAspect : Model
 withAspect =
@@ -59,7 +59,7 @@ withAspect =
         | gameState =
             Just
                 { gs
-                    | sessionAspects =
+                    | contextAspects =
                         [ { id = "f1", kind = Boon, text = "a note", createdByName = "Gm", consumed = False } ]
                 }
     }
@@ -140,44 +140,44 @@ suite =
                         |> Expect.equal ( ready, Effect.None )
             ]
         , describe "auth-gated effects"
-            [ test "PressOvercome does nothing without auth" <|
+            [ test "PressJunction does nothing without auth" <|
                 \_ ->
-                    Main.update PressOvercome m |> Expect.equal ( m, Effect.None )
-            , test "PressOvercome posts a roll with auth, open to a player" <|
+                    Main.update PressJunction m |> Expect.equal ( m, Effect.None )
+            , test "PressJunction posts a roll with auth, open to a player" <|
                 \_ ->
-                    Main.update PressOvercome ready
+                    Main.update PressJunction ready
                         |> Tuple.second
-                        |> Expect.equal (Effect.PostOvercomeRoll Fixtures.playerAuth)
-            , test "a second PressOvercome while the first is in flight is dropped" <|
+                        |> Expect.equal (Effect.PostJunctionRoll Fixtures.playerAuth)
+            , test "a second PressJunction while the first is in flight is dropped" <|
                 \_ ->
                     let
                         afterFirst =
-                            Main.update PressOvercome ready |> Tuple.first
+                            Main.update PressJunction ready |> Tuple.first
                     in
-                    Main.update PressOvercome afterFirst
+                    Main.update PressJunction afterFirst
                         |> Expect.equal ( afterFirst, Effect.None )
-            , test "an Overcome result clears the in-flight roll so it can be fired again" <|
+            , test "a Junction result clears the in-flight roll so it can be fired again" <|
                 \_ ->
                     let
                         afterFirst =
-                            Main.update PressOvercome ready |> Tuple.first
+                            Main.update PressJunction ready |> Tuple.first
 
                         settled =
-                            Main.update (overcomeDone (Ok ())) afterFirst |> Tuple.first
+                            Main.update (junctionDone (Ok ())) afterFirst |> Tuple.first
                     in
-                    Main.update PressOvercome settled
+                    Main.update PressJunction settled
                         |> Tuple.second
-                        |> Expect.equal (Effect.PostOvercomeRoll Fixtures.playerAuth)
+                        |> Expect.equal (Effect.PostJunctionRoll Fixtures.playerAuth)
             , test "reroll, accept and reject each post their own step" <|
                 \_ ->
-                    [ Main.update RerollOvercome ready |> Tuple.second
-                    , Main.update AcceptOvercome ready |> Tuple.second
-                    , Main.update RejectOvercome ready |> Tuple.second
+                    [ Main.update RerollJunction ready |> Tuple.second
+                    , Main.update AcceptJunction ready |> Tuple.second
+                    , Main.update RejectJunction ready |> Tuple.second
                     ]
                         |> Expect.equal
-                            [ Effect.PostOvercomeReroll Fixtures.playerAuth
-                            , Effect.PostOvercomeAccept Fixtures.playerAuth
-                            , Effect.PostOvercomeReject Fixtures.playerAuth
+                            [ Effect.PostJunctionReroll Fixtures.playerAuth
+                            , Effect.PostJunctionAccept Fixtures.playerAuth
+                            , Effect.PostJunctionReject Fixtures.playerAuth
                             ]
             , test "a result message releases only its own family of in-flight actions" <|
                 \_ ->
@@ -196,33 +196,33 @@ suite =
                     Main.update (RemoveStone Boon) ready
                         |> Tuple.second
                         |> Expect.equal (Effect.PostRemoveStone Fixtures.playerAuth Boon)
-            , test "SessionAspectKindChanged sets the pending kind" <|
+            , test "ContextAspectKindChanged sets the pending kind" <|
                 \_ ->
-                    Main.update (SessionAspectKindChanged Bane) ready
-                        |> Expect.equal ( { ready | newSessionAspectKind = Bane }, Effect.None )
-            , test "AddSessionAspect does nothing on a blank draft" <|
+                    Main.update (ContextAspectKindChanged Bane) ready
+                        |> Expect.equal ( { ready | newContextAspectKind = Bane }, Effect.None )
+            , test "AddContextAspect does nothing on a blank draft" <|
                 \_ ->
-                    Main.update AddSessionAspect { ready | newSessionAspectNote = "   " }
-                        |> Expect.equal ( { ready | newSessionAspectNote = "   " }, Effect.None )
-            , test "AddSessionAspect posts the draft as typed (worker trims it) and clears the field" <|
+                    Main.update AddContextAspect { ready | newContextAspectNote = "   " }
+                        |> Expect.equal ( { ready | newContextAspectNote = "   " }, Effect.None )
+            , test "AddContextAspect posts the draft as typed (worker trims it) and clears the field" <|
                 \_ ->
                     let
                         ( next, effect ) =
-                            Main.update AddSessionAspect { ready | newSessionAspectNote = "  a detail  " }
+                            Main.update AddContextAspect { ready | newContextAspectNote = "  a detail  " }
                     in
-                    ( next.newSessionAspectNote, effect )
-                        |> Expect.equal ( "", Effect.PostAddSessionAspect Fixtures.playerAuth Boon "  a detail  " )
-            , test "AddSessionAspect posts the picked kind" <|
+                    ( next.newContextAspectNote, effect )
+                        |> Expect.equal ( "", Effect.PostAddContextAspect Fixtures.playerAuth Boon "  a detail  " )
+            , test "AddContextAspect posts the picked kind" <|
                 \_ ->
-                    Main.update AddSessionAspect
-                        { ready | newSessionAspectNote = "a complication", newSessionAspectKind = Bane }
+                    Main.update AddContextAspect
+                        { ready | newContextAspectNote = "a complication", newContextAspectKind = Bane }
                         |> Tuple.second
-                        |> Expect.equal (Effect.PostAddSessionAspect Fixtures.playerAuth Bane "a complication")
-            , test "DeleteSessionAspect posts to the delete route with auth" <|
+                        |> Expect.equal (Effect.PostAddContextAspect Fixtures.playerAuth Bane "a complication")
+            , test "DeleteContextAspect posts to the delete route with auth" <|
                 \_ ->
-                    Main.update (DeleteSessionAspect "f1") ready
+                    Main.update (DeleteContextAspect "f1") ready
                         |> Tuple.second
-                        |> Expect.equal (Effect.PostDeleteSessionAspect Fixtures.playerAuth "f1")
+                        |> Expect.equal (Effect.PostDeleteContextAspect Fixtures.playerAuth "f1")
             , test "AcceptProposal carries that row's trimmed draft note as context" <|
                 \_ ->
                     Main.update (AcceptProposal "p1")
@@ -401,14 +401,14 @@ suite =
                     Main.update ProposeAddDetail { ready | addDetailDraft = "   " }
                         |> Tuple.second
                         |> Expect.equal (Effect.PostAddDetail Fixtures.playerAuth Nothing)
-            , test "Alter Fate and Use Session Boon post their proposals" <|
+            , test "Alter Fate and Use Context Boon post their proposals" <|
                 \_ ->
                     [ Main.update ProposeAlter ready |> Tuple.second
-                    , Main.update (ProposeUseSessionBoon "f1") ready |> Tuple.second
+                    , Main.update (ProposeUseContextBoon "f1") ready |> Tuple.second
                     ]
                         |> Expect.equal
                             [ Effect.PostAlter Fixtures.playerAuth
-                            , Effect.PostUseSessionBoon Fixtures.playerAuth "f1"
+                            , Effect.PostUseContextBoon Fixtures.playerAuth "f1"
                             ]
             , test "a second move of the same kind is dropped while the first is in flight, a different move is not" <|
                 \_ ->
@@ -421,34 +421,34 @@ suite =
                     )
                         |> Expect.equal ( Effect.None, Effect.PostAlter Fixtures.playerAuth )
             ]
-        , describe "session boons and banes"
+        , describe "context boons and banes"
             [ test "using and unconsuming post their own step" <|
                 \_ ->
-                    [ Main.update (UseSessionAspect "f1") ready |> Tuple.second
-                    , Main.update (UnconsumeSessionAspect "f1") ready |> Tuple.second
+                    [ Main.update (UseContextAspect "f1") ready |> Tuple.second
+                    , Main.update (UnconsumeContextAspect "f1") ready |> Tuple.second
                     ]
                         |> Expect.equal
-                            [ Effect.PostUseSessionAspect Fixtures.playerAuth "f1"
-                            , Effect.PostUnconsumeSessionAspect Fixtures.playerAuth "f1"
+                            [ Effect.PostUseContextAspect Fixtures.playerAuth "f1"
+                            , Effect.PostUnconsumeContextAspect Fixtures.playerAuth "f1"
                             ]
             , test "editing the text keeps a local draft without posting" <|
                 \_ ->
-                    Main.update (SessionAspectTextChanged "f1" "new wording") withAspect
-                        |> (\( next, eff ) -> ( eff, Dict.get "f1" next.sessionAspectEdits ))
+                    Main.update (ContextAspectTextChanged "f1" "new wording") withAspect
+                        |> (\( next, eff ) -> ( eff, Dict.get "f1" next.contextAspectEdits ))
                         |> Expect.equal ( Effect.None, Just "new wording" )
             , test "leaving the field saves a changed, non-blank text, trimmed, and drops the draft" <|
                 \_ ->
-                    Main.update (SaveSessionAspectText "f1")
-                        { withAspect | sessionAspectEdits = Dict.singleton "f1" "  new wording  " }
-                        |> (\( next, eff ) -> ( eff, Dict.member "f1" next.sessionAspectEdits ))
-                        |> Expect.equal ( Effect.PostUpdateSessionAspect Fixtures.playerAuth "f1" "new wording", False )
+                    Main.update (SaveContextAspectText "f1")
+                        { withAspect | contextAspectEdits = Dict.singleton "f1" "  new wording  " }
+                        |> (\( next, eff ) -> ( eff, Dict.member "f1" next.contextAspectEdits ))
+                        |> Expect.equal ( Effect.PostUpdateContextAspect Fixtures.playerAuth "f1" "new wording", False )
             , test "leaving the field with the text unchanged, or blank, posts nothing" <|
                 \_ ->
-                    [ Main.update (SaveSessionAspectText "f1")
-                        { withAspect | sessionAspectEdits = Dict.singleton "f1" "a note" }
+                    [ Main.update (SaveContextAspectText "f1")
+                        { withAspect | contextAspectEdits = Dict.singleton "f1" "a note" }
                         |> Tuple.second
-                    , Main.update (SaveSessionAspectText "f1")
-                        { withAspect | sessionAspectEdits = Dict.singleton "f1" "   " }
+                    , Main.update (SaveContextAspectText "f1")
+                        { withAspect | contextAspectEdits = Dict.singleton "f1" "   " }
                         |> Tuple.second
                     ]
                         |> Expect.equal [ Effect.None, Effect.None ]
