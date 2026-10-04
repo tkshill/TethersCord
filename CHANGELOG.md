@@ -10,6 +10,14 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **The Worker's rules run through one pure core** (roadmap 31.2a, ADR 0003;
+  no change to play). Chat, sessions, character sheets, NPCs and locations,
+  and the facilitator's context aspect edits are now computed by
+  `transition` in `worker/src/rules/`, and each mutation's D1 rows are
+  written in a single batch before the table updates and broadcasts, so a
+  failed write can no longer leave D1 and the live table disagreeing. Ending
+  a session no longer re-reads the history from D1.
+
 - **The Overcome is now the Junction, and session boons and banes are context
   boons and banes** (roadmap 31.1, a rename only — the rules are unchanged).
   The new names run through the app's text, the log, the wire format and the

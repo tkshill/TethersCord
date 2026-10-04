@@ -5,38 +5,30 @@ import type {
   DurableObjectState,
 } from "@cloudflare/workers-types";
 import type {
-  AddContextAspectInput,
   AddOrRemoveStoneInput,
-  AspectName,
-  EntityInput,
+  CharacterSheet,
+  CharacterSheetFields,
+  ContextAspect,
   EntityKind,
   Env,
-  ContextAspect,
   GameState,
   Message,
   MessageKind,
-  PostMessageInput,
   Proposal,
   ProposalDecisionInput,
   Role,
-  SessionState,
   SessionSummary,
-  StartSessionInput,
   StoneKind,
   TableEntity,
-  CharacterSheet,
-  UpdateCharacterInput,
-  UpdateFateInput,
-  UpdateSessionGoalInput,
   UseContextBoonInput,
 } from "./types";
 import {
   characterLabel,
-  clearSlotPendingState,
   describeStones,
   moveName,
   pairKind,
   pickTwoRandom,
+  randomInt,
   removeStones,
 } from "./gameLogic";
 import {
@@ -48,9 +40,17 @@ import {
   type CharacterRow,
   rowToCharacterSheet,
   setFate,
-  setOwner,
-  updateFields,
 } from "./characters";
+import { entityTable, persistDiff, toStatements } from "./persist";
+import {
+  type Command,
+  type CommandBody,
+  type Deps,
+  type LogEntry,
+  logText,
+  SESSION_HISTORY_LIMIT,
+  transition,
+} from "./rules";
 
 // The shape the shared pool starts in, and returns to whenever a Junction is
 // accepted. Between accepts the pool only changes through moves and the
@@ -102,6 +102,127 @@ const KEY_TABLE_STATE = "stones";
  */
 const AUTH_CACHE_TTL_MS = 60_000;
 
+/** The world the rules core runs against in production. */
+const PRODUCTION_DEPS: Deps = {
+  roll: (sides) => randomInt(sides) + 1,
+  now: () => Date.now(),
+  newId: () => crypto.randomUUID(),
+};
+
+/**
+ * A mutation route handled by the rules core: the path, and how its match and
+ * JSON body become a command. Parsing bounds strings and coerces types but
+ * never refuses; `transition` does every check, in order.
+ */
+type CommandRoute = {
+  path: RegExp;
+  parse: (match: RegExpMatchArray, body: Body) => CommandBody;
+};
+
+type Body = Record<string, unknown> | null;
+
+const SLOT = "(\\d+)";
+const ENTITY_KIND = "(npcs|locations)";
+
+const COMMAND_ROUTES: CommandRoute[] = [
+  {
+    path: /^\/message$/,
+    parse: (_, body) => ({
+      type: "chat/post",
+      content: boundedString(body?.content, MAX_MESSAGE_LENGTH),
+    }),
+  },
+  { path: /^\/messages\/clear$/, parse: () => ({ type: "log/clear" }) },
+  {
+    path: /^\/session\/start$/,
+    parse: (_, body) => ({
+      type: "session/start",
+      goal: boundedString(body?.goal, MAX_GOAL_LENGTH),
+    }),
+  },
+  { path: /^\/session\/end$/, parse: () => ({ type: "session/end" }) },
+  {
+    path: /^\/session\/goal$/,
+    parse: (_, body) => ({
+      type: "session/goal",
+      goal: boundedString(body?.goal, MAX_GOAL_LENGTH),
+    }),
+  },
+  {
+    path: new RegExp(`^/characters/${SLOT}/update$`),
+    parse: ([, slot], body) => ({
+      type: "sheet/update",
+      slot: Number(slot),
+      fields: body && sheetFields(body),
+    }),
+  },
+  {
+    path: new RegExp(`^/characters/${SLOT}/fate$`),
+    parse: ([, slot], body) => ({
+      type: "sheet/boons",
+      slot: Number(slot),
+      delta: typeof body?.delta === "number" ? body.delta : null,
+    }),
+  },
+  {
+    path: new RegExp(`^/characters/${SLOT}/claim$`),
+    parse: ([, slot]) => ({ type: "sheet/claim", slot: Number(slot) }),
+  },
+  {
+    path: new RegExp(`^/characters/${SLOT}/release$`),
+    parse: ([, slot]) => ({ type: "sheet/release", slot: Number(slot) }),
+  },
+  {
+    path: new RegExp(`^/${ENTITY_KIND}$`),
+    parse: ([, kind], body) => ({
+      type: "entity/create",
+      kind: kind as EntityKind,
+      name: boundedString(body?.name, MAX_FIELD_LENGTH),
+      notes: boundedString(body?.notes, MAX_NOTES_LENGTH),
+    }),
+  },
+  {
+    path: new RegExp(`^/${ENTITY_KIND}/(${UUID})/update$`),
+    parse: ([, kind, id], body) => ({
+      type: "entity/update",
+      kind: kind as EntityKind,
+      id,
+      fields: body && {
+        ...stringField(body, "name", MAX_FIELD_LENGTH),
+        ...stringField(body, "notes", MAX_NOTES_LENGTH),
+      },
+    }),
+  },
+  {
+    path: new RegExp(`^/${ENTITY_KIND}/(${UUID})/delete$`),
+    parse: ([, kind, id]) => ({
+      type: "entity/delete",
+      kind: kind as EntityKind,
+      id,
+    }),
+  },
+  {
+    path: /^\/context-aspects$/,
+    parse: (_, body) => ({
+      type: "context/add",
+      kind: body?.kind === "Boon" || body?.kind === "Bane" ? body.kind : null,
+      text: boundedString(body?.text, MAX_GOAL_LENGTH),
+    }),
+  },
+  {
+    path: new RegExp(`^/context-aspects/(${UUID})/update$`),
+    parse: ([, id], body) => ({
+      type: "context/update",
+      id,
+      text: boundedString(body?.text, MAX_GOAL_LENGTH),
+    }),
+  },
+  {
+    path: new RegExp(`^/context-aspects/(${UUID})/delete$`),
+    parse: ([, id]) => ({ type: "context/delete", id }),
+  },
+];
+
 export class GameTable implements DurableObject {
   private state: DurableObjectState;
   private env: Env;
@@ -136,6 +257,9 @@ export class GameTable implements DurableObject {
    * hibernation — which is fine, the next request just repopulates it.
    */
   private authCache = new Map<string, { info: AuthInfo; expiresAt: number }>();
+
+  /** What the rules core may call: randomness, the clock, new ids. */
+  private deps: Deps = PRODUCTION_DEPS;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -229,16 +353,17 @@ export class GameTable implements DurableObject {
       return this.handleMessageHistory(sessionId, url);
     }
 
-    if (url.pathname === "/message" && request.method === "POST") {
-      return this.withLock(() => this.handlePostMessage(request, authInfo));
+    if (request.method === "POST") {
+      for (const route of COMMAND_ROUTES) {
+        const match = url.pathname.match(route.path);
+        if (!match) continue;
+        const command = route.parse(match, await readJson(request));
+        return this.withLock(() => this.apply(command, authInfo));
+      }
     }
 
-    if (url.pathname === "/messages/clear" && request.method === "POST") {
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleClearMessages())
-      );
-    }
+    // The routes below still run on the legacy `commit` path. 31.2b moves the
+    // Junction and the pool into the rules core; 31.3 deletes the proposals.
 
     if (url.pathname === "/moves/highlight" && request.method === "POST") {
       return this.withLock(() => this.handleHighlight(authInfo));
@@ -324,125 +449,17 @@ export class GameTable implements DurableObject {
       );
     }
 
-    if (url.pathname === "/context-aspects" && request.method === "POST") {
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleAddContextAspect(request, authInfo))
-      );
-    }
-
     const contextAspectMatch = url.pathname.match(
-      new RegExp(`^/context-aspects/(${UUID})/(update|delete|use|unconsume)$`),
+      new RegExp(`^/context-aspects/(${UUID})/(use|unconsume)$`),
     );
     if (contextAspectMatch && request.method === "POST") {
       const [, contextAspectId, action] = contextAspectMatch;
       return (
         facilitatorOnly(authInfo) ??
-        this.withLock(() => {
-          switch (action) {
-            case "update":
-              return this.handleUpdateContextAspect(
-                request,
-                contextAspectId,
-              );
-            case "use":
-              return this.handleUseContextAspect(contextAspectId, authInfo);
-            case "unconsume":
-              return this.handleUnconsumeContextAspect(
-                contextAspectId,
-                authInfo,
-              );
-            default:
-              return this.handleDeleteContextAspect(
-                contextAspectId,
-                authInfo,
-              );
-          }
-        })
-      );
-    }
-
-    if (url.pathname === "/session/start" && request.method === "POST") {
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleStartSession(request, authInfo))
-      );
-    }
-
-    if (url.pathname === "/session/end" && request.method === "POST") {
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleEndSession(authInfo))
-      );
-    }
-
-    if (url.pathname === "/session/goal" && request.method === "POST") {
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleUpdateSessionGoal(request, authInfo))
-      );
-    }
-
-    const charUpdateMatch = url.pathname.match(/^\/characters\/(\d+)\/update$/);
-    if (charUpdateMatch && request.method === "POST") {
-      return this.withLock(() =>
-        this.handleUpdateCharacter(
-          request,
-          Number(charUpdateMatch[1]),
-          authInfo,
-        ),
-      );
-    }
-
-    const charClaimMatch = url.pathname.match(/^\/characters\/(\d+)\/claim$/);
-    if (charClaimMatch && request.method === "POST") {
-      return this.withLock(() =>
-        this.handleClaimSlot(Number(charClaimMatch[1]), authInfo),
-      );
-    }
-
-    const charReleaseMatch = url.pathname.match(
-      /^\/characters\/(\d+)\/release$/,
-    );
-    if (charReleaseMatch && request.method === "POST") {
-      return this.withLock(() =>
-        this.handleReleaseSlot(Number(charReleaseMatch[1]), authInfo),
-      );
-    }
-
-    const charFateMatch = url.pathname.match(/^\/characters\/(\d+)\/fate$/);
-    if (charFateMatch && request.method === "POST") {
-      return (
-        facilitatorOnly(authInfo) ??
         this.withLock(() =>
-          this.handleUpdateFate(request, Number(charFateMatch[1])),
-        )
-      );
-    }
-
-    // Facilitator-owned reference data: NPCs and locations. Create at
-    // `/npcs` | `/locations`, then `/{id}/update` and `/{id}/delete`.
-    const entityCreateMatch = url.pathname.match(/^\/(npcs|locations)$/);
-    if (entityCreateMatch && request.method === "POST") {
-      const kind = entityCreateMatch[1] as EntityKind;
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() => this.handleCreateEntity(request, kind))
-      );
-    }
-
-    const entityMatch = url.pathname.match(
-      new RegExp(`^/(npcs|locations)/(${UUID})/(update|delete)$`),
-    );
-    if (entityMatch && request.method === "POST") {
-      const kind = entityMatch[1] as EntityKind;
-      const [, , entityId, action] = entityMatch;
-      return (
-        facilitatorOnly(authInfo) ??
-        this.withLock(() =>
-          action === "update"
-            ? this.handleUpdateEntity(request, kind, entityId)
-            : this.handleDeleteEntity(kind, entityId),
+          action === "use"
+            ? this.handleUseContextAspect(contextAspectId, authInfo)
+            : this.handleUnconsumeContextAspect(contextAspectId, authInfo),
         )
       );
     }
@@ -496,6 +513,51 @@ export class GameTable implements DurableObject {
     } catch {
       // Already closed.
     }
+  }
+
+  /**
+   * Run one command through the rules core and persist the result (ADR 0003).
+   * Every D1 row the change implies is written in one `DB.batch` first, so a
+   * failure there leaves nothing changed. Installing the next state, putting
+   * the table-state slice and broadcasting then happen with no `await` between
+   * them: the output gate holds the broadcast until the put is durable.
+   */
+  private async apply(body: CommandBody, authInfo: AuthInfo): Promise<Response> {
+    const command = {
+      ...body,
+      by: {
+        userId: authInfo.discordUserId,
+        name: authInfo.username,
+        role: authInfo.role,
+      },
+    } as Command;
+    const { messages, ...table } = this.game;
+
+    const result = transition(table, command, this.deps);
+    if (!result.ok) {
+      return new Response(result.reason, { status: result.status });
+    }
+    if (result.next === table && result.log.length === 0 && !result.clearLog) {
+      return ackResponse();
+    }
+
+    const added = result.log.map((e) => toMessage(e, table.sessionId));
+    const writes = persistDiff(table, result.next, added, result.clearLog);
+    if (writes.length > 0) {
+      await this.env.DB.batch(
+        toStatements(this.env.DB, table.sessionId, writes, this.deps.now()),
+      );
+    }
+
+    const next: GameState = {
+      ...result.next,
+      messages: capMessages([...(result.clearLog ? [] : messages), ...added]),
+    };
+    this.gameState = next;
+    const saved = this.saveTableState(next);
+    this.broadcast(next);
+    await saved;
+    return ackResponse();
   }
 
   private broadcast(state: GameState): void {
@@ -588,7 +650,7 @@ export class GameTable implements DurableObject {
       junction: stones.junction,
       contextAspects: stones.contextAspects,
       proposals: stones.proposals,
-      session: stones.session,
+      session: await this.backfillSessionStart(stones.session),
       sessionHistory,
       characters,
       npcs,
@@ -651,6 +713,23 @@ export class GameTable implements DurableObject {
   }
 
   /**
+   * A session running since before 31.2a was stored without `startedAt`
+   * (`migrateTableState` gives it 0); read it from its `game_sessions` row
+   * once, so ending it can add it to the history from memory.
+   */
+  private async backfillSessionStart(
+    session: TableState["session"],
+  ): Promise<TableState["session"]> {
+    if (!session || session.startedAt !== 0) return session;
+    const row = await this.env.DB.prepare(
+      `SELECT started_at AS startedAt FROM game_sessions WHERE id = ?`,
+    )
+      .bind(session.id)
+      .first<{ startedAt: number }>();
+    return { ...session, startedAt: row?.startedAt ?? 0 };
+  }
+
+  /**
    * The most recent completed sessions for this table, newest first, read
    * straight from D1. The running session is excluded (`ended_at IS NULL`); it
    * is already carried in `gameState.session`. Refreshed on `/session/end`
@@ -665,10 +744,10 @@ export class GameTable implements DurableObject {
       FROM game_sessions
       WHERE session_id = ? AND ended_at IS NOT NULL
       ORDER BY started_at DESC
-      LIMIT 20
+      LIMIT ?
     `,
     )
-      .bind(sessionId)
+      .bind(sessionId, SESSION_HISTORY_LIMIT)
       .all<SessionSummary>();
 
     return rows.results ?? [];
@@ -751,27 +830,6 @@ export class GameTable implements DurableObject {
       .map(rowToCharacterSheet);
   }
 
-  private async handlePostMessage(
-    request: Request,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    const input = (await readJson(request)) as PostMessageInput | null;
-    const content = boundedString(input?.content, MAX_MESSAGE_LENGTH);
-    if (!content.trim()) {
-      return new Response("Message content is required", { status: 400 });
-    }
-
-    // No state of its own to change — `commit` just persists the message and
-    // broadcasts.
-    return this.commit(this.game, {
-      authorId: authInfo.discordUserId,
-      authorName: authInfo.username,
-      role: authInfo.role,
-      kind: "chat",
-      content,
-    });
-  }
-
   /**
    * Older history for the "load earlier" affordance. The snapshot only carries
    * the last `MESSAGE_WINDOW` messages; this returns the page of up to
@@ -803,18 +861,6 @@ export class GameTable implements DurableObject {
 
     const messages = rows.results ? [...rows.results].reverse() : [];
     return jsonResponse({ messages });
-  }
-
-  /**
-   * Wipe this table's log: delete the D1 rows and drop the in-memory copy. The
-   * supported alternative to cycling the Durable Object by hand.
-   */
-  private async handleClearMessages(): Promise<Response> {
-    await this.env.DB.prepare(`DELETE FROM messages WHERE session_id = ?`)
-      .bind(this.game.sessionId)
-      .run();
-
-    return this.commit({ ...this.game, messages: [] });
   }
 
   /**
@@ -1474,69 +1520,7 @@ export class GameTable implements DurableObject {
     });
   }
 
-  /**
-   * Facilitator-only (23.2, widened 23.3): plant a session context directly —
-   * Boon or Bane, the facilitator's choice — the same shape an accepted Add
-   * a Detail / Gain Insight creates (always a Boon), without routing through
-   * that ability's proposal.
-   */
-  private async handleAddContextAspect(
-    request: Request,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    const input = (await readJson(request)) as AddContextAspectInput | null;
-    const kind = input?.kind;
-    if (kind !== "Boon" && kind !== "Bane") {
-      return new Response("kind must be Boon or Bane", { status: 400 });
-    }
-    const text = boundedString(input?.text, MAX_GOAL_LENGTH).trim();
-    if (!text) {
-      return new Response("text is required", { status: 400 });
-    }
-
-    const aspect: ContextAspect = {
-      id: crypto.randomUUID(),
-      kind,
-      text,
-      createdByName: authInfo.username,
-      createdAt: Date.now(),
-      consumed: false,
-    };
-
-    return this.commit(
-      { ...this.game, contextAspects: [...this.game.contextAspects, aspect] },
-      {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: `Session note added (${kind}) — ${text}`,
-      },
-    );
-  }
-
   /** Facilitator-only: rewrite one context aspect's text. Silent, like a typo fix. */
-  private async handleUpdateContextAspect(
-    request: Request,
-    contextAspectId: string,
-  ): Promise<Response> {
-    const aspect = this.game.contextAspects.find((f) => f.id === contextAspectId);
-    if (!aspect) {
-      return new Response("No such context boon", { status: 404 });
-    }
-    const input = (await readJson(request)) as { text?: unknown } | null;
-    const text = boundedString(input?.text, MAX_GOAL_LENGTH).trim();
-    if (!text) {
-      return new Response("text is required", { status: 400 });
-    }
-
-    return this.commit({
-      ...this.game,
-      contextAspects: this.game.contextAspects.map((f) =>
-        f.id === contextAspectId ? { ...f, text } : f,
-      ),
-    });
-  }
-
   /**
    * Facilitator-only: spend a context aspect into the pool directly, no
    * approval. The pool gains a stone of the aspect's kind and the aspect is
@@ -1606,387 +1590,9 @@ export class GameTable implements DurableObject {
     );
   }
 
-  /**
-   * Facilitator-only (23.2): remove a session context outright. There is no
-   * "use" state distinct from this now that a roll no longer draws from
-   * anything but the pool (23.1) — the lifecycle is just create and delete.
-   */
-  private async handleDeleteContextAspect(
-    contextAspectId: string,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    const aspect = this.game.contextAspects.find((f) => f.id === contextAspectId);
-    if (!aspect) {
-      return new Response("No such context boon", { status: 404 });
-    }
-
-    return this.commit(
-      {
-        ...this.game,
-        contextAspects: this.game.contextAspects.filter(
-          (f) => f.id !== contextAspectId,
-        ),
-      },
-      {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: `Session note removed (${aspect.kind}) — ${aspect.text}`,
-      },
-    );
-  }
-
-  private async handleStartSession(
-    request: Request,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    if (this.game.session) {
-      return new Response("A session is already running", { status: 409 });
-    }
-
-    const input = (await readJson(request)) as StartSessionInput | null;
-    const goal = boundedString(input?.goal, MAX_GOAL_LENGTH).trim();
-    if (!goal) {
-      return new Response("A session goal is required", { status: 400 });
-    }
-
-    const id = crypto.randomUUID();
-    await this.env.DB.prepare(
-      `INSERT INTO game_sessions (id, session_id, goal, started_at) VALUES (?, ?, ?, ?)`,
-    )
-      .bind(id, this.game.sessionId, goal, Date.now())
-      .run();
-
-    // Starting a session records the goal and nothing else: the pool,
-    // proposals, context boons and banes, and any pending Junction all carry
-    // across (RULES.md, "Sessions and the goal").
-    return this.commit(
-      { ...this.game, session: { id, goal } },
-      {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: `Session started — ${goal}`,
-      },
-    );
-  }
-
-  private async handleEndSession(authInfo: AuthInfo): Promise<Response> {
-    const session = this.game.session;
-    if (!session) {
-      return new Response("No session is running", { status: 400 });
-    }
-
-    // Ending a session records it in the history and nothing else. The goal is
-    // just text: nothing is rolled, judged, topped up, or cleared.
-    await this.env.DB.prepare(
-      `UPDATE game_sessions SET ended_at = ? WHERE id = ?`,
-    )
-      .bind(Date.now(), session.id)
-      .run();
-
-    const sessionHistory = await this.loadSessionHistory(
-      this.game.sessionId,
-    );
-    return this.commit(
-      { ...this.game, session: null, sessionHistory },
-      {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: `Session ended — ${session.goal}`,
-      },
-    );
-  }
-
   /** Facilitator rewrites the running session's goal. */
-  private async handleUpdateSessionGoal(
-    request: Request,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    const session = this.game.session;
-    if (!session) {
-      return new Response("No session is running", { status: 400 });
-    }
-
-    const input = (await readJson(request)) as UpdateSessionGoalInput | null;
-    const goal = boundedString(input?.goal, MAX_GOAL_LENGTH).trim();
-    if (!goal) {
-      return new Response("A session goal is required", { status: 400 });
-    }
-    if (goal === session.goal) {
-      return ackResponse();
-    }
-
-    await this.env.DB.prepare(
-      `UPDATE game_sessions SET goal = ? WHERE id = ?`,
-    )
-      .bind(goal, session.id)
-      .run();
-
-    return this.commit(
-      { ...this.game, session: { ...session, goal } },
-      {
-        authorId: authInfo.discordUserId,
-        authorName: authInfo.username,
-        role: authInfo.role,
-        content: `Goal updated — ${goal}`,
-      },
-    );
-  }
-
-  private async handleUpdateCharacter(
-    request: Request,
-    slot: number,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    const input = (await readJson(request)) as UpdateCharacterInput | null;
-    if (!input) {
-      return new Response("Invalid body", { status: 400 });
-    }
-
-    const character = this.game.characters.find((c) => c.slot === slot);
-    if (!character) {
-      return new Response("Not found", { status: 404 });
-    }
-
-    // The facilitator may edit any sheet; a player only their own, or one that
-    // no one has claimed yet (setup before claiming).
-    const mayEdit =
-      authInfo.role === "facilitator" ||
-      character.ownerId === null ||
-      character.ownerId === authInfo.discordUserId;
-    if (!mayEdit) {
-      return new Response("Not your character sheet", { status: 403 });
-    }
-
-    const updated: CharacterSheet = {
-      ...character,
-      name: boundedField(input.name, character.name),
-      notableFeatures: boundedField(
-        input.notableFeatures,
-        character.notableFeatures,
-      ),
-      archetype: boundedField(input.archetype, character.archetype),
-      desire: boundedField(input.desire, character.desire),
-      quest: boundedField(input.quest, character.quest),
-      condition: boundedField(input.condition, character.condition),
-      notes: boundedField(input.notes, character.notes, MAX_NOTES_LENGTH),
-    };
-
-    await updateFields(this.env.DB, updated, Date.now());
-
-    return this.commit({
-      ...this.game,
-      characters: this.game.characters.map((c) =>
-        c.slot === slot ? updated : c,
-      ),
-    });
-  }
-
-  /**
-   * Bind the calling user to a sheet. Fails if someone else holds it; releases
-   * any other sheet the caller already holds so a player owns at most one.
-   */
-  private async handleClaimSlot(
-    slot: number,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    const target = this.game.characters.find((c) => c.slot === slot);
-    if (!target) {
-      return new Response("Not found", { status: 404 });
-    }
-    if (target.ownerId && target.ownerId !== authInfo.discordUserId) {
-      return new Response("Sheet already claimed", { status: 409 });
-    }
-    // Re-claiming a sheet the caller already holds is a no-op — don't wipe that
-    // slot's own highlights / proposals.
-    if (target.ownerId === authInfo.discordUserId) {
-      return ackResponse();
-    }
-
-    const now = Date.now();
-    const priorSlots = this.game.characters.filter(
-      (c) => c.ownerId === authInfo.discordUserId && c.slot !== slot,
-    );
-    for (const prior of priorSlots) {
-      await this.setSheetOwner(prior.id, null, now);
-    }
-    await this.setSheetOwner(target.id, authInfo.discordUserId, now);
-
-    let next: GameState = {
-      ...this.game,
-      characters: this.game.characters.map((c) => {
-        if (c.slot === slot) return { ...c, ownerId: authInfo.discordUserId };
-        if (priorSlots.some((p) => p.id === c.id)) return { ...c, ownerId: null };
-        return c;
-      }),
-    };
-    // Any sheet whose owner just changed — the one just claimed, and any the
-    // caller was released from to take it — must not keep highlights or proposals
-    // aimed at whoever held it before.
-    for (const changed of [slot, ...priorSlots.map((p) => p.slot)]) {
-      next = clearSlotPendingState(next, changed);
-    }
-    return this.commit(next);
-  }
-
   /** Release a sheet. Allowed for the sheet's owner or the facilitator. */
-  private async handleReleaseSlot(
-    slot: number,
-    authInfo: AuthInfo,
-  ): Promise<Response> {
-    const target = this.game.characters.find((c) => c.slot === slot);
-    if (!target) {
-      return new Response("Not found", { status: 404 });
-    }
-    if (!target.ownerId) {
-      return ackResponse();
-    }
-    if (
-      target.ownerId !== authInfo.discordUserId &&
-      authInfo.role !== "facilitator"
-    ) {
-      return new Response("Not your character sheet", { status: 403 });
-    }
-
-    await this.setSheetOwner(target.id, null, Date.now());
-    return this.commit(
-      clearSlotPendingState(
-        {
-          ...this.game,
-          characters: this.game.characters.map((c) =>
-            c.slot === slot ? { ...c, ownerId: null } : c,
-          ),
-        },
-        slot,
-      ),
-    );
-  }
-
-  private setSheetOwner(
-    id: string,
-    ownerId: string | null,
-    now: number,
-  ): Promise<void> {
-    return setOwner(this.env.DB, id, ownerId, now);
-  }
-
-  private async handleUpdateFate(
-    request: Request,
-    slot: number,
-  ): Promise<Response> {
-    const input = (await readJson(request)) as UpdateFateInput | null;
-    const delta = input?.delta;
-    if (typeof delta !== "number" || !Number.isInteger(delta)) {
-      return new Response("delta must be an integer", { status: 400 });
-    }
-
-    const character = this.game.characters.find((c) => c.slot === slot);
-    if (!character) {
-      return new Response("Not found", { status: 404 });
-    }
-
-    const fate = Math.max(0, character.fate + delta);
-
-    await setFate(this.env.DB, character.id, fate, Date.now());
-
-    return this.commit({
-      ...this.game,
-      characters: this.game.characters.map((c) =>
-        c.slot === slot ? { ...c, fate } : c,
-      ),
-    });
-  }
-
   /** Add a blank NPC / location row, ready for the facilitator to fill in. */
-  private async handleCreateEntity(
-    request: Request,
-    kind: EntityKind,
-  ): Promise<Response> {
-    const input = (await readJson(request)) as EntityInput | null;
-    const now = Date.now();
-    const entity: TableEntity = {
-      id: crypto.randomUUID(),
-      name: boundedString(input?.name, MAX_FIELD_LENGTH),
-      notes: boundedString(input?.notes, MAX_NOTES_LENGTH),
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    await this.env.DB.prepare(
-      `
-      INSERT INTO ${entityTable(kind)} (id, session_id, name, notes, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `,
-    )
-      .bind(
-        entity.id,
-        this.game.sessionId,
-        entity.name,
-        entity.notes,
-        now,
-        now,
-      )
-      .run();
-
-    return this.commit({ ...this.game, [kind]: [...this.game[kind], entity] });
-  }
-
-  private async handleUpdateEntity(
-    request: Request,
-    kind: EntityKind,
-    id: string,
-  ): Promise<Response> {
-    const input = (await readJson(request)) as EntityInput | null;
-    if (!input) {
-      return new Response("Invalid body", { status: 400 });
-    }
-
-    const entity = this.game[kind].find((e) => e.id === id);
-    if (!entity) {
-      return new Response("Not found", { status: 404 });
-    }
-
-    const updated: TableEntity = {
-      ...entity,
-      name: boundedField(input.name, entity.name),
-      notes: boundedField(input.notes, entity.notes, MAX_NOTES_LENGTH),
-      updatedAt: Date.now(),
-    };
-
-    await this.env.DB.prepare(
-      `UPDATE ${entityTable(kind)} SET name = ?, notes = ?, updated_at = ? WHERE id = ?`,
-    )
-      .bind(updated.name, updated.notes, updated.updatedAt, id)
-      .run();
-
-    return this.commit({
-      ...this.game,
-      [kind]: this.game[kind].map((e) => (e.id === id ? updated : e)),
-    });
-  }
-
-  private async handleDeleteEntity(
-    kind: EntityKind,
-    id: string,
-  ): Promise<Response> {
-    if (!this.game[kind].some((e) => e.id === id)) {
-      return new Response("Not found", { status: 404 });
-    }
-
-    await this.env.DB.prepare(
-      `DELETE FROM ${entityTable(kind)} WHERE id = ?`,
-    )
-      .bind(id)
-      .run();
-
-    return this.commit({
-      ...this.game,
-      [kind]: this.game[kind].filter((e) => e.id !== id),
-    });
-  }
-
   /** Persists the message, then folds it into the current in-memory state. */
   private async appendMessage(input: AddMessageInput): Promise<void> {
     const msg: Message = {
@@ -2040,10 +1646,12 @@ function capMessages(messages: Message[]): Message[] {
     : messages;
 }
 
-async function readJson(request: Request): Promise<unknown> {
+async function readJson(request: Request): Promise<Body> {
   try {
     const parsed = await request.json();
-    return parsed && typeof parsed === "object" ? parsed : null;
+    return parsed && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>)
+      : null;
   } catch {
     return null;
   }
@@ -2053,20 +1661,44 @@ function boundedString(value: unknown, max: number): string {
   return typeof value === "string" ? value.slice(0, max) : "";
 }
 
-function boundedField(
-  value: unknown,
-  fallback: string,
-  max: number = MAX_FIELD_LENGTH,
-): string {
-  return typeof value === "string" ? value.slice(0, max) : fallback;
+/** The sheet's free-text fields present as strings in `body`, each bounded. */
+function sheetFields(body: Record<string, unknown>): Partial<CharacterSheetFields> {
+  return {
+    ...stringField(body, "name"),
+    ...stringField(body, "notableFeatures"),
+    ...stringField(body, "archetype"),
+    ...stringField(body, "desire"),
+    ...stringField(body, "quest"),
+    ...stringField(body, "condition"),
+    ...stringField(body, "notes", MAX_NOTES_LENGTH),
+  };
 }
 
-/**
- * The D1 table backing an entity kind. An explicit allowlist so the name is
- * never anything but one of these two literals when it reaches a SQL string.
- */
-function entityTable(kind: EntityKind): "npcs" | "locations" {
-  return kind === "npcs" ? "npcs" : "locations";
+/** `{ [key]: value }` when `body[key]` is a string (bounded), else `{}`, so a
+ * field the body leaves out keeps its current value. */
+function stringField<K extends string>(
+  body: Record<string, unknown>,
+  key: K,
+  max: number = MAX_FIELD_LENGTH,
+): Partial<Record<K, string>> {
+  const value = body[key];
+  return typeof value === "string"
+    ? ({ [key]: value.slice(0, max) } as Record<K, string>)
+    : {};
+}
+
+/** A rules-core log line, as the `messages` row it is stored as. */
+function toMessage(entry: LogEntry, sessionId: string): Message {
+  return {
+    id: entry.id,
+    sessionId,
+    authorId: entry.by.userId,
+    authorName: entry.by.name,
+    role: entry.by.role,
+    kind: entry.event.type === "chat" ? "chat" : "event",
+    content: logText(entry.event),
+    createdAt: entry.at,
+  };
 }
 
 type AuthInfo = {

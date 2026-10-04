@@ -167,6 +167,9 @@ export type EntityKind = "npcs" | "locations";
 export type SessionState = {
   id: string;
   goal: string;
+  /** Epoch millis, matching `game_sessions.started_at`; carried so ending the
+   * session can add it to `sessionHistory` without re-reading D1. */
+  startedAt: number;
 };
 
 /**
@@ -194,24 +197,6 @@ export type GameState = {
   locations: TableEntity[];
 };
 
-export type PostMessageInput = {
-  content: string;
-};
-
-export type UpdateCharacterInput = Partial<CharacterSheetFields>;
-
-export type UpdateFateInput = {
-  delta: number;
-};
-
-export type StartSessionInput = {
-  goal: string;
-};
-
-export type UpdateSessionGoalInput = {
-  goal: string;
-};
-
 export type UseContextBoonInput = {
   contextAspectId: string;
 };
@@ -220,19 +205,6 @@ export type UseContextBoonInput = {
  * pool, one stone at a time, independent of any draw. */
 export type AddOrRemoveStoneInput = {
   kind: StoneKind;
-};
-
-/** `POST /context-aspects` (23.2, widened 23.3): the facilitator plants
- * a session context directly, picking its `kind`. */
-export type AddContextAspectInput = {
-  kind: StoneKind;
-  text: string;
-};
-
-/** Create (`POST /npcs`) or update (`POST /npcs/:id/update`) a reference row. */
-export type EntityInput = {
-  name?: string;
-  notes?: string;
 };
 
 export type ProposalDecisionInput = {

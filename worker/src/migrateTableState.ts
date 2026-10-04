@@ -111,6 +111,7 @@ export type LegacyTableState = {
   proposals?: LegacyProposal[];
   session?:
     | (Pick<SessionState, "id" | "goal"> & {
+        startedAt?: number;
         pool?: LegacyStoneKind[];
         carriedBanes?: number;
       })
@@ -211,8 +212,14 @@ export function migrateTableState(
           text: p.text ?? null,
         }),
       ),
+    // `startedAt` arrived with 31.2a; an older running session has 0, which
+    // `GameTable` backfills from its `game_sessions` row on load.
     session: stored.session
-      ? { id: stored.session.id, goal: stored.session.goal }
+      ? {
+          id: stored.session.id,
+          goal: stored.session.goal,
+          startedAt: stored.session.startedAt ?? 0,
+        }
       : null,
   };
 }
