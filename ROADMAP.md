@@ -1472,7 +1472,8 @@ possible.
 
 - [ ] **25.1 — A pure rules core behind `GameTable`** (the review's top
       recommendation; **folded into section 31** on 2026-10-04, whose 31.2 and
-      31.3 write the new Junction and move rules in this shape). The rules are
+      31.3 write the new Junction and move rules in this shape; the settled
+      design is `docs/adr/0003-pure-rules-core.md`). The rules are
       interleaved with D1 awaits: a handler does
       its D1 write, then updates memory, then commits (storage put, message
       insert, broadcast), so a throw between the two leaves D1 ahead of memory,
@@ -1555,14 +1556,16 @@ possible.
 
 ### Open questions
 
-- [ ] Recover or re-derive the 25.1 design (the review's plan file / ADR-0001);
-      decide the `Command` and `writes` shapes, and whether `writes` are
-      `DB.batch` statements or a higher-level record.
-- [ ] Does moving to one `DB.batch` change any failure ordering the current
-      D1-then-memory sequence relies on? Settle before touching a handler.
-- [ ] Where do the pure-rules tests live — under `worker/test/` with
-      `gameLogic.test.ts`, run without `workerd` — and does `vitest` need a
-      second, plain-Node project for them?
+- [x] Recover or re-derive the 25.1 design — re-derived as
+      `docs/adr/0003-pure-rules-core.md`. There is no `writes` list: a pure
+      `persistDiff(prev, next, log)` derives the D1 rows, and an adapter
+      turns them into `DB.batch` statements.
+- [x] Failure ordering — nothing relies on D1-then-memory. The batch runs
+      first and is atomic; on failure nothing has changed. Install, `put` and
+      broadcast follow with no `await`, so the output gate holds the broadcast
+      until the `put` is durable.
+- [x] Test location — `worker/test/rules/`, in the existing workers pool. A
+      plain-Node project only if it gets slow.
 
 ## 26. Player moves and the Overcome loop — done
 
@@ -2206,10 +2209,15 @@ models.
   `KEY_STONES` blob, broadcast, cleared when a Junction is rolled (Alter
   entries when it is accepted or rejected). The client finds each move's log
   line by `messageId`. No D1 migration is needed anywhere in this section.
-- **A pure `dice.ts`** (`LADDER`, `step`, `rollDie(die, rng)`, `classify`) with
-  unit tests, and an overridable dice source on `GameTable` (set through
-  `runInDurableObject`) so route tests force a known face instead of shaping a
-  pool.
+- **A pure `dice.ts`** (`LADDER`, `step`, `classify`) with unit tests. The
+  roll comes from `Deps.roll` in the rules core (ADR 0003), so tests force a
+  known face instead of shaping a pool; the overridable dice source on
+  `GameTable` first planned here is dropped.
+- **The rules are a pure transition** (ADR 0003, folding in 25.1):
+  `transition(table, command, deps)` in `worker/src/rules/` returns the next
+  table and structured log events, or a refusal. `GameTable` authenticates,
+  parses a route into a `Command`, and persists what a pure `persistDiff`
+  derives in one `DB.batch`.
 - **Deploy between sessions**, after a run in the test channel (29.1): the
   migration drops a pending roll and pending proposals, and a client left open
   across the deploy must be reloaded.
@@ -2274,6 +2282,25 @@ a later step deletes.
 - [x] Both test suites pass (client 97, worker 103: the 101 before plus the two
       migration tests).
 
+#### 31.2a Worker — the rules core scaffold, no behaviour change
+
+The 25.1 restructuring on its own, so that the die ladder lands on the new
+shape (ADR 0003).
+
+- [ ] `worker/src/rules/`: `Table`, `Actor`, `Command`, `Deps`, `Result`,
+      `LogEvent` and `logText`, and `transition` with an exhaustive dispatch.
+- [ ] `persistDiff(prev, next, log)` and its tests over each D1-mirrored slice
+      (sheets, NPCs, locations, the running session, messages and log clear);
+      `GameTable.apply` flushes it in one `DB.batch`, then installs, puts and
+      broadcasts with no `await` between them.
+- [ ] The route table (P2.2's surviving half): `{ method, path, parse }` to a
+      `Command`; role and ownership checks move into the core.
+- [ ] Port chat, log clear, sessions (`SessionState.startedAt`, history kept
+      in memory), sheet edits / boons / claim / release, NPCs and locations,
+      and context aspect add / update / delete onto it. Junction, stone and
+      proposal handlers stay on `commit` until 31.2b and 31.3.
+- [ ] Both suites pass unchanged; new tests under `worker/test/rules/`.
+
 #### 31.2 Worker — the die ladder
 
 - [ ] `dice.ts` test-first: ladder, step with refusal at the ends, `rollDie`
@@ -2285,8 +2312,9 @@ a later step deletes.
 - [ ] `/die/{step-up,step-down}` (facilitator, logged) replace
       `/stones/{add,remove}`; context aspect use steps the die.
 - [ ] Migration: no `die` → d10, a pending stone Overcome → dropped.
-- [ ] The overridable dice source on `GameTable`; `junction.test.ts` drives
-      the loop with forced faces.
+- [ ] The junction and die commands in the rules core, tested with a scripted
+      `Deps.roll`; `junction.test.ts` shrinks to route wiring. The proposal
+      accept arms get only the pool-to-die edit, since 31.3 deletes them.
 
 #### 31.3 Worker — direct moves and undo
 
@@ -2298,6 +2326,9 @@ a later step deletes.
       pending.
 - [ ] `gameState.moves`, `/moves/:id/undo` (facilitator, or the move's own
       player), the window closing on roll, Alter's on accept or reject.
+- [ ] Moves return their effects as data; undo applies the inverse,
+      clamped (ADR 0003). `commit`, `appendMessage` and the `characters.ts`
+      write wrappers are deleted with the last handler that used them.
 - [ ] Delete `Proposal`, `ProposalKind`, `handleProposalDecision`, the
       proposal and withdraw routes, `/context-aspects/:id/unconsume` (undo
       covers it — confirm in review), and their tests. Migration drops stored
@@ -2348,9 +2379,11 @@ a later step deletes.
   Junction and move logic is written straight into 25.1's pure
   `transition(state, command, deps)` shape, with the dice source as an
   injected dependency (which replaces the overridable `GameTable` source
-  above). A design pass on that interface (`mattpocock-skills:codebase-design`)
-  runs before 31.2. It was not done before 31.1: doing it first would have
-  rebuilt the pool and proposal code 31.2 and 31.3 delete.
+  above). It was not done before 31.1: doing it first would have
+  rebuilt the pool and proposal code 31.2 and 31.3 delete. **Design pass done
+  (2026-10-04): ADR 0003**, with persistence derived from a diff of the
+  tables, structured log events, and a scaffold step, 31.2a, ahead of the
+  die ladder.
 - **Unconsume.** Undo restores a consumed aspect; the separate facilitator
   unconsume may no longer be needed.
 - **Complicate abuse.** It is free and now unapproved; the facilitator's undo
