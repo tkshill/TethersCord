@@ -9,15 +9,15 @@ that into a `Cmd` once, here at the boundary.
 
 -}
 
-import Action exposing (Action(..), Decision(..), Family(..))
-import Api
+import Action exposing (Action(..), Family(..))
+import Api.Decode
 import Browser
+import ContextAspect exposing (Polarity(..))
 import Dict
 import Effect exposing (Effect)
 import Json.Decode as Decode
-import Kind
+import MoveRecord
 import Ports
-import Roll exposing (Stone(..), stoneLabel)
 import Set
 import Time
 import Types exposing (..)
@@ -110,8 +110,7 @@ init flags =
       , newSessionGoal = ""
       , goalEdit = ""
       , sessionControlsExpanded = False
-      , proposalDrafts = Dict.empty
-      , addDetailDraft = ""
+      , createDraft = ""
       , contextAspectEdits = Dict.empty
       , newContextAspectNote = ""
       , newContextAspectKind = Boon
@@ -396,46 +395,6 @@ update msg model =
         ReleaseSlot slot ->
             guard ReleasingSlot model (\auth -> Effect.PostReleaseSlot auth slot)
 
-        AcceptProposal id ->
-            let
-                context =
-                    model.proposalDrafts
-                        |> Dict.get id
-                        |> Maybe.map String.trim
-                        |> Maybe.andThen
-                            (\text ->
-                                if text == "" then
-                                    Nothing
-
-                                else
-                                    Just text
-                            )
-            in
-            guard (ResolvingProposal Accepting id)
-                model
-                (\auth -> Effect.PostProposalDecision auth id "accept" context)
-
-        RejectProposal id ->
-            guard (ResolvingProposal Rejecting id)
-                model
-                (\auth -> Effect.PostProposalDecision auth id "reject" Nothing)
-
-        WithdrawProposal id ->
-            guard (ResolvingProposal Withdrawing id)
-                model
-                (\auth -> Effect.PostWithdrawProposal auth id)
-
-        ProposalDraftChanged id s ->
-            ( { model | proposalDrafts = Dict.insert id s model.proposalDrafts }, Effect.None )
-
-        ProposalResolved id (Ok ()) ->
-            ( clearInflight ProposalFamily { model | proposalDrafts = Dict.remove id model.proposalDrafts }
-            , Effect.None
-            )
-
-        ProposalResolved _ (Err _) ->
-            fail "Failed to resolve the proposal." (clearInflight ProposalFamily model)
-
         -- The Junction loop (26.2). Anyone may roll; the rest are the
         -- facilitator's, and the Worker enforces that.
         PressJunction ->
@@ -450,37 +409,39 @@ update msg model =
         RejectJunction ->
             guard RejectingJunction model Effect.PostJunctionReject
 
-        -- Player moves: each is queued as a proposal for the facilitator. The
-        -- Moves card disables a button the player cannot afford; the Worker
-        -- checks the cost again.
-        ProposeHighlight ->
-            guard (RaisingMove Kind.Highlight) model Effect.PostHighlight
+        -- The facilitator's direct die step: a correction, not a move.
+        StepDie direction ->
+            guard (SteppingDie direction) model (\auth -> Effect.PostStepDie auth direction)
 
-        ProposeComplicate ->
-            guard (RaisingMove Kind.Complicate) model Effect.PostComplicate
+        -- Moves act at once (ADR 0002). The view disables a move the player
+        -- cannot afford, at a ladder end, or once the junction is rolled; the
+        -- Worker checks each again.
+        MakeHighlight aspect ->
+            guard (MakingMove MoveRecord.Highlight) model (\auth -> Effect.PostHighlight auth aspect)
 
-        ProposeAddDetail ->
-            let
-                suggestion =
-                    case String.trim model.addDetailDraft of
-                        "" ->
-                            Nothing
+        MakeHighlightContext contextAspectId ->
+            guard (MakingMove MoveRecord.HighlightContext)
+                model
+                (\auth -> Effect.PostHighlightContext auth contextAspectId)
 
-                        trimmed ->
-                            Just trimmed
-            in
-            guard (RaisingMove Kind.AddDetail)
-                { model | addDetailDraft = "" }
-                (\auth -> Effect.PostAddDetail auth suggestion)
+        MakeComplicate aspect ->
+            guard (MakingMove MoveRecord.Complicate) model (\auth -> Effect.PostComplicate auth aspect)
 
-        ProposeAlter ->
-            guard (RaisingMove Kind.Alter) model Effect.PostAlter
+        -- A blank draft is still a Create: the Worker records it as a detail
+        -- from the player, for the facilitator to reword.
+        MakeCreate ->
+            guard (MakingMove MoveRecord.Create)
+                { model | createDraft = "" }
+                (\auth -> Effect.PostCreate auth (String.trim model.createDraft))
 
-        ProposeUseContextBoon contextAspectId ->
-            guard (RaisingMove Kind.UseContextBoon) model (\auth -> Effect.PostUseContextBoon auth contextAspectId)
+        CreateDraftChanged s ->
+            ( { model | createDraft = s }, Effect.None )
 
-        AddDetailDraftChanged s ->
-            ( { model | addDetailDraft = s }, Effect.None )
+        MakeAlter ->
+            guard (MakingMove MoveRecord.Alter) model Effect.PostAlter
+
+        UndoMove moveId ->
+            guard (UndoingMove moveId) model (\auth -> Effect.PostUndo auth moveId)
 
         SessionGoalChanged s ->
             ( { model | newSessionGoal = s }, Effect.None )
@@ -546,14 +507,6 @@ update msg model =
                 _ ->
                     ( model, Effect.None )
 
-        -- Facilitator-only hand-edits of the shared pool, independent of an
-        -- Junction and of each other.
-        AddStone stone ->
-            guard (AddingStone stone) model (\auth -> Effect.PostAddStone auth stone)
-
-        RemoveStone stone ->
-            guard (RemovingStone stone) model (\auth -> Effect.PostRemoveStone auth stone)
-
         ContextAspectDraftChanged s ->
             ( { model | newContextAspectNote = s }, Effect.None )
 
@@ -568,16 +521,6 @@ update msg model =
                 guard AddingContextAspect
                     { model | newContextAspectNote = "" }
                     (\auth -> Effect.PostAddContextAspect auth model.newContextAspectKind model.newContextAspectNote)
-
-        UseContextAspect contextAspectId ->
-            guard (UsingContextAspect contextAspectId)
-                model
-                (\auth -> Effect.PostUseContextAspect auth contextAspectId)
-
-        UnconsumeContextAspect contextAspectId ->
-            guard (UnconsumingContextAspect contextAspectId)
-                model
-                (\auth -> Effect.PostUnconsumeContextAspect auth contextAspectId)
 
         ContextAspectTextChanged contextAspectId s ->
             ( { model | contextAspectEdits = Dict.insert contextAspectId s model.contextAspectEdits }
@@ -695,7 +638,7 @@ update msg model =
                 (\auth -> Effect.PostDeleteEntity auth kind entityId)
 
         WsGameStateRaw value ->
-            case Decode.decodeValue Api.decodeGameState value of
+            case Decode.decodeValue Api.Decode.gameState value of
                 Ok gs ->
                     ( { model
                         | gameState = Just (applyServerState model gs)

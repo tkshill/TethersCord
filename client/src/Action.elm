@@ -1,48 +1,37 @@
-module Action exposing (Action(..), Decision(..), Family(..), family, isPending)
+module Action exposing (Action(..), Family(..), family, isPending)
 
 {-| The mutations the UI guards against a double-click, as a type rather than as
 strings (roadmap 25.4).
 
-An `Action` names one request that can be in flight — "resolving proposal `p1`",
-"adding a Boon to the pool". `Model.inflight` is the list of those currently
-awaiting the Worker's acknowledgement; a control whose action is in it renders
-disabled (`Ui.press`), and `Main.guard` refuses to start it twice. Because the
-actions are constructors, a typo no longer compiles, and a result message clears
-its whole `Family` at once instead of matching a key prefix.
+An `Action` names one request that can be in flight — "making a Highlight",
+"stepping the die up". `Model.inflight` is the list of those currently awaiting
+the Worker's acknowledgement; a control whose action is in it renders disabled
+(`Ui.press`), and `Main.guard` refuses to start it twice. Because the actions
+are constructors, a typo no longer compiles, and a result message clears its
+whole `Family` at once instead of matching a key prefix.
 
 It lives in its own module, not in `Effect`, because `Effect` imports `View` and
 `View` needs `Action` — the other direction would be an import cycle.
 
 -}
 
-import Kind exposing (ProposalKind)
-import Roll exposing (Stone)
-
-
-{-| Which way a queued proposal is being resolved.
--}
-type Decision
-    = Accepting
-    | Rejecting
-    | Withdrawing
+import Die
+import MoveRecord
 
 
 type Action
     = ClearingLog
     | ClaimingSlot
     | ReleasingSlot
-    | ResolvingProposal Decision String
-    | RaisingMove ProposalKind
+    | MakingMove MoveRecord.Kind
+    | UndoingMove String
     | RollingJunction
     | RerollingJunction
     | AcceptingJunction
     | RejectingJunction
-    | AddingStone Stone
-    | RemovingStone Stone
+    | SteppingDie Die.Direction
     | AddingContextAspect
     | DeletingContextAspect String
-    | UsingContextAspect String
-    | UnconsumingContextAspect String
     | EditingContextAspect String
     | GrantingFate Int
     | CreatingNpc
@@ -61,10 +50,11 @@ type Family
     = MessageFamily
     | LogFamily
     | SlotFamily
-    | ProposalFamily
     | MoveFamily
+    | UndoFamily
     | JunctionFamily
-    | StonesFamily
+    | DieFamily
+    | ContextFamily
     | FateFamily
     | EntityFamily
     | SessionFamily
@@ -82,11 +72,11 @@ family action =
         ReleasingSlot ->
             SlotFamily
 
-        ResolvingProposal _ _ ->
-            ProposalFamily
-
-        RaisingMove _ ->
+        MakingMove _ ->
             MoveFamily
+
+        UndoingMove _ ->
+            UndoFamily
 
         RollingJunction ->
             JunctionFamily
@@ -100,26 +90,17 @@ family action =
         RejectingJunction ->
             JunctionFamily
 
-        AddingStone _ ->
-            StonesFamily
-
-        RemovingStone _ ->
-            StonesFamily
+        SteppingDie _ ->
+            DieFamily
 
         AddingContextAspect ->
-            StonesFamily
+            ContextFamily
 
         DeletingContextAspect _ ->
-            StonesFamily
-
-        UsingContextAspect _ ->
-            StonesFamily
-
-        UnconsumingContextAspect _ ->
-            StonesFamily
+            ContextFamily
 
         EditingContextAspect _ ->
-            StonesFamily
+            ContextFamily
 
         GrantingFate _ ->
             FateFamily

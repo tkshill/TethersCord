@@ -13,7 +13,7 @@ is the character-creation prompt list, a curated subset of `ASPECTS.md`.
 
 -}
 
-import Types exposing (Aspect(..))
+import Aspect exposing (Aspect(..))
 
 
 
@@ -38,14 +38,21 @@ junction =
     "Junction"
 
 
-thePool : String
-thePool =
-    "the pool"
+theDie : String
+theDie =
+    "the die"
 
 
-junctionDrew : String -> String
-junctionDrew who =
-    who ++ " drew"
+junctionRolled : String -> String
+junctionRolled who =
+    who ++ " rolled"
+
+
+{-| The pending roll's chip in the status strip: `Flow · 7 on d10`.
+-}
+rollChip : String -> Int -> String -> String
+rollChip outcome face die =
+    outcome ++ " · " ++ String.fromInt face ++ " on " ++ die
 
 
 rerollsNote : Int -> String
@@ -75,9 +82,9 @@ waitingForFacilitator =
 -- SHARED CONTROLS
 
 
-withdraw : String
-withdraw =
-    "withdraw"
+undo : String
+undo =
+    "undo"
 
 
 
@@ -146,10 +153,10 @@ saveGoal =
     "Save goal"
 
 
-{-| The status strip's tooltip over the pool marks. -}
-bagTip : Int -> Int -> String
-bagTip boons banes =
-    "The pool: " ++ String.fromInt boons ++ " Boon, " ++ String.fromInt banes ++ " Bane"
+{-| The status strip's tooltip over the die. -}
+dieTip : String -> String
+dieTip die =
+    "The die: the next Junction rolls a " ++ die
 
 
 {-| The strip's tooltip on the running goal for the facilitator, who can click
@@ -178,24 +185,17 @@ noContextAspects =
     "No context boons or banes yet."
 
 
-{-| The mark on a context boon or bane that has been spent into the pool. It
-stays on the table, visibly consumed, and cannot be spent again.
+{-| The mark on a context boon or bane that has been highlighted. It stays on
+the table, visibly consumed, and cannot be highlighted again.
 -}
 contextAspectConsumed : String
 contextAspectConsumed =
     "used"
 
 
-{-| Facilitator-only: clear a consumed mark, to correct a table miscommunication.
--}
-contextAspectUnconsume : String
-contextAspectUnconsume =
-    "Unconsume"
-
-
 contextAspectUse : String
 contextAspectUse =
-    "Use"
+    "Highlight"
 
 
 {-| Facilitator-only: remove a context boon or bane outright.
@@ -219,9 +219,8 @@ addContextAspect =
 
 
 
--- FACILITATOR PANEL (View/FacilitatorPanel.elm) — direct pool edits and the
--- queue of proposals awaiting a decision, in their own facilitator-only section
--- of the left panel. The Junction controls are on the top bar's stage.
+-- FACILITATOR PANEL (View/FacilitatorPanel.elm) — the facilitator's direct die
+-- steps. The Junction controls are on the top bar's stage.
 
 
 facilitatorPanelTitle : String
@@ -234,66 +233,10 @@ accept =
     "Accept"
 
 
-proposalsTitle : String
-proposalsTitle =
-    "Proposals"
-
-
-noProposals : String
-noProposals =
-    "Nothing is waiting on you."
-
-
-contextAspectContextPlaceholder : String
-contextAspectContextPlaceholder =
-    "Wording for the context boon…"
-
-
 reject : String
 reject =
     "Reject"
 
-
-
--- PROPOSAL DESCRIPTIONS (View/FacilitatorPanel.elm describeProposal)
-
-
-proposalHighlight : String
-proposalHighlight =
-    "Highlight — pays 1 boon, the pool gains a Boon"
-
-
-proposalAlter : String
-proposalAlter =
-    "Alter Fate — pays 2 boons, rerolls the Junction"
-
-
-proposalAddDetail : String
-proposalAddDetail =
-    "Add Detail — pays 1 boon, makes a context boon"
-
-
-proposalComplicate : String
-proposalComplicate =
-    "Complicate — gains 2 boons"
-
-
-proposalUseContextBoon : String -> String
-proposalUseContextBoon note =
-    "Use Context Boon — " ++ note ++ "; the pool gains a Boon"
-
-
-proposalUseContextBoonGone : String
-proposalUseContextBoonGone =
-    "a context boon that is gone"
-
-
-{-| The header note beside the Facilitator accordion title: how many proposals
-are waiting, so a collapsed panel still signals that one is.
--}
-proposalsWaiting : Int -> String
-proposalsWaiting n =
-    String.fromInt n ++ " waiting"
 
 
 
@@ -310,19 +253,19 @@ highlightButton =
     "Highlight"
 
 
-addDetailPlaceholder : String
-addDetailPlaceholder =
-    "Suggest a detail, or leave blank to ask for one…"
+createPlaceholder : String
+createPlaceholder =
+    "Something true about the scene, or leave blank…"
 
 
-addDetailButton : String
-addDetailButton =
-    "Add Detail"
+createButton : String
+createButton =
+    "Create"
 
 
 alterButton : String
 alterButton =
-    "Alter Fate"
+    "Alter"
 
 
 alterNeedsBoons : String
@@ -332,12 +275,7 @@ alterNeedsBoons =
 
 alterAlreadyUsed : String
 alterAlreadyUsed =
-    "You have already altered fate this Junction."
-
-
-alterAlreadyProposed : String
-alterAlreadyProposed =
-    "An Alter Fate is already waiting for the facilitator."
+    "You have already altered this Junction."
 
 
 needsABoon : String
@@ -345,19 +283,21 @@ needsABoon =
     "You need a boon."
 
 
-useContextBoonButton : String
-useContextBoonButton =
-    "Use boon"
+{-| Why the preparation moves are off: the junction has been rolled.
+-}
+movesLocked : String
+movesLocked =
+    "Moves are locked once the Junction is rolled."
+
+
+dieAtTop : String
+dieAtTop =
+    "The die is already at the top of the ladder."
 
 
 complicateButton : String
 complicateButton =
     "Complicate"
-
-
-noContextBoons : String
-noContextBoons =
-    "No unspent context boons."
 
 
 claimASheetForMoves : String
@@ -504,16 +444,10 @@ sheetTabTip =
     "Sheet, moves & session context"
 
 
-{-| The Facilitator tab's tooltip: how many proposals are waiting, so the count
-shows even while another tool is open. -}
-facilitatorTabTip : Int -> String
-facilitatorTabTip n =
-    case n of
-        0 ->
-            "Facilitator controls"
-
-        _ ->
-            "Facilitator controls — " ++ proposalsWaiting n
+{-| The Facilitator tab's tooltip. -}
+facilitatorTabTip : String
+facilitatorTabTip =
+    "Facilitator controls"
 
 
 castTabLabel : String

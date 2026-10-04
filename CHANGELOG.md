@@ -10,6 +10,15 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **The client speaks the die ladder and direct moves** (roadmap 31.4). It
+  reads the die, the pending roll's face and outcome, the moves open to undo
+  and each context aspect's polarity through one decoder module that refuses
+  anything it cannot represent. Moves are made at once from the Moves column
+  (Highlight and Complicate name an aspect) and can be undone there; any
+  context boon or bane can be highlighted from the context list; the
+  facilitator steps the die from the Facilitator tab. The approval queue and
+  the pool marks are gone. The layout is interim until 31.5.
+
 - **Moves act at once and the facilitator undoes them, instead of approving
   them** (roadmap 31.3, ADR 0002). In the Worker, Highlight, Highlight
   Context, Complicate, Create and Alter (`/moves/*`) take effect when made,

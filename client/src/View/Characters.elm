@@ -6,6 +6,7 @@ selected sheet — owner row, boons (facilitator Grant only, for now — see
 shows the Banes it has accumulated as `−` marks at its end.
 -}
 
+import Aspect exposing (Aspect(..))
 import Copy
 import Element exposing (Element, el, fill, height, px, spacing, text, width)
 import Element.Font as Font
@@ -129,7 +130,7 @@ aspectField editable examplesOpen ch aspect fieldTag value =
     in
     Element.column [ spacing Ui.xs, width fill ]
         (Element.row [ width fill, spacing Ui.xs ]
-            (field editable ch fieldTag (aspectLabel aspect) (aspectLabel aspect) value :: banes)
+            (field editable ch fieldTag (Aspect.label aspect) (Aspect.label aspect) value :: banes)
             :: aspectExamplesBlock editable examplesOpen ch.slot aspect
         )
 

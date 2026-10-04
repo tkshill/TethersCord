@@ -1,59 +1,61 @@
 module View.Moves exposing (view)
 
 {-| The Moves column (the middle of the three, above the session context), shown
-once the viewer holds a sheet (roadmap 26.3): a real button for each player
-move. Highlight, Complicate and Alter Fate share the first line; Add Detail and
-its suggestion field the second; Use Context Boon, one row per unspent session
-boon, follows. Each one queues a proposal for the facilitator; nothing lands
-until they accept it, and the cost of a move is paid only then (`RULES.md`).
+once the viewer holds a sheet. Moves act at once (ADR 0002): Highlight and
+Complicate name one of the character's aspects, Create carries the player's
+words, Alter rerolls a pending junction. Highlight Context is made from the
+context list itself (`View.ContextAspects`), open to anyone.
 
-A move a player cannot afford is disabled here rather than refused after the
-fact: the Worker checks the cost when the proposal is raised and again when it is
-accepted, but the button says so first. Junction is not one of these — it needs
-no approval and lives on the status strip in `View.TopBar`.
+A move a player cannot make — unaffordable, at the top of the ladder, or locked
+because the junction has been rolled — is disabled here, with the reason
+beneath; the Worker refuses it too. Beside each move, the viewer's latest one
+still open to undo carries an "undo" link.
+
+Interim (roadmap 31.4): 31.5 replaces this column with split buttons on the
+Sheet's aspects, the Create field under the context list, and undo links in the
+log.
 
 The facilitator has no sheet of their own, so they get a read-only look at
-whichever character's slot is selected on the Sheet tab (`props.selectedSlot`)
-instead — every button here is inert for them, so they can see the same moves a
-player sees without being able to raise one on a player's behalf.
+whichever character's slot is selected on the Sheet tab (`props.selectedSlot`).
 -}
 
 import Action exposing (Action(..))
+import Aspect exposing (Aspect)
 import Copy
+import Die
 import Element exposing (Element, el, fill, spacing, text, width)
 import Element.Font as Font
 import Element.Input as Input
-import Kind
-import Roll exposing (Stone(..))
+import Junction
+import MoveRecord
 import Types exposing (..)
 import Ui
 import View.Helpers
     exposing
         ( ViewContext
-        , countProposals
         , inputAttrs
-        , latestProposalId
-        , pendingHint
+        , myOpenMove
         , placeholder
         , tip
+        , undoLink
         )
 
 
 type alias Props =
-    { addDetailDraft : String
+    { createDraft : String
     , selectedSlot : Int
     }
 
 
-{-| What each move costs the proposer, in boons, on approval.
+{-| What each move costs, in boons (RULES.md "Moves").
 -}
 highlightCost : Int
 highlightCost =
     1
 
 
-addDetailCost : Int
-addDetailCost =
+createCost : Int
+createCost =
     1
 
 
@@ -74,8 +76,6 @@ view ctx props gs =
     in
     case target of
         Nothing ->
-            -- The facilitator sees this only when no sheets exist at all; a
-            -- player who has not claimed one is told why it is empty.
             if ctx.facilitator then
                 placeholder Copy.noCharacterSheets
 
@@ -84,13 +84,11 @@ view ctx props gs =
 
         Just ch ->
             Ui.flat
-                [ Element.wrappedRow [ spacing Ui.sm, width fill ]
-                    [ highlightMove ctx gs ch
-                    , complicateMove ctx gs
-                    , alterMove ctx gs ch
-                    ]
-                , addDetailRow ctx props gs ch
-                , useContextBoonRow ctx gs
+                [ aspectMoveRow ctx gs ch MoveRecord.Highlight Copy.highlightButton MakeHighlight (highlightAvailability gs ch)
+                , aspectMoveRow ctx gs ch MoveRecord.Complicate Copy.complicateButton MakeComplicate (preparation gs Available)
+                , createRow ctx props gs ch
+                , alterRow ctx gs ch
+                , Element.row [ spacing Ui.sm ] [ undoLabelled ctx gs MoveRecord.HighlightContext ]
                 ]
 
 
@@ -102,8 +100,7 @@ myOwnedSheet myId gs =
 
 
 {-| The facilitator's read-only stand-in for "my sheet": whichever character is
-selected on the Sheet tab, falling back to the first one (same rule as
-`View.Characters`, so flipping the Sheet tab's slot tabs also flips this view).
+selected on the Sheet tab, falling back to the first one.
 -}
 selectedCharacter : Int -> GameState -> Maybe CharacterSheet
 selectedCharacter slot gs =
@@ -116,16 +113,48 @@ selectedCharacter slot gs =
 
 
 {-| Whether a move's button can be pressed. `Off (Just reason)` names why
-beneath the button; `Off Nothing` is off without comment (Alter Fate outside an
-Junction, where the button's tooltip already says when it applies).
+beneath the button; `Off Nothing` is off without comment.
 -}
 type Availability
     = Available
     | Off (Maybe String)
 
 
+{-| Every move but Alter is made before the junction is rolled.
+-}
+preparation : GameState -> Availability -> Availability
+preparation gs availability =
+    case gs.junction of
+        Just _ ->
+            Off (Just Copy.movesLocked)
+
+        Nothing ->
+            availability
+
+
+affordable : Int -> String -> CharacterSheet -> Availability
+affordable cost reason ch =
+    if ch.fate < cost then
+        Off (Just reason)
+
+    else
+        Available
+
+
+highlightAvailability : GameState -> CharacterSheet -> Availability
+highlightAvailability gs ch =
+    preparation gs
+        (case ( affordable highlightCost Copy.needsABoon ch, Die.stepUp gs.die ) of
+            ( Available, Nothing ) ->
+                Off (Just Copy.dieAtTop)
+
+            ( availability, _ ) ->
+                availability
+        )
+
+
 {-| `Just msg` unless a control is off or the viewer is the facilitator
-previewing someone else's Moves, read-only.
+previewing someone else's moves, read-only.
 -}
 movePress : ViewContext -> Availability -> Action -> Msg -> Maybe Msg
 movePress ctx availability action msg =
@@ -141,89 +170,104 @@ movePress ctx availability action msg =
                 Ui.press ctx.inflight action msg
 
 
-moveButton : ViewContext -> Availability -> Action -> Msg -> String -> Element Msg
-moveButton ctx availability action msg label =
-    tip label
-        (Ui.ghostButton
-            { onPress = movePress ctx availability action msg
-            , label = label
-            }
-        )
-
-
-{-| What sits under a move's control: why it is off, if it is, and the
-viewer's pending proposals of that kind with a withdraw link.
--}
-moveNotes : ViewContext -> GameState -> Availability -> Kind.ProposalKind -> List (Element Msg)
-moveNotes ctx gs availability kind =
-    (case availability of
+reasonFor : Availability -> List (Element msg)
+reasonFor availability =
+    case availability of
         Off (Just reason) ->
             [ Element.paragraph [ Font.size 11, Font.color Ui.inkSoft ] [ text reason ] ]
 
         _ ->
             []
-    )
-        ++ (case pendingFor ctx gs kind of
-                [] ->
-                    []
-
-                pending ->
-                    [ Element.row [ spacing Ui.sm ] pending ]
-           )
 
 
-{-| One of the first line's moves: its button over its notes.
+{-| The viewer's latest open move of `kind`, named, with its undo link.
 -}
-compactMove : ViewContext -> GameState -> Availability -> Action -> Msg -> String -> Kind.ProposalKind -> Element Msg
-compactMove ctx gs availability action msg label kind =
-    Element.column [ spacing Ui.xs, Element.alignTop ]
-        (moveButton ctx availability action msg label :: moveNotes ctx gs availability kind)
+undoLabelled : ViewContext -> GameState -> MoveRecord.Kind -> Element Msg
+undoLabelled ctx gs kind =
+    case myOpenMove ctx kind gs of
+        Just move ->
+            Element.row [ spacing Ui.xs ]
+                [ el [ Font.size 11, Font.color Ui.inkSoft ] (text (MoveRecord.kindLabel kind))
+                , undoLink (Just move)
+                ]
+
+        Nothing ->
+            Element.none
 
 
-pendingFor : ViewContext -> GameState -> Kind.ProposalKind -> List (Element Msg)
-pendingFor ctx gs kind =
-    pendingHint (countProposals ctx.myId kind gs.proposals) (latestProposalId ctx.myId kind gs.proposals)
-
-
-affordable : Int -> String -> CharacterSheet -> Availability
-affordable cost reason ch =
-    if ch.fate < cost then
-        Off (Just reason)
-
-    else
-        Available
-
-
-highlightMove : ViewContext -> GameState -> CharacterSheet -> Element Msg
-highlightMove ctx gs ch =
-    compactMove ctx
-        gs
-        (affordable highlightCost Copy.needsABoon ch)
-        (RaisingMove Kind.Highlight)
-        ProposeHighlight
-        Copy.highlightButton
-        Kind.Highlight
-
-
-{-| Free, and always for the proposer's own character.
+{-| A move made on one of the character's aspects: its name, then a button per
+written aspect, then the undo link and why it is off.
 -}
-complicateMove : ViewContext -> GameState -> Element Msg
-complicateMove ctx gs =
-    compactMove ctx
-        gs
-        Available
-        (RaisingMove Kind.Complicate)
-        ProposeComplicate
-        Copy.complicateButton
-        Kind.Complicate
+aspectMoveRow : ViewContext -> GameState -> CharacterSheet -> MoveRecord.Kind -> String -> (Aspect -> Msg) -> Availability -> Element Msg
+aspectMoveRow ctx gs ch kind label toMsg availability =
+    let
+        written =
+            List.filter (\a -> String.trim (aspectText a ch) /= "") Aspect.all
+    in
+    Element.column [ spacing Ui.xs, width fill ]
+        (Element.wrappedRow [ spacing Ui.sm, Element.centerY ]
+            (tip label (el [ Font.size 12, Font.semiBold ] (text label))
+                :: List.map
+                    (\aspect ->
+                        Ui.ghostButton
+                            { onPress = movePress ctx availability (MakingMove kind) (toMsg aspect)
+                            , label = Aspect.label aspect
+                            }
+                    )
+                    written
+                ++ [ undoLink (myOpenMove ctx kind gs) ]
+            )
+            :: reasonFor availability
+        )
 
 
-{-| Alter Fate is always shown but pressable only while a Junction is pending.
-It is also off for a player who cannot pay, who has already altered this
-Junction, or while another Alter Fate is waiting (one at a time).
+aspectText : Aspect -> CharacterSheet -> String
+aspectText aspect ch =
+    case aspect of
+        Aspect.Archetype ->
+            ch.archetype
+
+        Aspect.Desire ->
+            ch.desire
+
+        Aspect.Quest ->
+            ch.quest
+
+
+{-| The button with the wording field beside it, filling the rest of the line.
 -}
-alterMove : ViewContext -> GameState -> CharacterSheet -> Element Msg
-alterMove ctx gs ch =
+createRow : ViewContext -> Props -> GameState -> CharacterSheet -> Element Msg
+createRow ctx props gs ch =
+    let
+        availability =
+            preparation gs (affordable createCost Copy.needsABoon ch)
+    in
+    Element.column [ spacing Ui.xs, width fill ]
+        (Element.row [ spacing Ui.sm, width fill, Element.centerY ]
+            [ tip Copy.createButton
+                (Ui.ghostButton
+                    { onPress = movePress ctx availability (MakingMove MoveRecord.Create) MakeCreate
+                    , label = Copy.createButton
+                    }
+                )
+            , Input.text
+                (inputAttrs ++ [ width fill, Ui.onEnter MakeCreate ])
+                { onChange = CreateDraftChanged
+                , text = props.createDraft
+                , placeholder = Just (Input.placeholder [] (text Copy.createPlaceholder))
+                , label = Input.labelHidden "Create"
+                }
+            , undoLink (myOpenMove ctx MoveRecord.Create gs)
+            ]
+            :: reasonFor availability
+        )
+
+
+{-| Alter is shown always but pressable only while a junction is pending, once
+per character per junction.
+-}
+alterRow : ViewContext -> GameState -> CharacterSheet -> Element Msg
+alterRow ctx gs ch =
     let
         availability =
             case gs.junction of
@@ -231,69 +275,21 @@ alterMove ctx gs ch =
                     Off Nothing
 
                 Just junction ->
-                    if List.member ch.slot junction.alteredSlots then
+                    if Junction.hasAltered ch.slot junction then
                         Off (Just Copy.alterAlreadyUsed)
-
-                    else if List.any (\p -> p.kind == Kind.Alter) gs.proposals then
-                        Off (Just Copy.alterAlreadyProposed)
 
                     else
                         affordable alterCost Copy.alterNeedsBoons ch
     in
-    compactMove ctx gs availability (RaisingMove Kind.Alter) ProposeAlter Copy.alterButton Kind.Alter
-
-
-{-| The button with the suggestion field beside it, filling the rest of the line.
--}
-addDetailRow : ViewContext -> Props -> GameState -> CharacterSheet -> Element Msg
-addDetailRow ctx props gs ch =
-    let
-        availability =
-            affordable addDetailCost Copy.needsABoon ch
-    in
-    Element.column [ spacing Ui.xs, width fill ]
-        (Element.row [ spacing Ui.sm, width fill, Element.centerY ]
-            [ moveButton ctx availability (RaisingMove Kind.AddDetail) ProposeAddDetail Copy.addDetailButton
-            , Input.text
-                (inputAttrs ++ [ width fill, Ui.onEnter ProposeAddDetail ])
-                { onChange = AddDetailDraftChanged
-                , text = props.addDetailDraft
-                , placeholder = Just (Input.placeholder [] (text Copy.addDetailPlaceholder))
-                , label = Input.labelHidden "Suggested detail"
-                }
-            ]
-            :: moveNotes ctx gs availability Kind.AddDetail
-        )
-
-
-{-| Each unspent session *boon*. Context banes are the facilitator's to use.
--}
-useContextBoonRow : ViewContext -> GameState -> Element Msg
-useContextBoonRow ctx gs =
-    let
-        spendable =
-            gs.contextAspects
-                |> List.filter (\a -> a.kind == Boon && not a.consumed)
-    in
-    Element.column [ spacing Ui.xs, width fill ]
-        [ if List.isEmpty spendable then
-            el [ Font.size 12, Font.color Ui.inkSoft ] (text Copy.noContextBoons)
-
-          else
-            Element.column [ spacing Ui.xs, width fill ]
-                (List.map
-                    (\a ->
-                        Element.row [ spacing Ui.sm, Element.centerY, width fill ]
-                            [ tip "Context boon"
-                                (Ui.ghostButton
-                                    { onPress = movePress ctx Available (RaisingMove Kind.UseContextBoon) (ProposeUseContextBoon a.id)
-                                    , label = Copy.useContextBoonButton
-                                    }
-                                )
-                            , Element.paragraph [ Font.size 12 ] [ text a.text ]
-                            ]
-                    )
-                    spendable
+    Element.column [ spacing Ui.xs ]
+        (Element.row [ spacing Ui.sm, Element.centerY ]
+            [ tip Copy.alterButton
+                (Ui.ghostButton
+                    { onPress = movePress ctx availability (MakingMove MoveRecord.Alter) MakeAlter
+                    , label = Copy.alterButton
+                    }
                 )
-        , Element.row [ spacing Ui.sm ] (pendingFor ctx gs Kind.UseContextBoon)
-        ]
+            , undoLink (myOpenMove ctx MoveRecord.Alter gs)
+            ]
+            :: reasonFor availability
+        )
