@@ -226,6 +226,24 @@ noContextAspects =
     "No context boons or banes yet."
 
 
+{-| A roll line's lead in the log: "Halvard rolled", "Rerolled",
+"Wren altered".
+-}
+rolledBy : String -> String
+rolledBy name =
+    name ++ " rolled"
+
+
+rerolledLead : String
+rerolledLead =
+    "Rerolled"
+
+
+alteredBy : String -> String
+alteredBy name =
+    name ++ " altered"
+
+
 {-| The mark on a context boon or bane that has been highlighted. It stays on
 the table, visibly consumed, and cannot be highlighted again.
 -}

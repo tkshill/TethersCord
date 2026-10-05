@@ -2594,14 +2594,22 @@ Each step builds and passes `pnpm run build` on its own. One branch,
       through `Ui.onEnterSubmit`, which swallows the key so no line break
       lands in the field; pasted newlines become spaces.
 
-#### 32.6 Log — `View/Log.elm`
+#### 32.6 Log — `View/Log.elm` — done
 
-- [ ] Chat lines: timestamp column, speaker name, 15px body.
-- [ ] Event lines: mark column, step chip, undo link. One parser over the
-      line text (see Decisions) with elm-tests over each event `logText`
-      writes, plus a line it does not recognise.
-- [ ] Roll rows for each roll, reroll and Alter.
-- [ ] The composer restyled.
+- [x] Chat lines: timestamp column, speaker name, 15px body. Day dividers
+      read "4 OCT" (`Format.dayMonth`).
+- [x] Event lines: mark column, step chip, undo link. `LogLine.parse` reads
+      the line text (see Decisions), with `LogLineTest` over each line
+      `logText` writes plus lines it does not recognise; it also says
+      whether a line already names who acted, so the "· author" suffix is
+      added only where it is not.
+- [x] Roll rows for each roll, reroll and Alter.
+- [x] The composer restyled; `View.Helpers.inputAttrs` takes the `edge`
+      border.
+- Follow-up, not in 32: the Worker still logs a facilitator's context
+  aspect as "Session note added (Boon) — …", a name `CONTEXT.md` retired.
+  Rewording it in `logText` (the handoff shows "Context bane added: …")
+  needs the matching change in `LogLine` and its test.
 
 #### 32.7 World and Guide — `View/Entities.elm`, `View/Guide.elm`
 

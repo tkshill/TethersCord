@@ -1,4 +1,4 @@
-module Format exposing (clock, date, pluralize, timestamp)
+module Format exposing (clock, date, dayMonth, pluralize, timestamp)
 
 {-| Small pure formatting helpers.
 -}
@@ -54,6 +54,24 @@ date zone posix =
         ++ pad (monthNumber (Time.toMonth zone posix))
         ++ "-"
         ++ pad (Time.toDay zone posix)
+
+
+{-| The day and the month's short name, `4 Oct`, in the given zone. The log's
+day dividers.
+-}
+dayMonth : Time.Zone -> Time.Posix -> String
+dayMonth zone posix =
+    let
+        names =
+            [ "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" ]
+
+        month =
+            names
+                |> List.drop (monthNumber (Time.toMonth zone posix) - 1)
+                |> List.head
+                |> Maybe.withDefault ""
+    in
+    String.fromInt (Time.toDay zone posix) ++ " " ++ month
 
 
 monthNumber : Time.Month -> Int

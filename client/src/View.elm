@@ -340,7 +340,7 @@ composer : Model -> Element Msg
 composer model =
     Element.row
         [ width fill
-        , Element.paddingXY 10 7
+        , Element.paddingXY 12 8
         , Background.color Ui.paper
         , Border.widthEach { top = 1, right = 0, bottom = 0, left = 0 }
         , Border.color Ui.line
@@ -351,10 +351,18 @@ composer model =
 
             Just _ ->
                 Input.text
-                    (inputAttrs ++ [ width fill, Ui.onEnter SendMessage ])
+                    [ width fill
+                    , Element.paddingXY 10 7
+                    , Border.width 1
+                    , Border.color Ui.edge
+                    , Border.rounded 6
+                    , Background.color Ui.panel
+                    , Font.size 13
+                    , Ui.onEnter SendMessage
+                    ]
                     { onChange = NewMessageChanged
                     , text = model.newMessage
-                    , placeholder = Just (Input.placeholder [] (text Copy.messagePlaceholder))
+                    , placeholder = Just (Input.placeholder [ Font.color Ui.inkSoft ] (text Copy.messagePlaceholder))
                     , label = Input.labelHidden "Message"
                     }
         ]

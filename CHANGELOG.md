@@ -39,6 +39,13 @@ version yet, so headings are dates.
   consumed one is dashed and struck through. The column has a header
   counting open and consumed aspects, and Create (or the facilitator's Add,
   with ☼ BOON / ☽ BANE pills) is a larger dashed box at its foot.
+- **A log that reads at a glance** (roadmap 32.6). Event lines lose the
+  italic and the rule and gain a mark — ☼ / ☽ for a boon or bane added,
+  ↑ / ↓ for a step of the die — with the die change set in a small
+  `d10 → d12` chip. Each roll, reroll and Alter stands out as a tinted row
+  with its outcome in colour. Chat is set larger, and the day dividers
+  read "4 OCT". The marks and chips are read from the stored line text, so
+  no stored message changed.
 
 ### Removed
 

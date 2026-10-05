@@ -485,7 +485,7 @@ divider label =
     Element.row
         [ width fill, spacing sm, Element.paddingXY 0 xs ]
         [ rule
-        , el [ Font.size 10, Font.color inkSoft, Font.letterSpacing 0.5 ] (text label)
+        , el [ Font.size 10, Font.color inkSoft, Font.letterSpacing 0.6 ] (text (String.toUpper label))
         , rule
         ]
 

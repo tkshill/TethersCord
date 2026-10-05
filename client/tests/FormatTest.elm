@@ -22,6 +22,10 @@ suite =
                     -- 2024-03-07 05:09 UTC
                     Format.timestamp Time.utc (Time.millisToPosix 1709788140000)
                         |> Expect.equal "2024-03-07 05:09"
+            , test "dayMonth is the day and the short month" <|
+                \_ ->
+                    Format.dayMonth Time.utc (Time.millisToPosix 1791072000000)
+                        |> Expect.equal "4 Oct"
             , test "date and clock compose into timestamp" <|
                 \_ ->
                     let
