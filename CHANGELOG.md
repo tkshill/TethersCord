@@ -8,6 +8,11 @@ version yet, so headings are dates.
 
 ## [Unreleased]
 
+## 2026-10-04
+
+Everything up to and including this deploy. Earlier deploys were not given
+their own headings, so their entries are gathered here too, newest first.
+
 ### Added
 
 - **A staging deployment** (roadmap 29.2).
