@@ -24,6 +24,11 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **The facilitator can claim a sheet from the Sheet tab.** The claim route
+  already allowed it, but the view showed the facilitator an unclaimed sheet
+  with no Claim button. Showing it lets the facilitator hold a sheet and try
+  the aspect split buttons (Complicate / Highlight) without a second player.
+
 - **Manual testing happens in a `#test-app` channel** (roadmap 29.1). Its
   table id differs from the campaign channel's, so it gets its own table and
   its own rows, and test rolls and chat no longer land in the live log.
