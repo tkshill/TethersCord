@@ -1925,23 +1925,27 @@ from untested code or a bad migration. That is 29.2.
 A second deployment with its own database, so a change can be exercised inside
 Discord before it reaches production.
 
-- [ ] Create a second Discord application ("TethersCord Dev"). An Activity's URL
+- [x] Create a second Discord application ("TethersCord Dev"). Done:
+      TethersCordDev. An Activity's URL
       mapping points at one host per application, so staging cannot share the
       production application. It has its own client id and client secret.
-- [ ] Add `env.staging` to `wrangler.jsonc`: Worker name `tetherscord-staging`,
+- [x] Add `env.staging` to `wrangler.jsonc`: Worker name `tetherscord-staging`,
       a new D1 database `ttrpg-activity-db-staging`, and the dev application's
       `DISCORD_CLIENT_ID`. Named environments do not inherit `vars`,
       `d1_databases` or `durable_objects`, so all three are declared again;
       check whether `exports` needs the same. The Durable Object namespace
       belongs to the Worker, so staging tables are separate without further
-      work.
-- [ ] Leave the hourly cron off staging unless it is being tested, to save
+      work. (`exports` is inherited.) The application id and the database id
+      are placeholders until filled in.
+- [x] Leave the hourly cron off staging unless it is being tested, to save
       invocations on the Free tier.
-- [ ] Stop hardcoding the client id in `client/index.html`.
+- [x] Stop hardcoding the client id in `client/index.html`.
       `client/scripts/build.mjs` copies the file verbatim; have it substitute
       the id from an environment variable, defaulting to the production id, so a
-      staging build carries the dev application's id.
-- [ ] Scripts in the root `package.json`: `deploy:staging` (build with the dev
+      staging build carries the dev application's id. Done differently: `build.mjs --env <name>` reads
+      `DISCORD_CLIENT_ID` from that Wrangler environment's `vars`, so each id is
+      written once, in `wrangler.jsonc`.
+- [x] Scripts in the root `package.json`: `deploy:staging` (build with the dev
       client id, then `wrangler deploy --env staging`) and `db:migrate:staging`.
 - [ ] `wrangler secret put DISCORD_CLIENT_SECRET --env staging`.
 - [ ] Point the dev application's URL mapping at the staging Worker and confirm

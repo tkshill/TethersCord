@@ -1,13 +1,31 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 import { build } from "esbuild";
+import { unstable_readConfig } from "wrangler";
 
 const clientDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(clientDir, "..");
 const distDir = resolve(clientDir, "dist");
+
+// `--env staging` builds for that Wrangler environment; no flag is production.
+// The Discord client id comes from the environment's `vars` in wrangler.jsonc,
+// so each application's id is written once, beside the Worker that uses it.
+const { values: args } = parseArgs({ options: { env: { type: "string" } } });
+const config = unstable_readConfig({
+  config: resolve(repoRoot, "wrangler.jsonc"),
+  env: args.env,
+});
+const clientId = config.vars?.DISCORD_CLIENT_ID;
+if (typeof clientId !== "string" || !/^\d{17,20}$/.test(clientId)) {
+  throw new Error(
+    `DISCORD_CLIENT_ID for ${args.env ?? "production"} in wrangler.jsonc is ` +
+      `not a Discord application id: ${JSON.stringify(clientId)}`,
+  );
+}
 
 // Go to the package, not node_modules/.bin. The elm package ships bin/elm as a
 // JS placeholder and swaps in a native binary during its install script, so
@@ -41,7 +59,11 @@ await build({
   sourcemap: true,
 });
 
-await cp(resolve(clientDir, "index.html"), resolve(distDir, "index.html"));
+const indexHtml = await readFile(resolve(clientDir, "index.html"), "utf8");
+await writeFile(
+  resolve(distDir, "index.html"),
+  indexHtml.replaceAll("%DISCORD_CLIENT_ID%", clientId),
+);
 
 // Everything under client/public is copied verbatim to the asset root (fonts,
 // and anything else static the SPA references by absolute path).
@@ -50,4 +72,4 @@ if (existsSync(publicDir)) {
   await cp(publicDir, distDir, { recursive: true });
 }
 
-console.log("Client built in client/dist");
+console.log(`Client built in client/dist (${args.env ?? "production"})`);

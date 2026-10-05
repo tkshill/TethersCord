@@ -12,12 +12,14 @@ All scripts live in the root `package.json`; run them with pnpm from the repo ro
 | `pnpm run dev` | Build client, then run the client watcher + `wrangler dev` on http://localhost:8787 (SPA and API on one origin) |
 | `pnpm run build` | `build:client`, then `typecheck` (client + worker), then `test` — the pre-deploy gate |
 | `pnpm run test` | `test:client` (`elm-test` over `client/tests/`) then `test:worker` (`vitest` via `@cloudflare/vitest-pool-workers` over `worker/test/`) |
-| `pnpm run build:client` | `node client/scripts/build.mjs`: `elm make src/Main.elm --optimize` → `client/dist/elm.js`, esbuild `src/main.ts` → `client/dist/main.js`, copy `index.html`. Run after any Elm change |
+| `pnpm run build:client` | `node client/scripts/build.mjs`: `elm make src/Main.elm --optimize` → `client/dist/elm.js`, esbuild `src/main.ts` → `client/dist/main.js`, copy `index.html` with `%DISCORD_CLIENT_ID%` filled from `wrangler.jsonc` `vars` (`--env staging` reads `env.staging.vars`). Run after any Elm change |
 | `pnpm run watch:client` | Rebuild `client/dist` in place on change (`wrangler dev` reads it off disk; there is no project dev server) |
 | `pnpm run typecheck:worker` / `typecheck:client` | `tsc --noEmit`. Run the worker one after any Worker change |
-| `pnpm run deploy` | `build` then `wrangler deploy` (assets + Worker, atomic). **Only when explicitly asked**; `pnpm run deploy:dry-run` to bundle without uploading |
+| `pnpm run deploy` | `build` then `wrangler deploy --env=""` (top-level, production; assets + Worker, atomic). **Only when explicitly asked**; `pnpm run deploy:dry-run` to bundle without uploading |
 | `pnpm run db:migrate:local` / `db:migrate:remote` | `wrangler d1 migrations apply ttrpg-activity-db` against the local dev DB / production |
 | `pnpm run db:migrations:list` | Show remote migration state |
+| `pnpm run deploy:staging` | `build:staging` (client built with `--env staging`, then typecheck + test), then `wrangler deploy --env staging` to the `tetherscord-staging` Worker |
+| `pnpm run db:migrate:staging` / `db:migrations:list:staging` | Apply / list migrations on the staging D1 (`ttrpg-activity-db-staging`) |
 
 Local dev also needs `cp .dev.vars.example .dev.vars` (fill in `DISCORD_CLIENT_SECRET`) and one `pnpm run db:migrate:local`.
 

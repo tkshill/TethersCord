@@ -62,4 +62,48 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"],
   },
+
+  // Staging (roadmap 29.2): `pnpm run deploy:staging`. A separate Worker
+  // (`tetherscord-staging`) with its own D1 database and its own Durable Object
+  // namespace, behind the TethersCordDev Discord application. Named
+  // environments inherit `main`, `compatibility_date`, `assets`, `observability`
+  // and `triggers`, but not `vars`, `d1_databases` or `durable_objects`, so those
+  // are declared again here. `client/scripts/build.mjs --env staging` reads
+  // DISCORD_CLIENT_ID from this block, so it is the one place the dev
+  // application's id is written.
+  "env": {
+    "staging": {
+      "name": "tetherscord-staging",
+      "vars": {
+        // TethersCordDev's application id (Developer Portal → General
+        // Information → Application ID).
+        "DISCORD_CLIENT_ID": "FILL_IN_TETHERSCORDDEV_APPLICATION_ID",
+        "BOOTSTRAP_FACILITATOR_ID": "835912979517407242",
+      },
+      // DISCORD_CLIENT_SECRET: `wrangler secret put DISCORD_CLIENT_SECRET --env
+      // staging`, with TethersCordDev's secret (not production's).
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "ttrpg-activity-db-staging",
+          // From `wrangler d1 create ttrpg-activity-db-staging`.
+          "database_id": "FILL_IN_STAGING_DATABASE_ID",
+          "migrations_dir": "worker/migrations",
+        },
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "GAME_TABLE",
+            "class_name": "GameTable",
+          },
+        ],
+      },
+      // No hourly prune on staging, to save Free-tier invocations; restore the
+      // cron here when testing `scheduled`.
+      "triggers": {
+        "crons": [],
+      },
+    },
+  },
 }
