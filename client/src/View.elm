@@ -266,14 +266,19 @@ contextPanel ctx model gs =
         [ Element.height fill
         , width (Element.px 284)
         , Ui.shrinkable
-        , Element.paddingEach { top = 8, right = 10, bottom = 8, left = 10 }
-        , spacing Ui.sm
         ]
-        [ Ui.divider (String.toUpper Copy.contextTabLabel)
-        , Ui.scrollArea
-            [ View.ContextAspects.view ctx props gs
-            , View.Session.view ctx gs
+        [ View.ContextAspects.header gs
+        , el
+            [ Element.height fill
+            , width fill
+            , Ui.shrinkable
+            , Element.paddingXY 14 12
             ]
+            (Ui.scrollArea
+                [ View.ContextAspects.view ctx props gs
+                , View.Session.view ctx gs
+                ]
+            )
         , View.ContextAspects.createField ctx props gs
         ]
 

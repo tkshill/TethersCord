@@ -29,6 +29,7 @@ module Ui exposing
     , mono
     , onBlur
     , onEnter
+    , onEnterSubmit
     , onScrolledToBottom
     , onlyWhen
     , oneLine
@@ -36,6 +37,7 @@ module Ui exposing
     , panel
     , paper
     , pencil
+    , pill
     , press
     , primaryButton
     , rollButton
@@ -579,6 +581,40 @@ squareButton config =
         }
 
 
+{-| A small toggle in a row of choices — the facilitator's ☼ BOON / ☽ BANE.
+A mark and a word in `tone`; the selected one is filled with `tone`, the rest
+are outlined and pick up `tone` on their border when hovered.
+-}
+pill : { selected : Bool, tone : Color, mark : String, label : String, tip : String, onPress : msg } -> Element msg
+pill config =
+    Input.button
+        ([ Element.paddingXY 7 2
+         , Border.rounded 4
+         , Border.width 1
+         , Font.size 10
+         , Font.semiBold
+         , Font.letterSpacing 0.7
+         , Element.htmlAttribute (Html.Attributes.title config.tip)
+         ]
+            ++ (if config.selected then
+                    [ Background.color config.tone, Border.color config.tone, Font.color accentText ]
+
+                else
+                    [ Border.color edge
+                    , Font.color config.tone
+                    , Element.mouseOver [ Border.color config.tone ]
+                    ]
+               )
+        )
+        { onPress = Just config.onPress
+        , label =
+            Element.row [ spacing 5 ]
+                [ el [ glyph, Font.size 12 ] (text config.mark)
+                , text (String.toUpper config.label)
+                ]
+        }
+
+
 {-| An outlined label that presses nothing — the die while a roll is pending.
 -}
 chip : String -> String -> Element msg
@@ -758,12 +794,18 @@ by red / green; on touch, with no hover, both halves keep a faint resting tint.
 A half with no `onPress` is off: no wash, no label, and `tip` says why. The
 block's foot grows to make room for the labels.
 
-`corner` (the ✎) sits in the top-right corner above the halves.
+`corner` (the ✎, or a context aspect's ✎ ×) sits in the top-right corner
+above everything else. `press`, when given, makes the whole block one button
+(Highlight Context on a context aspect), tinted on hover while it has an
+`onPress`; the corner stays outside it, so its controls are not nested in
+another button. `dashed` draws the border dashed (a consumed context aspect).
 -}
 aspectBlock :
     { meta : List (Element msg)
     , statement : Element msg
     , corner : Maybe (Element msg)
+    , press : Maybe { onPress : Maybe msg, tip : String }
+    , dashed : Bool
     , split :
         Maybe
             { left : { onPress : Maybe msg, label : String, tip : String }
@@ -832,36 +874,60 @@ aspectBlock config =
 
                 Nothing ->
                     []
+        body =
+            Element.column
+                [ width fill
+                , spacing 3
+                , Element.paddingEach
+                    { top = 8
+                    , right = 11
+                    , bottom =
+                        if config.split == Nothing then
+                            9
+
+                        else
+                            22
+                    , left = 11
+                    }
+                ]
+                [ Element.row [ width fill, spacing 5 ] config.meta
+                , config.statement
+                ]
     in
     el
         ([ width fill
          , Border.width 1
          , Border.color edge
          , Border.rounded 7
-         , Background.color panel
          , Element.clip
          ]
+            ++ (if config.dashed then
+                    [ Border.dashed ]
+
+                else
+                    [ Background.color panel ]
+               )
             ++ halves
             ++ corner
         )
-        (Element.column
-            [ width fill
-            , spacing 3
-            , Element.paddingEach
-                { top = 8
-                , right = 11
-                , bottom =
-                    if config.split == Nothing then
-                        9
+        (case config.press of
+            Just button ->
+                Input.button
+                    ([ width fill
+                     , Element.htmlAttribute (Html.Attributes.title button.tip)
+                     ]
+                        ++ (case button.onPress of
+                                Just _ ->
+                                    [ Element.mouseOver [ Background.color tint ] ]
 
-                    else
-                        22
-                , left = 11
-                }
-            ]
-            [ Element.row [ width fill, spacing 5 ] config.meta
-            , config.statement
-            ]
+                                Nothing ->
+                                    [ Element.htmlAttribute (Html.Attributes.style "cursor" "default") ]
+                           )
+                    )
+                    { onPress = button.onPress, label = body }
+
+            Nothing ->
+                body
         )
 
 
@@ -900,6 +966,29 @@ onEnter msg =
                     (\key ->
                         if key == "Enter" then
                             Decode.succeed msg
+
+                        else
+                            Decode.fail "not Enter"
+                    )
+            )
+        )
+
+
+{-| `onEnter` for a multiline field holding one statement: Enter (without
+Shift) fires `msg` and is swallowed, so it neither inserts a line break nor
+leaves one behind to land in the field after the submit cleared it.
+-}
+onEnterSubmit : msg -> Attribute msg
+onEnterSubmit msg =
+    Element.htmlAttribute
+        (Html.Events.preventDefaultOn "keydown"
+            (Decode.map2 Tuple.pair
+                (Decode.field "key" Decode.string)
+                (Decode.field "shiftKey" Decode.bool)
+                |> Decode.andThen
+                    (\( key, shift ) ->
+                        if key == "Enter" && not shift then
+                            Decode.succeed ( msg, True )
 
                         else
                             Decode.fail "not Enter"

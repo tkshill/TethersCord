@@ -28,6 +28,13 @@ baneLabel =
     "Bane"
 
 
+{-| The kind label on a context boon's block.
+-}
+boonLabel : String
+boonLabel =
+    "Boon"
+
+
 
 -- THE STRIP (View/TopBar.elm) — the die ladder, the pending roll and the
 -- controls that resolve it.
@@ -225,6 +232,34 @@ the table, visibly consumed, and cannot be highlighted again.
 contextAspectConsumed : String
 contextAspectConsumed =
     "consumed"
+
+
+{-| The context column's header count: "4 open · 1 consumed".
+-}
+contextCount : Int -> Int -> String
+contextCount open consumed =
+    String.fromInt open ++ " open · " ++ String.fromInt consumed ++ " consumed"
+
+
+{-| Where a Complicate's bane came from, on its block: "Wren · Complicate".
+-}
+complicateOrigin : String -> String
+complicateOrigin name =
+    name ++ " · Complicate"
+
+
+{-| What a player's Create costs, on the entry box.
+-}
+createCostNote : String
+createCostNote =
+    "costs ☼"
+
+
+{-| What the facilitator's Add costs, on the entry box.
+-}
+addCostNote : String
+addCostNote =
+    "free"
 
 
 {-| Facilitator-only: remove a context boon or bane outright.

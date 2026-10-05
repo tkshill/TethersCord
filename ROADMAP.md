@@ -2579,13 +2579,20 @@ Each step builds and passes `pnpm run build` on its own. One branch,
 - [x] Notes. The placeholder is "Notes…", not the handoff's "Private
       notes…": every viewer sees a sheet's notes.
 
-#### 32.5 Context column — `View.elm` + `View/ContextAspects.elm`
+#### 32.5 Context column — `View.elm` + `View/ContextAspects.elm` — done
 
-- [ ] Header with `Copy.contextCount`, replacing the `Ui.divider` title.
-- [ ] Open and consumed aspect blocks. The facilitator's ✎ / × cannot nest in
-      the row button: restructure the row or use `Element.inFront`.
-- [ ] The entry box: Create (`Copy.createCost`) for a player, the Boon / Bane
-      pills and "free" for the facilitator. Enter submits; newlines stripped.
+- [x] Header with `Copy.contextCount`, replacing the `Ui.divider` title.
+- [x] Open and consumed aspect blocks, through `Ui.aspectBlock` (now with
+      `press` — the whole block as one button — and `dashed`). The
+      facilitator's ✎ / × sit in its corner, outside the button. The origin
+      on the meta row is "<character> · Complicate" for a Complicate's bane
+      and otherwise who added it (`createdByName`, a Discord name): a
+      context aspect does not record which move made it, so the handoff's
+      "Mara · Create" is not available without a wire change.
+- [x] The entry box: Create (`Copy.createCostNote`) for a player, the Boon /
+      Bane pills (`Ui.pill`) and "free" for the facilitator. Enter submits
+      through `Ui.onEnterSubmit`, which swallows the key so no line break
+      lands in the field; pasted newlines become spaces.
 
 #### 32.6 Log — `View/Log.elm`
 

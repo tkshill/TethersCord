@@ -33,6 +33,12 @@ version yet, so headings are dates.
   block — the same shape the context aspects take in 32.5 — holding the
   Complicate / Highlight halves on the player's own sheet. A pending roll
   shows a note saying why the moves are locked.
+- **Context aspects as blocks** (roadmap 32.5). Each context boon or bane
+  is a block like the sheet's aspects, labelled BOON or BANE with who it
+  came from, and the whole block is the Highlight Context button; a
+  consumed one is dashed and struck through. The column has a header
+  counting open and consumed aspects, and Create (or the facilitator's Add,
+  with ☼ BOON / ☽ BANE pills) is a larger dashed box at its foot.
 
 ### Removed
 

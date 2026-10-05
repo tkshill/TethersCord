@@ -305,6 +305,8 @@ aspectBlock ctx props gs who ch aspect fieldTag value =
 
                     else
                         Nothing
+                , press = Nothing
+                , dashed = False
                 , split =
                     if who.mine && not editing && gs.junction == Nothing then
                         Just (aspectMoves ctx gs ch aspect)
