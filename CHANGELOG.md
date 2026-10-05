@@ -8,6 +8,16 @@ version yet, so headings are dates.
 
 ## [Unreleased]
 
+### Changed
+
+- **Table v2 palette and type** (roadmap 32.1). The warm-paper palette gives
+  way to the high-contrast one from the Table v2 handoff: white surfaces,
+  black ink, a deep-blue accent, and a darker `edge` border for controls.
+  Atkinson Hyperlegible replaces Inter and IBM Plex Mono sets the timestamps,
+  both self-hosted. The ☼ / ☽ marks draw from two Noto symbol faces cut down
+  to the handful of marks the UI uses, because Apple Symbols draws ☼ as a
+  thin ring that reads as "empty".
+
 ## 2026-10-04
 
 Everything up to and including this deploy. Earlier deploys were not given

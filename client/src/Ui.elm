@@ -5,12 +5,17 @@ module Ui exposing
     , boonMarks
     , class
     , confirmButton
+    , accentSoft
     , danger
+    , dangerSoft
     , divider
+    , edge
     , columnRule
     , errorNote
     , facilitatorTint
     , flat
+    , fontSize
+    , glyph
     , ghostButton
     , ink
     , inkSoft
@@ -48,10 +53,10 @@ module Ui exposing
     , xs
     )
 
-{-| The visual system for the Activity: one warm-paper surface, one slate accent,
-a small spacing and type scale, and the handful of building blocks the views
-assemble. Deliberately spare — it should read like a printed play aid, not a
-dashboard.
+{-| The visual system for the Activity (roadmap 32, Table v2 High contrast):
+white surfaces, black ink, one deep-blue accent, a small spacing and type scale,
+and the handful of building blocks the views assemble. Deliberately spare — it
+should read like a printed play aid, not a dashboard.
 -}
 
 import Element exposing (Attribute, Color, Element, el, fill, height, padding, rgb255, spacing, text, width)
@@ -118,7 +123,7 @@ withTip tipText child =
 
 paper : Color
 paper =
-    rgb255 253 252 250
+    rgb255 255 255 255
 
 
 panel : Color
@@ -128,52 +133,78 @@ panel =
 
 ink : Color
 ink =
-    rgb255 38 38 42
+    rgb255 0 0 0
 
 
+{-| Labels, meta, timestamps, placeholders (12.6:1 on white).
+-}
 inkSoft : Color
 inkSoft =
-    rgb255 122 120 116
+    rgb255 51 51 51
 
 
+{-| Hairlines: column rules, row dividers, strip borders.
+-}
 line : Color
 line =
-    rgb255 228 225 220
+    rgb255 140 140 140
+
+
+{-| The 1px border on aspect blocks, buttons, inputs and chips — darker than
+`line`, so a control reads as one against the white.
+-}
+edge : Color
+edge =
+    rgb255 26 26 26
 
 
 accent : Color
 accent =
-    rgb255 74 96 130
+    rgb255 10 58 140
 
 
 accentText : Color
 accentText =
-    rgb255 253 252 250
+    rgb255 255 255 255
 
 
-{-| A faint warm tint for a strip that sits apart from the paper — the hovered
-context aspect, the session-controls row, a highlighted log line.
+{-| The Flow segment in the Guide's odds bars.
+-}
+accentSoft : Color
+accentSoft =
+    rgb255 134 160 212
+
+
+{-| A pale blue wash: the selected tab, a hovered row, the roll row in the log,
+the locked note.
 -}
 tint : Color
 tint =
-    rgb255 246 244 240
+    rgb255 230 236 251
 
 
 {-| The chip behind the selected tool tab.
 -}
 selectedWash : Color
 selectedWash =
-    rgb255 235 232 226
+    tint
 
 
 facilitatorTint : Color
 facilitatorTint =
-    rgb255 122 74 44
+    rgb255 122 51 0
 
 
 danger : Color
 danger =
-    rgb255 168 74 74
+    rgb255 158 0 0
+
+
+{-| The Friction segment in the Guide's odds bars.
+-}
+dangerSoft : Color
+dangerSoft =
+    rgb255 220 143 143
 
 
 {-| The Highlight half of an aspect's split button — the one green, kept for
@@ -181,7 +212,7 @@ the move that steps the die up.
 -}
 success : Color
 success =
-    rgb255 64 128 88
+    rgb255 0 102 43
 
 
 {-| A stable colour per speaker at the table. `0` is the facilitator; players
@@ -191,13 +222,13 @@ speakerColor : Int -> Color
 speakerColor index =
     case modBy 4 index of
         1 ->
-            rgb255 74 96 130
+            rgb255 10 58 140
 
         2 ->
-            rgb255 74 122 90
+            rgb255 0 102 43
 
         3 ->
-            rgb255 138 82 122
+            rgb255 107 31 107
 
         _ ->
             facilitatorTint
@@ -236,9 +267,12 @@ xl =
 -- TYPE
 
 
+{-| Every face here is self-hosted (`client/index.html`); the rest of each list
+is the fallback if a file fails to load.
+-}
 sans : List Font.Font
 sans =
-    [ Font.typeface "Inter"
+    [ Font.typeface "Atkinson Hyperlegible"
     , Font.typeface "-apple-system"
     , Font.typeface "Segoe UI"
     , Font.typeface "Roboto"
@@ -246,13 +280,40 @@ sans =
     ]
 
 
+{-| Timestamps, die chips, odds labels.
+-}
 mono : List Font.Font
 mono =
-    [ Font.typeface "SF Mono"
+    [ Font.typeface "IBM Plex Mono"
+    , Font.typeface "SF Mono"
     , Font.typeface "Menlo"
     , Font.typeface "Consolas"
     , Font.monospace
     ]
+
+
+{-| The marks (☼ ☽ ↑ ↓). The Noto faces come first because Apple Symbols draws
+☼ as a thin ring that reads as "empty"; each covers only the marks it is
+declared for in `client/index.html`, so anything else falls through to `sans`.
+-}
+glyph : Attribute msg
+glyph =
+    Font.family
+        ([ Font.typeface "Noto Sans Symbols 2"
+         , Font.typeface "Noto Sans Symbols"
+         , Font.typeface "Segoe UI Symbol"
+         , Font.typeface "DejaVu Sans"
+         ]
+            ++ sans
+        )
+
+
+{-| A font size in pixels that need not be whole (12.5px tabs, 10.5px meta);
+`Font.size` takes only an `Int`.
+-}
+fontSize : Float -> Attribute msg
+fontSize px =
+    Element.htmlAttribute (Html.Attributes.style "font-size" (String.fromFloat px ++ "px"))
 
 
 
@@ -381,7 +442,7 @@ sectionTitle label =
         [ Font.size 10
         , Font.semiBold
         , Font.color inkSoft
-        , Font.letterSpacing 0.5
+        , Font.letterSpacing 0.7
         ]
         (text (String.toUpper label))
 
@@ -449,8 +510,8 @@ primaryButton config =
         , Font.color accentText
         , Font.size 12
         , Font.semiBold
-        , paddingXY_ 9 3
-        , Border.rounded 4
+        , paddingXY_ 12 4
+        , Border.rounded 5
         , Element.mouseOver [ Background.color ink ]
         ]
         { onPress = config.onPress, label = text config.label }
@@ -464,10 +525,10 @@ ghostButton config =
     Input.button
         ([ Background.color panel
          , Font.size 12
-         , paddingXY_ 8 2
-         , Border.color line
+         , paddingXY_ 10 4
+         , Border.color edge
          , Border.width 1
-         , Border.rounded 4
+         , Border.rounded 5
          ]
             ++ (case config.onPress of
                     Just _ ->
@@ -569,9 +630,9 @@ toolTab : { label : String, tip : String, selected : Bool, onPress : msg } -> El
 toolTab config =
     Input.button
         ([ Element.htmlAttribute (Html.Attributes.title config.tip)
-         , Border.rounded 4
-         , Font.size 12
-         , paddingXY_ 8 3
+         , Border.rounded 5
+         , fontSize 12.5
+         , paddingXY_ 9 4
          ]
             ++ (if config.selected then
                     [ Background.color selectedWash, Font.color ink, Font.semiBold ]
@@ -585,11 +646,12 @@ toolTab config =
         { onPress = Just config.onPress, label = text config.label }
 
 
-{-| The run of ☼ marks for `n` boons: a character's boons, a context boon.
+{-| The run of ☼ marks for `n` boons — a character's boons, a context boon —
+in the accent.
 -}
 boonMarks : Int -> Element msg
 boonMarks n =
-    el [ Font.letterSpacing 2 ] (text (String.repeat (Basics.max 0 n) "☼"))
+    el [ glyph, Font.letterSpacing 2, Font.color accent ] (text (String.repeat (Basics.max 0 n) "☼"))
 
 
 {-| The run of ☽ marks for `n` banes, in the danger tone so a boon and a bane
@@ -597,7 +659,7 @@ differ by more than shape.
 -}
 baneMarks : Int -> Element msg
 baneMarks n =
-    el [ Font.letterSpacing 2, Font.color danger ] (text (String.repeat (Basics.max 0 n) "☽"))
+    el [ glyph, Font.letterSpacing 2, Font.color danger ] (text (String.repeat (Basics.max 0 n) "☽"))
 
 
 {-| A CSS class from `client/index.html`, for the few effects elm-ui cannot

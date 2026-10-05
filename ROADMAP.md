@@ -2518,17 +2518,23 @@ Each step builds and passes `pnpm run build` on its own. One branch,
       the HTML reference or `support.js`) under `docs/design/table-v2/`, so
       later work can check against it.
 
-#### 32.1 Tokens and fonts
+#### 32.1 Tokens and fonts — done
 
-- [ ] Replace the palette in `Ui.elm`; add `edge`, `accentSoft`,
+- [x] Replace the palette in `Ui.elm`; add `edge`, `accentSoft`,
       `dangerSoft`; the speaker colours.
-- [ ] Self-host Atkinson Hyperlegible (400, 700, 400 italic), IBM Plex Mono
+- [x] Self-host Atkinson Hyperlegible (400, 700, 400 italic), IBM Plex Mono
       (400, 500) and Noto Sans Symbols 2 in `client/public/fonts/` with
       `@font-face` in `client/index.html`. Discord's Activity CSP blocks
-      Google Fonts. Drop Inter.
-- [ ] `Ui.sans`, `Ui.mono` and a glyph stack applied in `Ui.boonMarks` /
-      `Ui.baneMarks` and every mark cell.
-- [ ] The type scale, radii and the split-button washes in `client/index.html`.
+      Google Fonts. Drop Inter. Noto Sans Symbols 2 has ☼ but not ☽ or the
+      arrows, so Noto Sans Symbols joins it; both are subset to the marks
+      the UI draws (4 KB together) and declared with a `unicode-range`.
+- [x] `Ui.sans`, `Ui.mono` and a glyph stack (`Ui.glyph`) applied in
+      `Ui.boonMarks` / `Ui.baneMarks`; the other mark cells take it as each
+      later step restyles them.
+- [x] The split-button washes in `client/index.html`; the label style, the
+      primary, ghost and tool-tab buttons, and `Ui.fontSize` for the
+      fractional sizes. The rest of the type scale and the radii land with
+      the views that use them.
 
 #### 32.2 Frame and tool strip
 
