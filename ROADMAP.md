@@ -1876,7 +1876,7 @@ here; the current layout is described in `CLAUDE.md`. In order:
 One small visual change to the section-27 UI. Re-baselined by 31.6: 28.1
 (hearts and skulls for boons and banes) was dropped when section 31 settled
 on sun and moon marks (☼ / ☽), shipped in 31.5 through `Ui.boonMarks` /
-`Ui.baneMarks`; the glyph check in the Discord webview is tracked in 31.5.
+`Ui.baneMarks`; the glyph check in the Discord webview passed in 31.5.
 
 ### 28.2 Tool tabs always show their titles
 
@@ -2366,7 +2366,7 @@ shape (ADR 0003).
       in the Moves column with "undo" beside each, Highlight Context on each
       context aspect — and 31.5 replaces them. Suites: client 92, worker 138.
 
-#### 31.5 View — done except the Discord glyph check
+#### 31.5 View — done
 
 - [x] The ladder in `View.TopBar`: the current-die roll button, the result,
       Alter / Reroll / Reject / Accept, the facilitator's `‹` `›`.
@@ -2378,9 +2378,11 @@ shape (ADR 0003).
 - [x] Undo links on log lines.
 - [x] ☼ / ☽ through `Ui.boonMarks` / `Ui.baneMarks` and every hand-written
       mark.
-- [ ] Check the glyphs, the split buttons' hover labels and the touch tint in
-      the Discord webview on desktop and mobile (29.1's test channel). Seen
-      only in headless Chrome so far, where ☼ renders small at 11–13px.
+- [x] Check the glyphs, the split buttons' hover labels and the touch tint in
+      the Discord webview on desktop and mobile (29.1's test channel). Done
+      2026-10-04 on staging: ☼ / ☽ read at 11–13px, the hover washes and
+      labels show on desktop, and on a phone both halves keep their resting
+      tint and a tap fires the move.
 - [x] Delete `View.FacilitatorPanel`, `View.Moves` and the proposal strip; the
       tabs become Sheet / Cast / Guide.
 - [x] Settled in 31.5: the facilitator's ✎ on a context aspect opens its
