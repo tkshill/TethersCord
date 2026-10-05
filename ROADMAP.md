@@ -2536,16 +2536,18 @@ Each step builds and passes `pnpm run build` on its own. One branch,
       fractional sizes. The rest of the type scale and the radii land with
       the views that use them.
 
-#### 32.2 Frame and tool strip
+#### 32.2 Frame and tool strip — done
 
-- [ ] Fixed widths: tool panel `px 316`, context `px 284`, log `fill`.
-- [ ] `type ToolTab = SheetTab Int | WorldTab | GuideTab` in `Types.elm`,
-      replacing `toolTab` + `selectedSlot`. `SelectSlot` becomes
-      `SelectTool (SheetTab slot)`. Default: the viewer's own slot, else
-      slot 0. Update the `Main.update` tests.
-- [ ] One strip: slot tabs with a "you" suffix (the facilitator sees none),
+- [x] Fixed widths: tool panel `px 316`, context `px 284`, log `fill`.
+- [x] `type ToolTab = SheetTab Int | WorldTab | GuideTab` in `Types.elm`,
+      replacing `toolTab` + `selectedSlot`. `SelectSlot` is gone; a sheet tab
+      is `SelectTool (SheetTab slot)`, and switching any tool flushes the
+      sheet's unsaved edits. The first game state opens the viewer's own
+      sheet, else slot 0 (falling back to the first sheet). Update the
+      `Main.update` tests.
+- [x] One strip: slot tabs with a "you" suffix (the facilitator sees none),
       a separator, then World and Guide at the right.
-- [ ] `Copy.castTabLabel` → "World", `castTabTip` → "NPCs & locations".
+- [x] `Copy.castTabLabel` → "World", `castTabTip` → "NPCs & locations".
 
 #### 32.3 Status strip — `View/TopBar.elm`
 

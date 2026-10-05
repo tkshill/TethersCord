@@ -382,9 +382,11 @@ noCharacterSheets =
     "No character sheets."
 
 
+{-| The small suffix on the viewer's own character tab in the tool strip.
+-}
 youMarker : String
 youMarker =
-    " (you)"
+    "you"
 
 
 {-| Tab / label fallback for a sheet with no name yet. Mirrors the worker's
@@ -495,24 +497,21 @@ entityUnnamed =
 -- glyph tab, and the tooltip on each unselected one.
 
 
-sheetTabLabel : String
-sheetTabLabel =
-    "Sheet"
-
-
-sheetTabTip : String
-sheetTabTip =
-    "Your character, and the moves on its aspects"
+{-| The tooltip on a character's tab in the tool strip.
+-}
+sheetTabTip : String -> String
+sheetTabTip name =
+    name ++ "'s sheet"
 
 
 castTabLabel : String
 castTabLabel =
-    "Cast"
+    "World"
 
 
 castTabTip : String
 castTabTip =
-    "Cast & locations"
+    "NPCs & locations"
 
 
 noCast : String

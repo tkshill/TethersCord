@@ -44,7 +44,6 @@ module Ui exposing
     , sm
     , speakerColor
     , splitButton
-    , tab
     , tint
     , toolTab
     , withTip
@@ -588,45 +587,13 @@ confirmButton config =
         ghostButton { onPress = Just config.onArm, label = config.idle }
 
 
-{-| One entry in a compact tab strip (the character slots on the Sheet): the
-selected one reads as the accent button, the rest are quiet until hovered.
+{-| One tab in the tool strip: a character's sheet, the World or the Guide.
+The selected one sits on the tint in a heavier weight; the rest are quiet until
+hovered. `suffix` is a small trailing word inside the tab ("you" on the
+viewer's own sheet), or `""` for none. `tip` (a native tooltip) says what the
+tab holds.
 -}
-tab : Bool -> String -> msg -> Element msg
-tab selected label msg =
-    Input.button
-        ([ Font.size 12
-         , paddingXY_ 7 2
-         , Border.rounded 4
-         , Font.color
-            (if selected then
-                accentText
-
-             else
-                inkSoft
-            )
-         , Background.color
-            (if selected then
-                accent
-
-             else
-                Element.rgba255 0 0 0 0
-            )
-         ]
-            ++ (if selected then
-                    [ Font.semiBold ]
-
-                else
-                    [ Element.mouseOver [ Font.color ink ] ]
-               )
-        )
-        { onPress = Just msg, label = text label }
-
-
-{-| One tab in the tool strip. Every tab shows its name; the selected one sits
-on a tinted chip in a heavier weight. `tip` (a native tooltip) says what the
-tool holds.
--}
-toolTab : { label : String, tip : String, selected : Bool, onPress : msg } -> Element msg
+toolTab : { label : String, suffix : String, tip : String, selected : Bool, onPress : msg } -> Element msg
 toolTab config =
     Input.button
         ([ Element.htmlAttribute (Html.Attributes.title config.tip)
@@ -643,7 +610,17 @@ toolTab config =
                     ]
                )
         )
-        { onPress = Just config.onPress, label = text config.label }
+        { onPress = Just config.onPress
+        , label =
+            if config.suffix == "" then
+                text config.label
+
+            else
+                Element.row [ spacing xs ]
+                    [ text config.label
+                    , el [ fontSize 10.5, Font.regular ] (text config.suffix)
+                    ]
+        }
 
 
 {-| The run of ☼ marks for `n` boons — a character's boons, a context boon —

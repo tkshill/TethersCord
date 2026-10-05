@@ -17,6 +17,11 @@ version yet, so headings are dates.
   both self-hosted. The ☼ / ☽ marks draw from two Noto symbol faces cut down
   to the handful of marks the UI uses, because Apple Symbols draws ☼ as a
   thin ring that reads as "empty".
+- **One tool strip** (roadmap 32.2). The character tabs leave the Sheet and
+  join the tool strip — `Wren you · Halvard · Mara | World · Guide` — so
+  the left panel has a single selected item, and the player's own sheet
+  opens first. Cast is renamed World. The tool panel is 316px and the
+  context column 284px; the log takes the rest of the width.
 
 ## 2026-10-04
 

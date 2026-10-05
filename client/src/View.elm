@@ -1,9 +1,9 @@
 module View exposing (aspectFieldId, contextAspectFieldId, logDomId, view)
 
 {-| The Activity view (roadmap 27, mockup 2a; moves placed by 31.5): a one-line
-status strip (`View.TopBar`, the die ladder and the junction) over three equal
-columns — a tool panel on the left (a row of titled tabs showing one tool at a
-time: Sheet, Cast, Guide); the context boons and banes in the middle with the
+status strip (`View.TopBar`, the die ladder and the junction) over three
+columns — a 316px tool panel on the left (one strip of tabs, a sheet per
+character then World and Guide, showing one at a time); a 284px column of the context boons and banes in the middle with the
 Create field pinned beneath; and, on the right, the event log with the composer
 pinned beneath it. Every move is made where its subject is: Highlight and
 Complicate on the Sheet's aspects, Highlight Context on the context list, Create
@@ -25,7 +25,7 @@ import Ui
 import View.Characters
 import View.Entities
 import View.Guide
-import View.Helpers exposing (ViewContext, inputAttrs, placeholder)
+import View.Helpers exposing (ViewContext, characterLabel, inputAttrs, placeholder)
 import View.Log
 import View.Session
 import View.ContextAspects
@@ -123,18 +123,18 @@ notes model =
         [ Element.column [ width fill, Element.paddingXY 10 4, spacing 2 ] lines ]
 
 
-{-| The left panel: the titled tab strip and the selected tool's body
+{-| The left panel (316px): the tool strip and the selected tool's body
 (scrolling on its own).
 -}
 toolPanel : ViewContext -> Model -> GameState -> Element Msg
 toolPanel ctx model gs =
     let
         selected =
-            model.toolTab
+            shownTool model.toolTab gs
     in
     Element.column
         [ Element.height fill
-        , width fill
+        , width (Element.px 316)
         , Ui.shrinkable
         ]
         [ toolStrip ctx selected gs
@@ -142,49 +142,100 @@ toolPanel ctx model gs =
             [ Element.height fill
             , width fill
             , Ui.shrinkable
-            , Element.paddingEach { top = 8, right = 10, bottom = 8, left = 10 }
+            , Element.paddingEach { top = 12, right = 14, bottom = 14, left = 14 }
             ]
             (Ui.scrollArea [ toolBody ctx model gs selected ])
         ]
 
 
+{-| The tool actually on show. A sheet tab whose slot no longer holds a
+character falls back to the first sheet, so the strip always marks what the
+body shows.
+-}
+shownTool : ToolTab -> GameState -> ToolTab
+shownTool tab gs =
+    case tab of
+        SheetTab slot ->
+            if List.any (\c -> c.slot == slot) gs.characters then
+                tab
+
+            else
+                gs.characters
+                    |> List.head
+                    |> Maybe.map (.slot >> SheetTab)
+                    |> Maybe.withDefault tab
+
+        _ ->
+            tab
+
+
+{-| One strip for everything the left panel can show (roadmap 32.2): a tab
+per character sheet — the viewer's own marked "you" — then, past a rule at the
+right, the World and the Guide.
+-}
 toolStrip : ViewContext -> ToolTab -> GameState -> Element Msg
 toolStrip ctx selected gs =
     let
-        tool tab label tip =
+        tool tab label suffix tip =
             Ui.toolTab
                 { label = label
+                , suffix = suffix
                 , tip = tip
                 , selected = selected == tab
                 , onPress = SelectTool tab
                 }
+
+        sheetTab ch =
+            let
+                name =
+                    characterLabel ch
+
+                mine =
+                    not ctx.facilitator && ch.ownerId /= Nothing && ch.ownerId == ctx.myId
+            in
+            tool (SheetTab ch.slot)
+                name
+                (if mine then
+                    Copy.youMarker
+
+                 else
+                    ""
+                )
+                (Copy.sheetTabTip name)
+
+        -- 5px clear of World: the row's 2px spacing plus 3.
+        separator =
+            el [ Element.alignRight, Element.paddingEach { top = 0, right = 3, bottom = 0, left = 0 } ]
+                (el [ width (Element.px 1), Element.height (Element.px 16), Background.color Ui.line ] none)
     in
     Element.row
         [ width fill
-        , Element.height (Element.px 28)
-        , Element.paddingXY 6 0
+        , Element.height (Element.px 36)
+        , Element.paddingXY 8 0
         , spacing 2
         , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
         , Border.color Ui.line
         ]
-        [ tool SheetTab Copy.sheetTabLabel Copy.sheetTabTip
-        , tool CastTab Copy.castTabLabel Copy.castTabTip
-        , el [ Element.alignRight ] (tool GuideTab Copy.guideTabLabel Copy.guideTabTip)
-        ]
+        (List.map sheetTab gs.characters
+            ++ [ separator
+               , el [ Element.alignRight ] (tool WorldTab Copy.castTabLabel "" Copy.castTabTip)
+               , el [ Element.alignRight ] (tool GuideTab Copy.guideTabLabel "" Copy.guideTabTip)
+               ]
+        )
 
 
 toolBody : ViewContext -> Model -> GameState -> ToolTab -> Element Msg
 toolBody ctx model gs tab =
     case tab of
-        SheetTab ->
+        SheetTab slot ->
             View.Characters.view ctx
-                { selectedSlot = model.selectedSlot
+                { selectedSlot = slot
                 , aspectExamplesOpen = model.aspectExamplesOpen
                 , aspectEditing = model.aspectEditing
                 }
                 gs
 
-        CastTab ->
+        WorldTab ->
             if not ctx.facilitator && List.isEmpty gs.npcs && List.isEmpty gs.locations then
                 placeholder Copy.noCast
 
@@ -198,7 +249,7 @@ toolBody ctx model gs tab =
             View.Guide.view
 
 
-{-| The middle column: the context boons and banes and the past sessions,
+{-| The middle column (284px): the context boons and banes and the past sessions,
 scrolling on their own, with the Create field pinned at the foot of the list.
 -}
 contextPanel : ViewContext -> Model -> GameState -> Element Msg
@@ -213,7 +264,7 @@ contextPanel ctx model gs =
     in
     Element.column
         [ Element.height fill
-        , width fill
+        , width (Element.px 284)
         , Ui.shrinkable
         , Element.paddingEach { top = 8, right = 10, bottom = 8, left = 10 }
         , spacing Ui.sm
@@ -227,7 +278,8 @@ contextPanel ctx model gs =
         ]
 
 
-{-| The right column: the event log filling it, the composer beneath.
+{-| The right column, taking whatever width the two fixed columns leave: the
+event log filling it, the composer beneath.
 -}
 logPanel : ViewContext -> Model -> GameState -> Element Msg
 logPanel ctx model gs =

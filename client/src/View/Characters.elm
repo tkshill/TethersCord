@@ -1,7 +1,6 @@
 module View.Characters exposing (view)
 
-{-| The Sheet tool (roadmap section 27): a strip of character slots over the
-selected sheet — owner row, boons (as ☼ marks; the facilitator's Grant beside
+{-| A character's sheet, picked from the tool strip (roadmap 32.2) — owner row, boons (as ☼ marks; the facilitator's Grant beside
 them), and the fields, each a label and a hairline input.
 
 On the viewer's own sheet each written aspect is a split button (31.5): the
@@ -61,36 +60,12 @@ view ctx props gs =
                 [] ->
                     List.head gs.characters
     in
-    Ui.flat
-        [ tabStrip ctx.myId props.selectedSlot gs.characters
-        , case selected of
-            Just ch ->
-                characterSheet ctx props gs ch
+    case selected of
+        Just ch ->
+            characterSheet ctx props gs ch
 
-            Nothing ->
-                placeholder Copy.noCharacterSheets
-        ]
-
-
-{-| One tab per sheet, labelled by character name (or a slot number until one is
-set) with a "(you)" marker on the sheet the viewer holds.
--}
-tabStrip : Maybe String -> Int -> List CharacterSheet -> Element Msg
-tabStrip myId selectedSlot characters =
-    Element.wrappedRow [ spacing Ui.xs, width fill ]
-        (List.map
-            (\c -> Ui.tab (c.slot == selectedSlot) (tabLabel myId c) (SelectSlot c.slot))
-            characters
-        )
-
-
-tabLabel : Maybe String -> CharacterSheet -> String
-tabLabel myId ch =
-    if ch.ownerId /= Nothing && ch.ownerId == myId then
-        characterLabel ch ++ Copy.youMarker
-
-    else
-        characterLabel ch
+        Nothing ->
+            placeholder Copy.noCharacterSheets
 
 
 characterSheet : ViewContext -> Props -> GameState -> CharacterSheet -> Element Msg
