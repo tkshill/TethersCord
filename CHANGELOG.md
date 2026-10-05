@@ -8,7 +8,12 @@ version yet, so headings are dates.
 
 ## [Unreleased]
 
-### Changed
+## 2026-10-04
+
+Everything up to and including this deploy. Earlier deploys were not given
+their own headings, so their entries are gathered here too, newest first.
+
+### Changed (third deploy)
 
 - **Table v2 palette and type** (roadmap 32.1). The warm-paper palette gives
   way to the high-contrast one from the Table v2 handoff: white surfaces,
@@ -51,18 +56,17 @@ version yet, so headings are dates.
   five moves and their costs; and the four steps of a junction. The full
   glossary is still there behind "See all terms". The World tab (was Cast)
   is restyled to match.
+- **The roadmap closes Phase 2** with section 32. What Phase 2 left open
+  (section 25's last two items, 29.3, the section 30 playtest) moved into
+  the open list, which is renumbered `P3.x`, playtest first; `ROADMAP.md`
+  maps each old `P2.x` label to its new one.
 
-### Removed
+### Removed (third deploy)
 
 - **Condition is off the sheet and out of the glossary** (roadmap 32.4,
   32.7). It is retired from the UI and the copy until play shows it is
-  wanted (roadmap P2.14); the stored value and the wire field are
+  wanted (roadmap P3.10); the stored value and the wire field are
   untouched.
-
-## 2026-10-04
-
-Everything up to and including this deploy. Earlier deploys were not given
-their own headings, so their entries are gathered here too, newest first.
 
 ### Changed (second deploy)
 
