@@ -2,7 +2,7 @@ module View exposing (aspectFieldId, contextAspectFieldId, logDomId, view)
 
 {-| The Activity view (roadmap 27, mockup 2a; moves placed by 31.5): a one-line
 status strip (`View.TopBar`, the die ladder and the junction) over three equal
-columns — a tool panel on the left (a row of glyph tabs showing one tool at a
+columns — a tool panel on the left (a row of titled tabs showing one tool at a
 time: Sheet, Cast, Guide); the context boons and banes in the middle with the
 Create field pinned beneath; and, on the right, the event log with the composer
 pinned beneath it. Every move is made where its subject is: Highlight and
@@ -123,7 +123,7 @@ notes model =
         [ Element.column [ width fill, Element.paddingXY 10 4, spacing 2 ] lines ]
 
 
-{-| The left panel: the glyph tab strip and the selected tool's body
+{-| The left panel: the titled tab strip and the selected tool's body
 (scrolling on its own).
 -}
 toolPanel : ViewContext -> Model -> GameState -> Element Msg
@@ -151,10 +151,9 @@ toolPanel ctx model gs =
 toolStrip : ViewContext -> ToolTab -> GameState -> Element Msg
 toolStrip ctx selected gs =
     let
-        tool tab glyph label tip =
+        tool tab label tip =
             Ui.toolTab
-                { glyph = glyph
-                , label = label
+                { label = label
                 , tip = tip
                 , selected = selected == tab
                 , onPress = SelectTool tab
@@ -168,9 +167,9 @@ toolStrip ctx selected gs =
         , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
         , Border.color Ui.line
         ]
-        [ tool SheetTab "◆" Copy.sheetTabLabel Copy.sheetTabTip
-        , tool CastTab "☺" Copy.castTabLabel Copy.castTabTip
-        , el [ Element.alignRight ] (tool GuideTab "?" Copy.guideTabLabel Copy.guideTabTip)
+        [ tool SheetTab Copy.sheetTabLabel Copy.sheetTabTip
+        , tool CastTab Copy.castTabLabel Copy.castTabTip
+        , el [ Element.alignRight ] (tool GuideTab Copy.guideTabLabel Copy.guideTabTip)
         ]
 
 

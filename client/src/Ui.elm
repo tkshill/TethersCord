@@ -561,42 +561,28 @@ tab selected label msg =
         { onPress = Just msg, label = text label }
 
 
-{-| One glyph tab in the tool strip (mockup 2a). The selected tool shows its
-glyph and its name on a tinted chip; the others are a bare glyph, named by `tip`
-(a native tooltip).
+{-| One tab in the tool strip. Every tab shows its name; the selected one sits
+on a tinted chip in a heavier weight. `tip` (a native tooltip) says what the
+tool holds.
 -}
-toolTab : { glyph : String, label : String, tip : String, selected : Bool, onPress : msg } -> Element msg
+toolTab : { label : String, tip : String, selected : Bool, onPress : msg } -> Element msg
 toolTab config =
     Input.button
         ([ Element.htmlAttribute (Html.Attributes.title config.tip)
          , Border.rounded 4
-         , Font.color
-            (if config.selected then
-                ink
-
-             else
-                inkSoft
-            )
+         , Font.size 12
+         , paddingXY_ 8 3
          ]
             ++ (if config.selected then
-                    [ Background.color selectedWash, Font.size 12, Font.semiBold, paddingXY_ 8 3 ]
+                    [ Background.color selectedWash, Font.color ink, Font.semiBold ]
 
                 else
-                    [ width (Element.px 26)
-                    , paddingXY_ 0 3
-                    , Font.size 13
+                    [ Font.color inkSoft
                     , Element.mouseOver [ Background.color tint, Font.color ink ]
                     ]
                )
         )
-        { onPress = Just config.onPress
-        , label =
-            if config.selected then
-                text (config.glyph ++ " " ++ config.label)
-
-            else
-                el [ Element.centerX ] (text config.glyph)
-        }
+        { onPress = Just config.onPress, label = text config.label }
 
 
 {-| The run of ☼ marks for `n` boons: a character's boons, a context boon.

@@ -1884,18 +1884,20 @@ The left panel's tabs show only a glyph (`◆` / `☺` / `?`) until selected, so
 player has to hover or guess. Show every tab's title all the time and drop the
 glyphs.
 
-- [ ] `Ui.toolTab` renders `label` for every tab, selected or not; the selected
+- [x] `Ui.toolTab` renders `label` for every tab, selected or not; the selected
       tab keeps its wash and weight. Remove the `glyph` field and the fixed
-      26px unselected width.
-- [ ] Update the call site in `View.elm` and the `CLAUDE.md` description of
+      26px unselected width. Every tab now shares one size and padding, so
+      selecting one changes only its wash, colour and weight.
+- [x] Update the call site in `View.elm` and the `CLAUDE.md` description of
       the tab row.
 - [ ] Confirm the three titles (Sheet, Cast, Guide) fit on one line in the
       default panel width.
 
 ### Open questions
 
-- With labels always on, does the tab tooltip still earn its place, or can
-  `tip` go too?
+- [x] With labels always on, does the tab tooltip still earn its place, or can
+  `tip` go too? Kept: each tip says more than its title ("Cast & locations",
+  "How to play", "Your character, and the moves on its aspects").
 
 ## 29. Testing away from the live table — 29.1 and 29.2 done
 
