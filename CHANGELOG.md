@@ -27,6 +27,18 @@ version yet, so headings are dates.
   a "Roll d16" button, or an outlined chip while a roll is pending. Alter
   shows its cost (☼☼); the facilitator's step buttons sit either side of the
   die.
+- **The sheet as a page, not a form** (roadmap 32.4). The name is a heading
+  with the boons beside it (the facilitator's − / + after them), the
+  notable features an italic line beneath, and each aspect a bordered
+  block — the same shape the context aspects take in 32.5 — holding the
+  Complicate / Highlight halves on the player's own sheet. A pending roll
+  shows a note saying why the moves are locked.
+
+### Removed
+
+- **Condition is off the sheet** (roadmap 32.4). It is retired from the UI
+  and the copy until play shows it is wanted (roadmap P2.14); the stored
+  value and the wire field are untouched.
 
 ## 2026-10-04
 

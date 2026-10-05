@@ -2560,17 +2560,24 @@ Each step builds and passes `pnpm run build` on its own. One branch,
       `Ui.glyph` now lists Atkinson before the system symbol fonts, so it is
       safe on a label that mixes words and marks.
 
-#### 32.4 Sheet — `View/Characters.elm`
+#### 32.4 Sheet — `View/Characters.elm` — done
 
-- [ ] Header: name, boon marks, the facilitator's − / + on `FateDecrement` /
-      `FateIncrement`.
-- [ ] Notable features line, owner line (`Copy.ownerPlayedBy`) with Claim /
-      Release, the locked note.
-- [ ] Aspect blocks with the split button and ✎; "see examples" only while an
-      aspect is empty or being edited.
-- [ ] Stop rendering the Condition field (data and wire unchanged); remove
+- [x] Header: name, boon marks, the facilitator's − / + on `FateDecrement` /
+      `FateIncrement` (`Ui.squareButton`). On an editable sheet the name is
+      a field with no chrome.
+- [x] Notable features line, owner line (`Copy.ownerPlayedBy`) with Claim /
+      Release, the locked note. Two departures from the handoff: the
+      player's own sheet keeps a quiet "Your character · Release" line,
+      since Release has nowhere else to live; and the holder's name comes
+      from their latest message in the log (no wire change), falling back
+      to "Claimed".
+- [x] Aspect blocks (`Ui.aspectBlock`, replacing `Ui.splitButton`) with the
+      split button and ✎; an empty aspect, or one being edited, is its field
+      inside the block, with "see examples" beneath.
+- [x] Stop rendering the Condition field (data and wire unchanged); remove
       `Copy.conditionLabel`.
-- [ ] Notes.
+- [x] Notes. The placeholder is "Notes…", not the handoff's "Private
+      notes…": every viewer sees a sheet's notes.
 
 #### 32.5 Context column — `View.elm` + `View/ContextAspects.elm`
 

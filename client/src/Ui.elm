@@ -1,5 +1,6 @@
 module Ui exposing
     ( accent
+    , aspectBlock
     , baneMarks
     , banner
     , chip
@@ -46,8 +47,8 @@ module Ui exposing
     , clipX
     , sm
     , squareButton
+    , statement
     , speakerColor
-    , splitButton
     , tint
     , toolTab
     , withTip
@@ -745,21 +746,32 @@ pencil config =
     withTip config.tip (linkButton { onPress = config.onPress, label = "✎" })
 
 
-{-| A button split down the middle into two actions on one piece of text — a
-character aspect, whose left half Complicates and right half Highlights. Each
-half washes in its colour from its outer edge on hover or press and shows its
-label there (`client/index.html`, `.split-*`), so the pair reads by word as
-well as by red / green; on touch, with no hover, both halves keep a faint
-resting tint. A half with no `onPress` is off: no wash, no label, and `tip`
-says why.
+{-| One aspect, in the shape character aspects and context aspects share
+(roadmap 32, Table v2): a bordered block with a small uppercase label (and
+anything else on its meta row) over the statement.
+
+`split`, when given, lays two halves over the whole block — the left
+Complicates, the right Highlights on a character's aspect. Each half washes in
+its colour from its outer edge on hover or press and shows its label at the
+bottom (`client/index.html`, `.split-*`), so the pair reads by word as well as
+by red / green; on touch, with no hover, both halves keep a faint resting tint.
+A half with no `onPress` is off: no wash, no label, and `tip` says why. The
+block's foot grows to make room for the labels.
+
+`corner` (the ✎) sits in the top-right corner above the halves.
 -}
-splitButton :
-    { content : String
-    , left : { onPress : Maybe msg, label : String, tip : String }
-    , right : { onPress : Maybe msg, label : String, tip : String }
+aspectBlock :
+    { meta : List (Element msg)
+    , statement : Element msg
+    , corner : Maybe (Element msg)
+    , split :
+        Maybe
+            { left : { onPress : Maybe msg, label : String, tip : String }
+            , right : { onPress : Maybe msg, label : String, tip : String }
+            }
     }
     -> Element msg
-splitButton config =
+aspectBlock config =
     let
         half side tone half_ =
             Input.button
@@ -789,32 +801,83 @@ splitButton config =
 
                           else
                             Element.alignRight
-                        , Font.size 10
+                        , fontSize 10.5
                         , Font.semiBold
                         , Font.color tone
-                        , Element.paddingXY 6 2
+                        , glyph
+                        , Element.paddingEach { top = 0, right = 10, bottom = 5, left = 10 }
                         , class "split-label"
                         ]
                         (text half_.label)
                 }
+
+        halves =
+            case config.split of
+                Just split ->
+                    [ Element.inFront
+                        (Element.row [ width fill, height fill ]
+                            [ half "left" danger split.left, half "right" success split.right ]
+                        )
+                    ]
+
+                Nothing ->
+                    []
+
+        corner =
+            case config.corner of
+                Just c ->
+                    [ Element.inFront
+                        (el [ Element.alignRight, Element.alignTop, Element.paddingEach { top = 5, right = 6, bottom = 0, left = 0 } ] c)
+                    ]
+
+                Nothing ->
+                    []
     in
     el
-        [ width fill
-        , Border.width 1
-        , Border.color line
-        , Border.rounded 4
-        , Element.clip
-        , Element.inFront
-            (Element.row [ width fill, height fill ]
-                [ half "left" danger config.left, half "right" success config.right ]
-            )
-        ]
-        (Element.paragraph
-            [ Font.size 13
-            , Element.paddingEach { top = 4, right = 8, bottom = 15, left = 8 }
-            ]
-            [ text config.content ]
+        ([ width fill
+         , Border.width 1
+         , Border.color edge
+         , Border.rounded 7
+         , Background.color panel
+         , Element.clip
+         ]
+            ++ halves
+            ++ corner
         )
+        (Element.column
+            [ width fill
+            , spacing 3
+            , Element.paddingEach
+                { top = 8
+                , right = 11
+                , bottom =
+                    if config.split == Nothing then
+                        9
+
+                    else
+                        22
+                , left = 11
+                }
+            ]
+            [ Element.row [ width fill, spacing 5 ] config.meta
+            , config.statement
+            ]
+        )
+
+
+{-| An aspect or context statement: 15px, wrapping, at a reading line height.
+-}
+statement : List (Attribute msg) -> String -> Element msg
+statement attrs content =
+    Element.paragraph
+        ([ width fill
+         , Font.size 15
+         , Element.htmlAttribute (Html.Attributes.style "line-height" "1.35")
+         , wrapAnywhere
+         ]
+            ++ attrs
+        )
+        [ text content ]
 
 
 paddingXY_ : Int -> Int -> Attribute msg

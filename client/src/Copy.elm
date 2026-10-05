@@ -425,6 +425,13 @@ ownerMine =
     "Your character"
 
 
+{-| The owner line on a claimed sheet, naming the Discord user who holds it.
+-}
+ownerPlayedBy : String -> String
+ownerPlayedBy name =
+    "Played by " ++ name
+
+
 ownerRelease : String
 ownerRelease =
     "Release"
@@ -450,14 +457,38 @@ notableFeaturesLabel =
     "Notable features"
 
 
-conditionLabel : String
-conditionLabel =
-    "Condition"
+notableFeaturesPlaceholder : String
+notableFeaturesPlaceholder =
+    "Notable features…"
 
 
-boonsLabel : String
-boonsLabel =
-    "Boons"
+namePlaceholder : String
+namePlaceholder =
+    "Name…"
+
+
+notesLabel : String
+notesLabel =
+    "Notes"
+
+
+{-| Not "Private notes…" as the Table v2 handoff has it: every viewer sees a
+sheet's notes.
+-}
+notesPlaceholder : String
+notesPlaceholder =
+    "Notes…"
+
+
+{-| The tooltip on a character's boon marks.
+-}
+boonsTip : Int -> String
+boonsTip n =
+    if n == 1 then
+        "1 boon"
+
+    else
+        String.fromInt n ++ " boons"
 
 
 boonsNone : String
@@ -465,9 +496,14 @@ boonsNone =
     "None"
 
 
-grant : String
-grant =
-    "Grant"
+grantBoonTip : String
+grantBoonTip =
+    "Grant a boon"
+
+
+removeBoonTip : String
+removeBoonTip =
+    "Remove a boon"
 
 
 
