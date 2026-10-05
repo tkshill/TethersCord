@@ -2028,7 +2028,7 @@ the code can do.
       Complicate until the facilitator words it, or should the player word it
       when they make it?
 
-## 31. Junctions, the die ladder, and direct moves — done on `feat/31-junction`, not yet merged to `main`
+## 31. Junctions, the die ladder, and direct moves — done
 
 The stone pool goes. Every chance roll becomes a single die whose size moves up
 and down a ladder, the Overcome becomes the **Junction**, session boons and
