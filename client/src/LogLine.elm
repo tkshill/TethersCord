@@ -9,8 +9,9 @@ change (the roadmap 32 decision). A line it does not recognise is a plain
 event with no mark and no chip, so a new or reworded log line degrades to
 text rather than breaking.
 
-`LogLineTest` pins this against each line `logText` writes; a change to a
-line's wording there needs the matching change here.
+`LogLineTest` pins this against each line `logText` writes, and the Worker's
+`logLineParity` test checks every line it writes is one of `LogLineTest`'s
+cases; a change to a line's wording there needs the matching change here.
 -}
 
 import Outcome exposing (Outcome(..))

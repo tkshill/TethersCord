@@ -2603,6 +2603,9 @@ Each step builds and passes `pnpm run build` on its own. One branch,
       `logText` writes plus lines it does not recognise; it also says
       whether a line already names who acted, so the "· author" suffix is
       added only where it is not.
+      `worker/test/rules/logLineParity.test.ts` checks that every line
+      `logText` writes is one of `LogLineTest`'s cases, so rewording a log
+      line fails the Worker suite until the parser's test follows.
 - [x] Roll rows for each roll, reroll and Alter.
 - [x] The composer restyled; `View.Helpers.inputAttrs` takes the `edge`
       border.

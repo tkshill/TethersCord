@@ -1,7 +1,9 @@
 module LogLineTest exposing (suite)
 
 {-| `LogLine.parse` against each line the Worker's `logText`
-(`worker/src/rules/log.ts`) writes. A reworded line there fails here.
+(`worker/src/rules/log.ts`) writes. `worker/test/rules/logLineParity.test.ts`
+checks that every line `logText` writes is one of the strings below, so a
+reworded line there fails until a case here follows it.
 -}
 
 import Expect
@@ -72,6 +74,12 @@ cases =
       )
     , ( "Session started — Get the child to the coast"
       , event "Session started — Get the child to the coast" Nothing Nothing False
+      )
+    , ( "Session ended — Get the child to the coast"
+      , event "Session ended — Get the child to the coast" Nothing Nothing False
+      )
+    , ( "Goal updated — Get the child to the coast"
+      , event "Goal updated — Get the child to the coast" Nothing Nothing False
       )
     , ( "Junction — Halvard rolled: Flow — 11 on d16"
       , roll Flow 11 "d16" (Rolled "Halvard")
