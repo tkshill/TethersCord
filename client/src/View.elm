@@ -240,13 +240,13 @@ toolBody ctx model gs tab =
                 placeholder Copy.noCast
 
             else
-                Ui.flat
+                Element.column [ width fill, spacing 14 ]
                     [ View.Entities.view ctx Npc gs
                     , View.Entities.view ctx Location gs
                     ]
 
         GuideTab ->
-            View.Guide.view
+            View.Guide.view model.glossaryOpen gs.die
 
 
 {-| The middle column (284px): the context boons and banes and the past sessions,

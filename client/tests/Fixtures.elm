@@ -119,6 +119,7 @@ model =
     , gameStateAttempts = 0
     , timeZone = Time.utc
     , toolTab = SheetTab 0
+    , glossaryOpen = False
     }
 
 

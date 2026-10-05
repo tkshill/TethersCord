@@ -2614,13 +2614,16 @@ Each step builds and passes `pnpm run build` on its own. One branch,
   Rewording it in `logText` (the handoff shows "Context bane added: …")
   needs the matching change in `LogLine` and its test.
 
-#### 32.7 World and Guide — `View/Entities.elm`, `View/Guide.elm`
+#### 32.7 World and Guide — `View/Entities.elm`, `View/Guide.elm` — done
 
-- [ ] World: section labels, player rows, the facilitator's inputs restyled.
-- [ ] Guide: the die (paragraph, odds bars from `Copy.Terms.ladderOdds`,
-      legend), the moves, a Junction, then a "See all terms" link to the
-      full glossary.
-- [ ] Remove the `condition` term from `Copy.Terms`; add "Condition" to
+- [x] World: section labels, player rows, the facilitator's inputs restyled.
+- [x] Guide: the die (paragraph, odds bars, legend), the moves, a junction,
+      then a "See all terms" link to the full glossary (`Model.glossaryOpen`,
+      `ToggleGlossary`). `Copy.Terms.ladderOdds` gains each rung's face
+      counts, which size the bars; `CopyTermsTest` checks they add up to
+      the die and follow `RULES.md`'s bands. The Guide's own wording is in
+      `Copy` (`guide*`).
+- [x] Remove the `condition` term from `Copy.Terms`; add "Condition" to
       `CopyTermsTest`'s retired words.
 
 #### 32.8 Docs and the staging check

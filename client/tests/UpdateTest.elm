@@ -303,6 +303,14 @@ suite =
                 \_ ->
                     Main.update (SelectTool (SheetTab 2)) ready
                         |> Expect.equal ( { ready | toolTab = SheetTab 2 }, Effect.None )
+            , test "ToggleGlossary opens and shuts the Guide's full glossary, no effect" <|
+                \_ ->
+                    let
+                        opened =
+                            Main.update ToggleGlossary ready |> Tuple.first
+                    in
+                    ( opened.glossaryOpen, Main.update ToggleGlossary opened |> Tuple.first |> .glossaryOpen )
+                        |> Expect.equal ( True, False )
             , test "SelectTool switches the left panel's tool, no effect" <|
                 \_ ->
                     Main.update (SelectTool WorldTab) ready

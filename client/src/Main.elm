@@ -121,6 +121,7 @@ init flags =
       , gameStateAttempts = 0
       , timeZone = Time.utc
       , toolTab = SheetTab 0
+      , glossaryOpen = False
       }
     , Effect.Batch [ Effect.Authorize, Effect.GetTimeZone ]
     )
@@ -478,6 +479,9 @@ update msg model =
 
         ToggleSessionControls ->
             ( { model | sessionControlsExpanded = not model.sessionControlsExpanded }, Effect.None )
+
+        ToggleGlossary ->
+            ( { model | glossaryOpen = not model.glossaryOpen }, Effect.None )
 
         SelectTool tab ->
             -- Leaving a tab flushes any unsaved edits on the sheet behind it.

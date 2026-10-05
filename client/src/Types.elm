@@ -397,6 +397,10 @@ type alias Model =
     -- `SelectTool`; the event log and composer are not tools — they own the
     -- right column outright.
     , toolTab : ToolTab
+
+    -- Whether the Guide's full glossary is open under its "See all terms"
+    -- link (roadmap 32.7). Local view state, toggled by `ToggleGlossary`.
+    , glossaryOpen : Bool
     }
 
 
@@ -470,6 +474,7 @@ type Msg
     | DismissError
     | ToggleSessionControls
     | SelectTool ToolTab
+    | ToggleGlossary
     | ToggleAspectExamples Int Aspect
     | EditAspect Int Aspect
     | EditContextAspect String

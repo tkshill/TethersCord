@@ -636,6 +636,89 @@ contextTabLabel =
     "Context"
 
 
+-- GUIDE (View/Guide.elm)
+
+
+guideDieTitle : String
+guideDieTitle =
+    "The die"
+
+
+guideDieText : String
+guideDieText =
+    "One die decides each junction. Boons step it up, banes step it down. It returns to the d10 when a junction is accepted."
+
+
+{-| An odds bar's tooltip: "d16: Critical Friction 12.5% · Friction 12.5% · …".
+-}
+guideOddsTip : { a | die : String, criticalFriction : String, friction : String, flow : String, criticalFlow : String } -> String
+guideOddsTip o =
+    o.die
+        ++ ": Critical Friction "
+        ++ o.criticalFriction
+        ++ " · Friction "
+        ++ o.friction
+        ++ " · Flow "
+        ++ o.flow
+        ++ " · Critical Flow "
+        ++ o.criticalFlow
+
+
+{-| The odds bars' legend, Friction first as the bars run.
+-}
+guideLegend : { criticalFriction : String, friction : String, flow : String, criticalFlow : String }
+guideLegend =
+    { criticalFriction = "Critical Friction · 1–2"
+    , friction = "Friction · 3–4"
+    , flow = "Flow · 5 and up"
+    , criticalFlow = "Critical Flow · top two"
+    }
+
+
+guideMovesTitle : String
+guideMovesTitle =
+    "Moves"
+
+
+{-| The Guide's moves: name, what it does, its cost as marks, and the cost in
+words for the tooltip.
+-}
+guideMoves : List { name : String, effect : String, cost : String, costTip : String }
+guideMoves =
+    [ { name = "Highlight", effect = "Make one of your aspects matter. The die steps up.", cost = "☼", costTip = "1 boon" }
+    , { name = "Highlight Context", effect = "Use a context aspect once. Boon steps up, bane steps down.", cost = "free", costTip = "Free" }
+    , { name = "Complicate", effect = "Your aspect drags you into trouble. Gain two boons; a bane appears.", cost = "+☼☼", costTip = "Gain 2 boons" }
+    , { name = "Create", effect = "Make something true about the scene, a context boon in your words.", cost = "☼", costTip = "1 boon" }
+    , { name = "Alter", effect = "After a roll, reroll on the same die. Once per junction.", cost = "☼☼", costTip = "2 boons" }
+    ]
+
+
+guideJunctionTitle : String
+guideJunctionTitle =
+    "A junction"
+
+
+{-| The four steps of a junction: a bold lead word, then the rest.
+-}
+guideJunctionSteps : List ( String, String )
+guideJunctionSteps =
+    [ ( "Prepare.", "Make moves and play the scene. Moves can be undone." )
+    , ( "Roll.", "Anyone rolls the die. Moves lock." )
+    , ( "Alter.", "The only move left after the roll." )
+    , ( "Resolve.", "The facilitator accepts or rejects. Accepting resets to d10." )
+    ]
+
+
+guideAllTermsShow : String
+guideAllTermsShow =
+    "See all terms"
+
+
+guideAllTermsHide : String
+guideAllTermsHide =
+    "Hide the terms"
+
+
 guideTabLabel : String
 guideTabLabel =
     "Guide"

@@ -46,12 +46,18 @@ version yet, so headings are dates.
   with its outcome in colour. Chat is set larger, and the day dividers
   read "4 OCT". The marks and chips are read from the stored line text, so
   no stored message changed.
+- **A shorter Guide** (roadmap 32.7). The Guide leads with what a player
+  needs at the table: the die, with each rung's odds as a coloured bar; the
+  five moves and their costs; and the four steps of a junction. The full
+  glossary is still there behind "See all terms". The World tab (was Cast)
+  is restyled to match.
 
 ### Removed
 
-- **Condition is off the sheet** (roadmap 32.4). It is retired from the UI
-  and the copy until play shows it is wanted (roadmap P2.14); the stored
-  value and the wire field are untouched.
+- **Condition is off the sheet and out of the glossary** (roadmap 32.4,
+  32.7). It is retired from the UI and the copy until play shows it is
+  wanted (roadmap P2.14); the stored value and the wire field are
+  untouched.
 
 ## 2026-10-04
 
