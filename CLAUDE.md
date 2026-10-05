@@ -29,8 +29,9 @@ Local dev also needs `cp .dev.vars.example .dev.vars` (fill in `DISCORD_CLIENT_S
 
 1. `pnpm run db:migrate:staging` if the change adds a migration.
 2. `pnpm run deploy:staging`.
-3. Launch TethersCordDev in `#test-app` and try the change: login, a Junction roll and a move at least.
-4. `pnpm run db:migrate:remote` if needed, then `pnpm run deploy` (production, only when asked).
+3. Check the dev application's URL mapping serves staging: `curl -s https://1556461067792810085.discordsays.com/ | grep DISCORD_CLIENT_ID` must print `1556461067792810085`. Production's id (`1540421919982231692`) means the mapping (Developer Portal → TethersCordDev → Activities → URL Mappings, root `/`) points at the production Worker; it must target `tetherscord-staging.tkshillinz.workers.dev`. A wrong mapping shows as a blank Activity, because the SDK handshake never completes with the other application's id.
+4. Launch TethersCordDev in `#test-app` and try the change: login, a Junction roll and a move at least.
+5. `pnpm run db:migrate:remote` if needed, then `pnpm run deploy` (production, only when asked).
 
 A staging build leaves `client/dist` carrying the dev application's id; `pnpm run dev` and `pnpm run deploy` rebuild first, so only serving `dist` without a rebuild would notice.
 
