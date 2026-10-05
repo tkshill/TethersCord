@@ -45,7 +45,28 @@ rollResult outcome face =
     outcome ++ " · " ++ String.fromInt face
 
 
-{-| The current rung's tooltip while it is the roll button.
+{-| The status strip's roll button.
+-}
+rollButton : String -> String
+rollButton die =
+    "Roll " ++ die
+
+
+{-| The label before the running goal in the status strip.
+-}
+goalLabel : String
+goalLabel =
+    "Goal"
+
+
+{-| The rung bars' tooltip: the whole ladder and where the die sits on it.
+-}
+ladderTip : List String -> String -> String
+ladderTip rungs current =
+    "The ladder: " ++ String.join " · " rungs ++ ". The die is at " ++ current ++ "."
+
+
+{-| The roll button's tooltip.
 -}
 rollTip : String -> String
 rollTip die =
@@ -256,9 +277,11 @@ createButton =
     "Create"
 
 
+{-| The player's Alter, its cost shown as marks.
+-}
 alterButton : String
 alterButton =
-    "Alter"
+    "Alter " ++ String.repeat alterCost "☼"
 
 
 alterNeedsBoons : String

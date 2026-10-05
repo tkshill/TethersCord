@@ -2,11 +2,13 @@ module Ui exposing
     ( accent
     , baneMarks
     , banner
+    , chip
     , boonMarks
     , class
     , confirmButton
     , accentSoft
     , danger
+    , dangerGhostButton
     , dangerSoft
     , divider
     , edge
@@ -35,6 +37,7 @@ module Ui exposing
     , pencil
     , press
     , primaryButton
+    , rollButton
     , sans
     , scrollArea
     , sectionTitle
@@ -42,6 +45,7 @@ module Ui exposing
     , shrinkableWidth
     , clipX
     , sm
+    , squareButton
     , speakerColor
     , splitButton
     , tint
@@ -292,19 +296,22 @@ mono =
 
 
 {-| The marks (☼ ☽ ↑ ↓). The Noto faces come first because Apple Symbols draws
-☼ as a thin ring that reads as "empty"; each covers only the marks it is
-declared for in `client/index.html`, so anything else falls through to `sans`.
+☼ as a thin ring that reads as "empty". Each covers only the marks it is
+declared for in `client/index.html`, and Atkinson Hyperlegible has none of
+them, so the stack is safe on a label that mixes words and marks ("Alter ☼☼"):
+the words fall through to Atkinson, and a mark whose Noto file failed to load
+still finds Segoe UI Symbol or DejaVu Sans before the system fallback.
 -}
 glyph : Attribute msg
 glyph =
     Font.family
-        ([ Font.typeface "Noto Sans Symbols 2"
-         , Font.typeface "Noto Sans Symbols"
-         , Font.typeface "Segoe UI Symbol"
-         , Font.typeface "DejaVu Sans"
-         ]
-            ++ sans
-        )
+        [ Font.typeface "Noto Sans Symbols 2"
+        , Font.typeface "Noto Sans Symbols"
+        , Font.typeface "Atkinson Hyperlegible"
+        , Font.typeface "Segoe UI Symbol"
+        , Font.typeface "DejaVu Sans"
+        , Font.sansSerif
+        ]
 
 
 {-| A font size in pixels that need not be whole (12.5px tabs, 10.5px meta);
@@ -516,11 +523,95 @@ primaryButton config =
         { onPress = config.onPress, label = text config.label }
 
 
+{-| The status strip's roll button: the primary style a size up.
+-}
+rollButton : { onPress : Maybe msg, label : String } -> Element msg
+rollButton config =
+    Input.button
+        [ Background.color accent
+        , Font.color accentText
+        , fontSize 12.5
+        , Font.semiBold
+        , paddingXY_ 12 5
+        , Border.rounded 5
+        , Element.mouseOver [ Background.color ink ]
+        ]
+        { onPress = config.onPress, label = text config.label }
+
+
+{-| A small bordered square holding one glyph — the strip's `‹` `›`, the
+Sheet's boon − / +. With no `onPress` it is muted and does not light up.
+-}
+squareButton :
+    { onPress : Maybe msg
+    , label : String
+    , tip : String
+    , width : Int
+    , height : Int
+    , radius : Int
+    , size : Int
+    }
+    -> Element msg
+squareButton config =
+    Input.button
+        ([ width (Element.px config.width)
+         , height (Element.px config.height)
+         , Background.color panel
+         , Border.width 1
+         , Border.color edge
+         , Border.rounded config.radius
+         , Font.size config.size
+         , Element.htmlAttribute (Html.Attributes.title config.tip)
+         ]
+            ++ (case config.onPress of
+                    Just _ ->
+                        [ Font.color ink
+                        , Element.mouseOver [ Border.color accent, Font.color accent ]
+                        ]
+
+                    Nothing ->
+                        [ Font.color inkSoft ]
+               )
+        )
+        { onPress = config.onPress
+        , label = el [ Element.centerX, Element.centerY ] (text config.label)
+        }
+
+
+{-| An outlined label that presses nothing — the die while a roll is pending.
+-}
+chip : String -> String -> Element msg
+chip tip label =
+    el
+        [ fontSize 12.5
+        , Font.semiBold
+        , Element.paddingXY 10 4
+        , Border.width 1
+        , Border.color edge
+        , Border.rounded 5
+        , Element.htmlAttribute (Html.Attributes.title tip)
+        ]
+        (text label)
+
+
 {-| A bordered secondary button. With no `onPress` it is drawn muted and does
 not light up on hover, so an unavailable control reads as one.
 -}
 ghostButton : { onPress : Maybe msg, label : String } -> Element msg
-ghostButton config =
+ghostButton =
+    ghostButtonHovering accent
+
+
+{-| A ghost button for a discarding action (Reject): it lights up in the
+danger tone instead of the accent.
+-}
+dangerGhostButton : { onPress : Maybe msg, label : String } -> Element msg
+dangerGhostButton =
+    ghostButtonHovering danger
+
+
+ghostButtonHovering : Color -> { onPress : Maybe msg, label : String } -> Element msg
+ghostButtonHovering hover config =
     Input.button
         ([ Background.color panel
          , Font.size 12
@@ -532,7 +623,7 @@ ghostButton config =
             ++ (case config.onPress of
                     Just _ ->
                         [ Font.color ink
-                        , Element.mouseOver [ Border.color accent, Font.color accent ]
+                        , Element.mouseOver [ Border.color hover, Font.color hover ]
                         ]
 
                     Nothing ->

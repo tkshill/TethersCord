@@ -2549,12 +2549,16 @@ Each step builds and passes `pnpm run build` on its own. One branch,
       a separator, then World and Guide at the right.
 - [x] `Copy.castTabLabel` → "World", `castTabTip` → "NPCs & locations".
 
-#### 32.3 Status strip — `View/TopBar.elm`
+#### 32.3 Status strip — `View/TopBar.elm` — done
 
-- [ ] "GOAL" label and goal text (with the facilitator's `▾`).
-- [ ] Rung bars with per-bar tooltips and the group tooltip.
-- [ ] "Roll d16" primary button (`Copy.rollButton`), the pending-roll chip,
-      the result, Alter (cost as ☼☼) or Reroll / Reject / Accept, step buttons.
+- [x] "GOAL" label and goal text (with the facilitator's `▾`).
+- [x] Rung bars with per-bar tooltips and the group tooltip
+      (`Copy.ladderTip`).
+- [x] "Roll d16" (`Copy.rollButton`, `Ui.rollButton`), the pending-roll chip
+      (`Ui.chip`), the result, Alter (cost as ☼☼) or Reroll / Reject
+      (`Ui.dangerGhostButton`) / Accept, step buttons (`Ui.squareButton`).
+      `Ui.glyph` now lists Atkinson before the system symbol fonts, so it is
+      safe on a label that mixes words and marks.
 
 #### 32.4 Sheet — `View/Characters.elm`
 

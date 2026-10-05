@@ -22,6 +22,11 @@ version yet, so headings are dates.
   the left panel has a single selected item, and the player's own sheet
   opens first. Cast is renamed World. The tool panel is 316px and the
   context column 284px; the log takes the rest of the width.
+- **A compact status strip** (roadmap 32.3). The `d6 … d20` labels become
+  six rising rung bars, the current die in the accent, and the die itself is
+  a "Roll d16" button, or an outlined chip while a roll is pending. Alter
+  shows its cost (☼☼); the facilitator's step buttons sit either side of the
+  die.
 
 ## 2026-10-04
 
