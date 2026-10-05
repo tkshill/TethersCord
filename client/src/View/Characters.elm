@@ -113,7 +113,7 @@ characterSheet ctx props gs ch =
                 aspectInput editable props.aspectExamplesOpen ch aspect fieldTag value
     in
     Element.column [ spacing Ui.md, width fill ]
-        [ ownerRow facilitator mine ch
+        [ ownerRow mine ch
         , boonsBlock facilitator ch
         , field editable ch NameField "" "Name" ch.name
         , field editable ch NotableFeaturesField "" Copy.notableFeaturesLabel ch.notableFeatures
@@ -255,11 +255,11 @@ exampleRow example =
         [ text ("· " ++ example) ]
 
 
-{-| Who holds this sheet, and the claim / release control. Players claim an
-unclaimed sheet; the owner (or facilitator) can release it.
+{-| Who holds this sheet, and the claim / release control. Anyone, the
+facilitator included, can claim an unclaimed sheet; the owner can release it.
 -}
-ownerRow : Bool -> Bool -> CharacterSheet -> Element Msg
-ownerRow facilitator mine ch =
+ownerRow : Bool -> CharacterSheet -> Element Msg
+ownerRow mine ch =
     let
         ( label, action ) =
             if mine then
@@ -269,11 +269,7 @@ ownerRow facilitator mine ch =
 
             else if ch.ownerId == Nothing then
                 ( Copy.ownerUnclaimed
-                , if facilitator then
-                    Nothing
-
-                  else
-                    Just (Ui.ghostButton { onPress = Just (ClaimSlot ch.slot), label = Copy.ownerClaim })
+                , Just (Ui.ghostButton { onPress = Just (ClaimSlot ch.slot), label = Copy.ownerClaim })
                 )
 
             else
