@@ -21,6 +21,7 @@ import Element.Font as Font
 import Element.Input
 import Element.Lazy
 import Format
+import Html
 import Html.Attributes
 import LogLine
 import MoveRecord exposing (MoveRecord)
@@ -276,7 +277,13 @@ eventLine undoMoveId msg event =
                                     , Element.Border.color Ui.line
                                     , Element.Border.rounded 3
                                     ]
-                                    (text (from ++ " → " ++ to))
+                                    -- One unit: the line around it wraps, the chip never does.
+                                    -- A raw span, since elm-ui's own text node resets white-space.
+                                    (Element.html
+                                        (Html.span [ Html.Attributes.style "white-space" "nowrap" ]
+                                            [ Html.text (from ++ " → " ++ to) ]
+                                        )
+                                    )
                                 )
                             ]
 
