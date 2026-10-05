@@ -13,6 +13,13 @@ version yet, so headings are dates.
 Everything up to and including this deploy. Earlier deploys were not given
 their own headings, so their entries are gathered here too, newest first.
 
+### Changed (second deploy)
+
+- **Tool tabs always show their titles** (roadmap 28.2). The left panel's
+  tabs read Sheet, Cast and Guide whether selected or not, in place of the
+  `◆` / `☺` / `?` glyphs that showed a name only once picked. The selected
+  tab keeps its tinted chip and heavier weight; the tooltips stay.
+
 ### Added
 
 - **A staging deployment** (roadmap 29.2).
