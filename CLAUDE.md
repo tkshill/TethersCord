@@ -23,7 +23,16 @@ All scripts live in the root `package.json`; run them with pnpm from the repo ro
 
 Local dev also needs `cp .dev.vars.example .dev.vars` (fill in `DISCORD_CLIENT_SECRET`) and one `pnpm run db:migrate:local`.
 
-**Try things in `#test-app`, not the campaign channel.** The table id is `guildId-channelId`, so launching the Activity in the `#test-app` channel gives its own `GameTable` and its own D1 rows: test rolls, chat and sheets stay out of the live log. It still runs the production Worker against the production D1, so it does not shield players from an untested deploy or migration (a staging Worker is roadmap 29.2).
+**Try things in `#test-app`, not the campaign channel.** The table id is `guildId-channelId`, so launching the Activity in the `#test-app` channel gives its own `GameTable` and its own D1 rows: test rolls, chat and sheets stay out of the live log.
+
+**Staging before production.** The TethersCordDev Discord application (id `1556461067792810085`) maps to the `tetherscord-staging` Worker (https://tetherscord-staging.tkshillinz.workers.dev), which has its own D1 (`ttrpg-activity-db-staging`), its own Durable Objects, its own `DISCORD_CLIENT_SECRET`, and no cron (`env.staging` in `wrangler.jsonc`). Ship a change in this order:
+
+1. `pnpm run db:migrate:staging` if the change adds a migration.
+2. `pnpm run deploy:staging`.
+3. Launch TethersCordDev in `#test-app` and try the change: login, a Junction roll and a move at least.
+4. `pnpm run db:migrate:remote` if needed, then `pnpm run deploy` (production, only when asked).
+
+A staging build leaves `client/dist` carrying the dev application's id; `pnpm run dev` and `pnpm run deploy` rebuild first, so only serving `dist` without a rebuild would notice.
 
 Quick Elm compile check without the full bundle, from `client/`: `../node_modules/elm/bin/elm make src/Main.elm --output /dev/null`.
 

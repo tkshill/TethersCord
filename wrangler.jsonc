@@ -77,7 +77,7 @@
       "vars": {
         // TethersCordDev's application id (Developer Portal → General
         // Information → Application ID).
-        "DISCORD_CLIENT_ID": "FILL_IN_TETHERSCORDDEV_APPLICATION_ID",
+        "DISCORD_CLIENT_ID": "1556461067792810085",
         "BOOTSTRAP_FACILITATOR_ID": "835912979517407242",
       },
       // DISCORD_CLIENT_SECRET: `wrangler secret put DISCORD_CLIENT_SECRET --env
@@ -87,7 +87,7 @@
           "binding": "DB",
           "database_name": "ttrpg-activity-db-staging",
           // From `wrangler d1 create ttrpg-activity-db-staging`.
-          "database_id": "FILL_IN_STAGING_DATABASE_ID",
+          "database_id": "4fa7bf60-b225-4dc2-a34f-72ef486ff608",
           "migrations_dir": "worker/migrations",
         },
       ],
