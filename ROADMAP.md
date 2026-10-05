@@ -8,15 +8,16 @@ against.
 
 **Phase 1** (sections 1–16, 19, 21, 22) is shipped — each section is the record
 of what landed and the decisions taken along the way. **Phase 2** (sections
-23–31) is the current plan: section 23 was a deliberate simplification for the
+23–32) is the current plan: section 23 was a deliberate simplification for the
 testing phase, moving stone and resource management onto the facilitator by hand
 and rebuilding the view as three viewport-sized columns (section 24 then made it
 two panels); section 26 gave the players their moves back and restored the
 Overcome roll in a simpler form, and `RULES.md` states the resulting rules;
 section 27 reworked the UI to the minimalist mockup; section 31 replaces the
 stone pool with a die ladder, renames the Overcome the Junction, and turns moves
-into direct actions the facilitator can undo. Sections 23, 24, 26 and 27 are
-shipped; 25 and 28–31 are open. **Phase 3**, at the end,
+into direct actions the facilitator can undo; section 32 is the high-contrast
+visual pass from the Table v2 design handoff. Sections 23, 24, 26 and 27 are
+shipped; 25 and 28–32 are open. **Phase 3**, at the end,
 collects everything else still open, moved out of the Phase 1 sections so the
 outstanding-but-not-next work sits in one list — it kept its original `P2.x`
 item labels since they're referenced from `CLAUDE.md` and commit messages, so
@@ -2430,13 +2431,178 @@ shape (ADR 0003).
 - **Stale clients.** A client open across the deploy fails to decode the new
   state. Is a "reload the Activity" note on a decode failure worth adding?
 
+## 32. Table v2 — the high-contrast visual pass — planned
+
+A design handoff from the design project (*Table v2*, High contrast): one
+palette and type system, larger reading type, and one shared look for
+character aspects and context aspects. The layout keeps its shape (a status
+strip over tool panel · context · log). Game rules and behaviour are unchanged
+(`RULES.md`, ADR 0001 / 0002); the only state change is the tool strip.
+
+The handoff is high fidelity: its colours, type, spacing, radii and copy are
+final, aimed at a 1000×560 frame (a Discord Activity on a 13" laptop). Its
+HTML is a reference to recreate in elm-ui through `Ui.elm`, `Copy.elm` and
+`View/*`, not code to ship. Ignore its `theme` and `marks` tweaks: ship High
+contrast with ☼ / ☽.
+
+What changes, in short:
+
+- **Palette and type.** New values for every `Ui.elm` colour, plus `edge`
+  (borders on blocks, buttons and inputs), `accentSoft` and `dangerSoft` (the
+  Guide's odds bars). Atkinson Hyperlegible replaces Inter; IBM Plex Mono for
+  timestamps, die chips and odds labels; Noto Sans Symbols 2 first in the
+  glyph stack, because Apple Symbols draws ☼ as a thin ring that reads as
+  "empty". Statement text (aspects, context, chat, goal) goes to 15px. No
+  shadows.
+- **Frame.** Fixed column widths: tool panel 316px, context 284px, the log
+  takes the rest. This replaces the three equal columns.
+- **Status strip.** The `d6 … d20` labels become six rung bars; the roll
+  button reads "Roll d16"; a pending roll shows as a `d16` chip with the
+  result and the Junction controls. The facilitator's `‹` `›` and the goal's
+  `▾` stay.
+- **Tool strip.** The character slot tabs and the tools merge into one strip,
+  `[Wren you] Halvard Mara | World Guide`. Cast is renamed World.
+- **Sheet.** Name at 22px with the boon marks beside it (and the
+  facilitator's − / +, replacing the Grant row); Notable features as an
+  inline italic line; an owner line ("Played by sam") with Claim / Release;
+  each aspect a bordered block holding the split button; Notes as a
+  minimal textarea. Condition is retired from the UI and the copy (see
+  Decisions).
+- **Context column.** A header with "4 open · 1 consumed". Each aspect is a
+  block in the sheet's style; a consumed one is dashed and struck through.
+  Create / Add becomes a larger dashed entry box, with Boon / Bane pills for
+  the facilitator.
+- **Log.** Event lines lose the italic and the left border and gain a mark
+  column (☼ ☽ ↑ ↓) and a `d10 → d12` step chip. Each roll, reroll and Alter
+  gets a tinted roll row.
+- **Guide.** Rebuilt around three parts: odds bars per rung with a legend,
+  the five moves with their costs, and the four steps of a Junction. The
+  whole glossary moves behind a "See all terms" link; every term stays a
+  tooltip where it is used.
+
+### Decisions (2026-10-04)
+
+- **The Guide keeps the glossary behind "See all terms".** The three new
+  parts lead; the link opens the full `Copy/Terms.elm` list as it renders
+  today. `Copy/Terms.elm` stays the in-app glossary, so `RULES.md` needs no
+  change on this point.
+- **Condition is retired from the UI and every player-facing string.** The
+  sheet stops rendering the field; `Copy.conditionLabel` and the
+  `Copy.Terms` `condition` term go. The data and the wire format stay
+  (`characters.condition` and its decode are untouched), so nothing is lost.
+  `RULES.md` and `CONTEXT.md` say Condition is not part of the game at
+  present, the way they already treat Aspect Banes. Whether it returns is a
+  design question for later (P2.14).
+- **Log marks and step chips come from the stored text, no migration.** A
+  message is stored text plus `kind`. The die change is already in the text
+  as the `— d10 → d12` trailer (`dieChange` in `rules/log.ts`), and the event
+  is named at the start of the line. One client function reads the mark and
+  the die change out of an event line, tested against the lines `logText`
+  writes. `MoveRecord`s close once a Junction is rolled, so they cannot mark
+  older lines; the text can. A line it does not recognise renders with no
+  mark and no chip. If parsing proves brittle, storing the event's kind and
+  die change on the message (a migration) is the fallback.
+- **Desktop only.** The fixed 316px + 284px columns target the 1000×560
+  frame. Phones and narrow windows are out of scope for section 32; a
+  narrow layout is its own design phase later (P2.15).
+
+### Work order
+
+Each step builds and passes `pnpm run build` on its own. One branch,
+`feat/32-table-v2`, merged once the staging check passes.
+
+#### 32.0 Settle the open questions and keep the handoff — docs only
+
+- [x] Decide the open questions (see Decisions).
+- [x] Keep the handoff in the repo (README and the four screenshots, not
+      the HTML reference or `support.js`) under `docs/design/table-v2/`, so
+      later work can check against it.
+
+#### 32.1 Tokens and fonts
+
+- [ ] Replace the palette in `Ui.elm`; add `edge`, `accentSoft`,
+      `dangerSoft`; the speaker colours.
+- [ ] Self-host Atkinson Hyperlegible (400, 700, 400 italic), IBM Plex Mono
+      (400, 500) and Noto Sans Symbols 2 in `client/public/fonts/` with
+      `@font-face` in `client/index.html`. Discord's Activity CSP blocks
+      Google Fonts. Drop Inter.
+- [ ] `Ui.sans`, `Ui.mono` and a glyph stack applied in `Ui.boonMarks` /
+      `Ui.baneMarks` and every mark cell.
+- [ ] The type scale, radii and the split-button washes in `client/index.html`.
+
+#### 32.2 Frame and tool strip
+
+- [ ] Fixed widths: tool panel `px 316`, context `px 284`, log `fill`.
+- [ ] `type ToolTab = SheetTab Int | WorldTab | GuideTab` in `Types.elm`,
+      replacing `toolTab` + `selectedSlot`. `SelectSlot` becomes
+      `SelectTool (SheetTab slot)`. Default: the viewer's own slot, else
+      slot 0. Update the `Main.update` tests.
+- [ ] One strip: slot tabs with a "you" suffix (the facilitator sees none),
+      a separator, then World and Guide at the right.
+- [ ] `Copy.castTabLabel` → "World", `castTabTip` → "NPCs & locations".
+
+#### 32.3 Status strip — `View/TopBar.elm`
+
+- [ ] "GOAL" label and goal text (with the facilitator's `▾`).
+- [ ] Rung bars with per-bar tooltips and the group tooltip.
+- [ ] "Roll d16" primary button (`Copy.rollButton`), the pending-roll chip,
+      the result, Alter (cost as ☼☼) or Reroll / Reject / Accept, step buttons.
+
+#### 32.4 Sheet — `View/Characters.elm`
+
+- [ ] Header: name, boon marks, the facilitator's − / + on `FateDecrement` /
+      `FateIncrement`.
+- [ ] Notable features line, owner line (`Copy.ownerPlayedBy`) with Claim /
+      Release, the locked note.
+- [ ] Aspect blocks with the split button and ✎; "see examples" only while an
+      aspect is empty or being edited.
+- [ ] Stop rendering the Condition field (data and wire unchanged); remove
+      `Copy.conditionLabel`.
+- [ ] Notes.
+
+#### 32.5 Context column — `View.elm` + `View/ContextAspects.elm`
+
+- [ ] Header with `Copy.contextCount`, replacing the `Ui.divider` title.
+- [ ] Open and consumed aspect blocks. The facilitator's ✎ / × cannot nest in
+      the row button: restructure the row or use `Element.inFront`.
+- [ ] The entry box: Create (`Copy.createCost`) for a player, the Boon / Bane
+      pills and "free" for the facilitator. Enter submits; newlines stripped.
+
+#### 32.6 Log — `View/Log.elm`
+
+- [ ] Chat lines: timestamp column, speaker name, 15px body.
+- [ ] Event lines: mark column, step chip, undo link. One parser over the
+      line text (see Decisions) with elm-tests over each event `logText`
+      writes, plus a line it does not recognise.
+- [ ] Roll rows for each roll, reroll and Alter.
+- [ ] The composer restyled.
+
+#### 32.7 World and Guide — `View/Entities.elm`, `View/Guide.elm`
+
+- [ ] World: section labels, player rows, the facilitator's inputs restyled.
+- [ ] Guide: the die (paragraph, odds bars from `Copy.Terms.ladderOdds`,
+      legend), the moves, a Junction, then a "See all terms" link to the
+      full glossary.
+- [ ] Remove the `condition` term from `Copy.Terms`; add "Condition" to
+      `CopyTermsTest`'s retired words.
+
+#### 32.8 Docs and the staging check
+
+- [ ] `CLAUDE.md` (the layout, `ToolTab`, `Ui.elm`'s palette and fonts, the
+      Guide, the log parser), `CHANGELOG.md`.
+- [ ] `RULES.md` and `CONTEXT.md`: Condition is not part of the game at
+      present.
+- [ ] Staging, in `#test-app`: the fonts and glyphs load in the Discord
+      webview on desktop; the 1000×560 frame; both roles in preparation and
+      with a roll pending.
+
 # Phase 3 — potential future plans
 
 Everything still open, moved out of the Phase 1 sections above so it sits in one
 list. Same conventions: each item is its own branch off `main` with a
 professional commit message, and `DESIGN_PRINCIPLES.md` is the yardstick. Items
 are roughly in value-over-effort order; the last two are explicitly not planned
-or not scheduled. The open Phase 2 sections above (25, 28–31) come first;
+or not scheduled. The open Phase 2 sections above (25, 28–32) come first;
 everything here is further out. An item that later work resolved or made moot
 says so in place rather than vanishing, since its label may be cited elsewhere.
 
@@ -2701,6 +2867,22 @@ section-24 `Msg`s and the draggable divider with its 280px minimum. No inline
       after all.
 
 ---
+
+## P2.14 — Does Condition come back? (from §32)
+
+Section 32 retired Condition from the UI and the copy; the
+`characters.condition` column and its wire field stay, unused. Decide in
+play whether a character needs one evolving sentence about strain. If it
+returns, it needs a place on the redesigned sheet, its glossary term back,
+and `RULES.md` / `CONTEXT.md`; if not, drop the column and the decode in a
+later migration.
+
+## P2.15 — A narrow layout for phones (from §32)
+
+Section 32 targets desktop: fixed 316px + 284px columns leave a phone no
+room for the log. A narrow layout (tabs or a stacked view instead of three
+columns) is its own design pass, starting from a design handoff rather than
+from section 32.
 
 ## Flushing test messages before the campaign
 
