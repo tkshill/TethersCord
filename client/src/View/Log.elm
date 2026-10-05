@@ -1,23 +1,31 @@
 module View.Log exposing (logDomId, view)
 
-{-| The event log (roadmap section 27, mockup 2a): the right panel's body — day
-dividers and one line per message, `time name text`, the name in the speaker's
-colour — with the "load earlier messages" affordance at the top and, for the
-facilitator, a confirm-gated Clear log. A move's line carries an "undo" link
-for the facilitator and for the player who made it, while the move is still
-open to undo (ADR 0002). Flat, not a card: the panel is the
-surface. The composer is pinned beneath it by `View`.
+{-| The event log (roadmap 32.6, Table v2): the right column's body — day
+dividers and one line per message — with the "load earlier messages"
+affordance at the top and, for the facilitator, a confirm-gated Clear log.
+
+A chat line is `time name text`, the name in the speaker's colour. An event
+line (read through `LogLine`) has a mark column (☼ ☽ ↑ ↓), its text in the soft
+ink, the die change as a `d10 → d12` chip, and — for the facilitator and the
+player who made it, while the move is still open to undo (ADR 0002) — an
+"undo". Each roll, reroll and Alter is a tinted row of its own. Flat, not a
+card: the column is the surface. The composer is pinned beneath it by `View`.
 -}
 
 import Copy
 import Dict exposing (Dict)
 import Element exposing (Element, el, fill, height, none, px, spacing, text, width)
+import Element.Background as Background
 import Element.Border
 import Element.Font as Font
+import Element.Input
 import Element.Lazy
 import Format
+import Html
 import Html.Attributes
+import LogLine
 import MoveRecord exposing (MoveRecord)
+import Outcome
 import Time
 import Types exposing (..)
 import Ui
@@ -62,8 +70,8 @@ view ctx props gs =
             Element.column
                 [ width fill
                 , height fill
-                , spacing 7
-                , Element.paddingXY 14 10
+                , spacing 9
+                , Element.paddingXY 16 12
                 , Element.scrollbarY
                 , Ui.clipX
                 , Ui.shrinkable
@@ -90,7 +98,7 @@ lazyLogBody zone who moves messages =
                 |> List.map (\m -> ( m.messageId, m.id ))
                 |> Dict.fromList
     in
-    Element.column [ width fill, spacing 7 ]
+    Element.column [ width fill, spacing 9 ]
         (logRows zone (speakerColors messages) undoable messages)
 
 
@@ -165,7 +173,7 @@ logRows zone colors undoable messages =
         (\msg ( lastDay, acc ) ->
             let
                 day =
-                    Format.date zone msg.createdAt
+                    Format.dayMonth zone msg.createdAt
 
                 row =
                     messageRow zone colors (Dict.get msg.id undoable) msg
@@ -187,52 +195,178 @@ messageRow zone colors undoMoveId msg =
     let
         nameColor =
             Dict.get msg.authorId colors |> Maybe.withDefault Ui.ink
+
+        time top =
+            el
+                [ Font.family Ui.mono
+                , Ui.fontSize 10.5
+                , Font.color Ui.inkSoft
+                , Element.alignTop
+                , Element.paddingEach { top = top, right = 0, bottom = 0, left = 0 }
+                , width (px 34)
+                ]
+                (text (Format.clock zone msg.createdAt))
     in
-    Element.row [ width fill, spacing 10 ]
-        [ el
-            [ Font.family Ui.mono
-            , Font.size 11
-            , Font.color Ui.inkSoft
-            , Element.alignTop
-            , Element.paddingEach { top = 1, right = 0, bottom = 0, left = 0 }
-            , width (px 38)
-            ]
-            (text (Format.clock zone msg.createdAt))
-        , case msg.kind of
-            Chat ->
-                Element.paragraph [ spacing 4, Font.size 13 ]
-                    [ el [ Font.semiBold, Font.color nameColor ] (text (msg.authorName ++ " "))
+    case msg.kind of
+        Chat ->
+            Element.row [ width fill, spacing 10 ]
+                [ time 3
+                , Element.paragraph [ width fill, Font.size 15, lineHeight 1.4, Ui.wrapAnywhere ]
+                    [ el [ Ui.fontSize 12.5, Font.semiBold, Font.color nameColor ] (text msg.authorName)
+                    , text " "
                     , text msg.content
                     ]
+                ]
 
-            Event ->
-                eventLine undoMoveId msg
-        ]
+        Event ->
+            case LogLine.parse msg.content of
+                LogLine.RollLine roll ->
+                    rollRow (time 2) roll
+
+                LogLine.EventLine event ->
+                    Element.row [ width fill, spacing 10 ]
+                        [ time 1, eventLine undoMoveId msg event ]
 
 
-{-| A line the table wrote rather than one someone typed: muted, italic, a
-little smaller, behind a hairline rule, so it reads as a record of play instead
-of speech. The author is named after the content, in parentheses, since most
-event lines already lead with what happened.
+{-| A line the table wrote rather than one someone typed: its mark in a column
+of its own, then the text in the soft ink, the die change set in a chip, and
+the undo while the move is open to the viewer. The author is added after the
+text unless the line already names who acted.
 -}
-eventLine : Maybe String -> Message -> Element Msg
-eventLine undoMoveId msg =
-    Element.paragraph
-        [ spacing 4
-        , Font.size 12
-        , Font.italic
-        , Font.color Ui.inkSoft
-        , Element.paddingEach { top = 0, right = 0, bottom = 0, left = 8 }
-        , Element.Border.widthEach { top = 0, right = 0, bottom = 0, left = 2 }
-        , Element.Border.color Ui.line
-        ]
-        [ text msg.content
-        , el [ Font.size 11 ] (text ("  · " ++ msg.authorName))
-        , case undoMoveId of
-            Just moveId ->
-                el [ Element.paddingEach { top = 0, right = 0, bottom = 0, left = 8 }, Font.italic ]
-                    (Ui.linkButton { onPress = Just (UndoMove moveId), label = Copy.undo })
+eventLine : Maybe String -> Message -> LogLine.Event -> Element Msg
+eventLine undoMoveId msg event =
+    let
+        mark =
+            case event.mark of
+                Just LogLine.BoonMark ->
+                    markCell Ui.accent "☼"
 
-            Nothing ->
-                none
+                Just LogLine.BaneMark ->
+                    markCell Ui.danger "☽"
+
+                Just LogLine.UpMark ->
+                    markCell Ui.accent "↑"
+
+                Just LogLine.DownMark ->
+                    markCell Ui.danger "↓"
+
+                Nothing ->
+                    markCell Ui.inkSoft ""
+
+        content =
+            if event.namesActor then
+                event.text
+
+            else
+                event.text ++ " · " ++ msg.authorName
+    in
+    Element.row [ width fill, spacing 10 ]
+        [ mark
+        , Element.paragraph [ width fill, Font.size 12, Font.color Ui.inkSoft, lineHeight 1.4, Ui.wrapAnywhere ]
+            (text content
+                :: (case event.step of
+                        Just ( from, to ) ->
+                            [ el
+                                [ Element.paddingEach { top = 0, right = 0, bottom = 0, left = 7 } ]
+                                (el
+                                    [ Font.family Ui.mono
+                                    , Ui.fontSize 10.5
+                                    , Font.color Ui.ink
+                                    , Element.paddingXY 5 0
+                                    , Element.Border.width 1
+                                    , Element.Border.color Ui.line
+                                    , Element.Border.rounded 3
+                                    ]
+                                    -- One unit: the line around it wraps, the chip never does.
+                                    -- A raw span, since elm-ui's own text node resets white-space.
+                                    (Element.html
+                                        (Html.span [ Html.Attributes.style "white-space" "nowrap" ]
+                                            [ Html.text (from ++ " → " ++ to) ]
+                                        )
+                                    )
+                                )
+                            ]
+
+                        Nothing ->
+                            []
+                   )
+                ++ (case undoMoveId of
+                        Just moveId ->
+                            [ el [ Element.paddingEach { top = 0, right = 0, bottom = 0, left = 7 } ]
+                                (Element.Input.button
+                                    [ Font.size 11
+                                    , Font.color Ui.inkSoft
+                                    , Font.underline
+                                    , Element.mouseOver [ Font.color Ui.accent ]
+                                    ]
+                                    { onPress = Just (UndoMove moveId), label = text Copy.undo }
+                                )
+                            ]
+
+                        Nothing ->
+                            []
+                   )
+            )
         ]
+
+
+markCell : Element.Color -> String -> Element msg
+markCell tone glyph =
+    el
+        [ width (px 13)
+        , Element.alignTop
+        , Ui.glyph
+        , Font.size 13
+        , Font.color tone
+        ]
+        (text glyph)
+
+
+{-| A roll, a reroll or an Alter: a tinted row with the outcome in its tone,
+the face on its die, and who made it.
+-}
+rollRow : Element Msg -> LogLine.Roll -> Element Msg
+rollRow time roll =
+    let
+        tone =
+            case roll.outcome of
+                Outcome.Flow ->
+                    Ui.accent
+
+                Outcome.CriticalFlow ->
+                    Ui.accent
+
+                _ ->
+                    Ui.danger
+
+        lead =
+            case roll.lead of
+                LogLine.Rolled name ->
+                    Copy.rolledBy name
+
+                LogLine.Rerolled ->
+                    Copy.rerolledLead
+
+                LogLine.Altered name ->
+                    Copy.alteredBy name
+    in
+    Element.row
+        [ spacing 10
+        , Background.color Ui.tint
+        , Element.Border.rounded 6
+        , Element.paddingXY 8 7
+        , Element.htmlAttribute (Html.Attributes.style "width" "calc(100% + 16px)")
+        , Element.htmlAttribute (Html.Attributes.style "margin" "2px -8px")
+        ]
+        [ time
+        , Element.wrappedRow [ width fill, Element.spacingXY 10 3, Element.centerY ]
+            [ el [ Ui.fontSize 13.5, Font.semiBold, Font.color tone ] (text (Outcome.label roll.outcome))
+            , el [ Font.family Ui.mono, Font.size 12 ] (text (String.fromInt roll.face ++ " on " ++ roll.die))
+            , el [ Ui.fontSize 11.5, Font.color Ui.inkSoft ] (text lead)
+            ]
+        ]
+
+
+lineHeight : Float -> Element.Attribute msg
+lineHeight value =
+    Element.htmlAttribute (Html.Attributes.style "line-height" (String.fromFloat value))

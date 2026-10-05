@@ -1,4 +1,4 @@
-module Copy.Terms exposing (Term, groupedTerms, ladderOdds, termShort, terms)
+module Copy.Terms exposing (Odds, Term, groupedTerms, ladderOdds, termShort, terms)
 
 {-| The game's vocabulary in one place: every term a player meets in the
 interface, each with a one-line `short` (used as a tooltip on the label where the
@@ -27,7 +27,7 @@ groupedTerms =
     [ ( "Roles", [ table, facilitator, player ] )
     , ( "The die", [ die, ladder, flow, friction, criticals ] )
     , ( "The Junction", [ junction, preparation ] )
-    , ( "Boons & aspects", [ boon, aspect, archetype, desire, quest, contextAspect, condition ] )
+    , ( "Boons & aspects", [ boon, aspect, archetype, desire, quest, contextAspect ] )
     , ( "Moves", [ highlight, highlightContext, complicate, create, alter, undo ] )
     , ( "The session", [ session, goal ] )
     ]
@@ -55,15 +55,28 @@ termShort name =
 Critical Friction, Friction, Flow, Critical Flow. Copy, not a calculation — the
 Worker reads every roll.
 -}
-ladderOdds : List { die : String, criticalFriction : String, friction : String, flow : String, criticalFlow : String }
+ladderOdds : List Odds
 ladderOdds =
-    [ { die = "d6", criticalFriction = "33%", friction = "33%", flow = "—", criticalFlow = "33%" }
-    , { die = "d8", criticalFriction = "25%", friction = "25%", flow = "25%", criticalFlow = "25%" }
-    , { die = "d10", criticalFriction = "20%", friction = "20%", flow = "40%", criticalFlow = "20%" }
-    , { die = "d12", criticalFriction = "17%", friction = "17%", flow = "50%", criticalFlow = "17%" }
-    , { die = "d16", criticalFriction = "12.5%", friction = "12.5%", flow = "62.5%", criticalFlow = "12.5%" }
-    , { die = "d20", criticalFriction = "10%", friction = "10%", flow = "70%", criticalFlow = "10%" }
+    [ { die = "d6", criticalFriction = "33%", friction = "33%", flow = "—", criticalFlow = "33%", faces = { criticalFriction = 2, friction = 2, flow = 0, criticalFlow = 2 } }
+    , { die = "d8", criticalFriction = "25%", friction = "25%", flow = "25%", criticalFlow = "25%", faces = { criticalFriction = 2, friction = 2, flow = 2, criticalFlow = 2 } }
+    , { die = "d10", criticalFriction = "20%", friction = "20%", flow = "40%", criticalFlow = "20%", faces = { criticalFriction = 2, friction = 2, flow = 4, criticalFlow = 2 } }
+    , { die = "d12", criticalFriction = "17%", friction = "17%", flow = "50%", criticalFlow = "17%", faces = { criticalFriction = 2, friction = 2, flow = 6, criticalFlow = 2 } }
+    , { die = "d16", criticalFriction = "12.5%", friction = "12.5%", flow = "62.5%", criticalFlow = "12.5%", faces = { criticalFriction = 2, friction = 2, flow = 10, criticalFlow = 2 } }
+    , { die = "d20", criticalFriction = "10%", friction = "10%", flow = "70%", criticalFlow = "10%", faces = { criticalFriction = 2, friction = 2, flow = 14, criticalFlow = 2 } }
     ]
+
+
+{-| One rung's odds: each outcome's chance as the Guide prints it, and how
+many faces read as it (the Guide's odds bars are sized by these).
+-}
+type alias Odds =
+    { die : String
+    , criticalFriction : String
+    , friction : String
+    , flow : String
+    , criticalFlow : String
+    , faces : { criticalFriction : Int, friction : Int, flow : Int, criticalFlow : Int }
+    }
 
 
 
@@ -223,15 +236,6 @@ contextAspect =
     , short = "Something true about the situation, owned by nobody: a context boon ☼ or a context bane ☽, with one use."
     , long =
         "An accepted Critical Flow adds a context boon and a Critical Friction a context bane; Create adds a boon and Complicate a bane; the facilitator can add either. Anyone may highlight one: a boon steps the die up, a bane steps it down, and it is consumed — it stays on the table, struck through, and cannot be used again. They stay until the facilitator removes them; ending a session does not clear them."
-    }
-
-
-condition : Term
-condition =
-    { term = "Condition"
-    , short = "One evolving sentence for what strain is doing to the character."
-    , long =
-        "Always emotional or identity-level, never a number. It is the whole harm model — no wounds, no death mechanic. Update it when the situation actually shifts."
     }
 
 

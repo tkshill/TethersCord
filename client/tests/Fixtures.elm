@@ -103,7 +103,6 @@ model =
     , dirtySlots = Set.empty
     , dirtyEntities = Set.empty
     , fieldSaveSeq = 0
-    , selectedSlot = 0
     , logAtBottom = True
     , newSessionGoal = ""
     , goalEdit = ""
@@ -119,7 +118,8 @@ model =
     , connection = Connected
     , gameStateAttempts = 0
     , timeZone = Time.utc
-    , toolTab = SheetTab
+    , toolTab = SheetTab 0
+    , glossaryOpen = False
     }
 
 

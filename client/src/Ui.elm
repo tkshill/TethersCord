@@ -1,16 +1,24 @@
 module Ui exposing
     ( accent
+    , aspectBlock
     , baneMarks
     , banner
+    , chip
     , boonMarks
     , class
     , confirmButton
+    , accentSoft
     , danger
+    , dangerGhostButton
+    , dangerSoft
     , divider
+    , edge
     , columnRule
     , errorNote
     , facilitatorTint
     , flat
+    , fontSize
+    , glyph
     , ghostButton
     , ink
     , inkSoft
@@ -21,6 +29,7 @@ module Ui exposing
     , mono
     , onBlur
     , onEnter
+    , onEnterSubmit
     , onScrolledToBottom
     , onlyWhen
     , oneLine
@@ -28,8 +37,10 @@ module Ui exposing
     , panel
     , paper
     , pencil
+    , pill
     , press
     , primaryButton
+    , rollButton
     , sans
     , scrollArea
     , sectionTitle
@@ -37,9 +48,9 @@ module Ui exposing
     , shrinkableWidth
     , clipX
     , sm
+    , squareButton
+    , statement
     , speakerColor
-    , splitButton
-    , tab
     , tint
     , toolTab
     , withTip
@@ -48,10 +59,10 @@ module Ui exposing
     , xs
     )
 
-{-| The visual system for the Activity: one warm-paper surface, one slate accent,
-a small spacing and type scale, and the handful of building blocks the views
-assemble. Deliberately spare — it should read like a printed play aid, not a
-dashboard.
+{-| The visual system for the Activity (roadmap 32, Table v2 High contrast):
+white surfaces, black ink, one deep-blue accent, a small spacing and type scale,
+and the handful of building blocks the views assemble. Deliberately spare — it
+should read like a printed play aid, not a dashboard.
 -}
 
 import Element exposing (Attribute, Color, Element, el, fill, height, padding, rgb255, spacing, text, width)
@@ -118,7 +129,7 @@ withTip tipText child =
 
 paper : Color
 paper =
-    rgb255 253 252 250
+    rgb255 255 255 255
 
 
 panel : Color
@@ -128,52 +139,78 @@ panel =
 
 ink : Color
 ink =
-    rgb255 38 38 42
+    rgb255 0 0 0
 
 
+{-| Labels, meta, timestamps, placeholders (12.6:1 on white).
+-}
 inkSoft : Color
 inkSoft =
-    rgb255 122 120 116
+    rgb255 51 51 51
 
 
+{-| Hairlines: column rules, row dividers, strip borders.
+-}
 line : Color
 line =
-    rgb255 228 225 220
+    rgb255 140 140 140
+
+
+{-| The 1px border on aspect blocks, buttons, inputs and chips — darker than
+`line`, so a control reads as one against the white.
+-}
+edge : Color
+edge =
+    rgb255 26 26 26
 
 
 accent : Color
 accent =
-    rgb255 74 96 130
+    rgb255 10 58 140
 
 
 accentText : Color
 accentText =
-    rgb255 253 252 250
+    rgb255 255 255 255
 
 
-{-| A faint warm tint for a strip that sits apart from the paper — the hovered
-context aspect, the session-controls row, a highlighted log line.
+{-| The Flow segment in the Guide's odds bars.
+-}
+accentSoft : Color
+accentSoft =
+    rgb255 134 160 212
+
+
+{-| A pale blue wash: the selected tab, a hovered row, the roll row in the log,
+the locked note.
 -}
 tint : Color
 tint =
-    rgb255 246 244 240
+    rgb255 230 236 251
 
 
 {-| The chip behind the selected tool tab.
 -}
 selectedWash : Color
 selectedWash =
-    rgb255 235 232 226
+    tint
 
 
 facilitatorTint : Color
 facilitatorTint =
-    rgb255 122 74 44
+    rgb255 122 51 0
 
 
 danger : Color
 danger =
-    rgb255 168 74 74
+    rgb255 158 0 0
+
+
+{-| The Friction segment in the Guide's odds bars.
+-}
+dangerSoft : Color
+dangerSoft =
+    rgb255 220 143 143
 
 
 {-| The Highlight half of an aspect's split button — the one green, kept for
@@ -181,7 +218,7 @@ the move that steps the die up.
 -}
 success : Color
 success =
-    rgb255 64 128 88
+    rgb255 0 102 43
 
 
 {-| A stable colour per speaker at the table. `0` is the facilitator; players
@@ -191,13 +228,13 @@ speakerColor : Int -> Color
 speakerColor index =
     case modBy 4 index of
         1 ->
-            rgb255 74 96 130
+            rgb255 10 58 140
 
         2 ->
-            rgb255 74 122 90
+            rgb255 0 102 43
 
         3 ->
-            rgb255 138 82 122
+            rgb255 107 31 107
 
         _ ->
             facilitatorTint
@@ -236,9 +273,12 @@ xl =
 -- TYPE
 
 
+{-| Every face here is self-hosted (`client/index.html`); the rest of each list
+is the fallback if a file fails to load.
+-}
 sans : List Font.Font
 sans =
-    [ Font.typeface "Inter"
+    [ Font.typeface "Atkinson Hyperlegible"
     , Font.typeface "-apple-system"
     , Font.typeface "Segoe UI"
     , Font.typeface "Roboto"
@@ -246,13 +286,43 @@ sans =
     ]
 
 
+{-| Timestamps, die chips, odds labels.
+-}
 mono : List Font.Font
 mono =
-    [ Font.typeface "SF Mono"
+    [ Font.typeface "IBM Plex Mono"
+    , Font.typeface "SF Mono"
     , Font.typeface "Menlo"
     , Font.typeface "Consolas"
     , Font.monospace
     ]
+
+
+{-| The marks (☼ ☽ ↑ ↓). The Noto faces come first because Apple Symbols draws
+☼ as a thin ring that reads as "empty". Each covers only the marks it is
+declared for in `client/index.html`, and Atkinson Hyperlegible has none of
+them, so the stack is safe on a label that mixes words and marks ("Alter ☼☼"):
+the words fall through to Atkinson, and a mark whose Noto file failed to load
+still finds Segoe UI Symbol or DejaVu Sans before the system fallback.
+-}
+glyph : Attribute msg
+glyph =
+    Font.family
+        [ Font.typeface "Noto Sans Symbols 2"
+        , Font.typeface "Noto Sans Symbols"
+        , Font.typeface "Atkinson Hyperlegible"
+        , Font.typeface "Segoe UI Symbol"
+        , Font.typeface "DejaVu Sans"
+        , Font.sansSerif
+        ]
+
+
+{-| A font size in pixels that need not be whole (12.5px tabs, 10.5px meta);
+`Font.size` takes only an `Int`.
+-}
+fontSize : Float -> Attribute msg
+fontSize px =
+    Element.htmlAttribute (Html.Attributes.style "font-size" (String.fromFloat px ++ "px"))
 
 
 
@@ -381,7 +451,7 @@ sectionTitle label =
         [ Font.size 10
         , Font.semiBold
         , Font.color inkSoft
-        , Font.letterSpacing 0.5
+        , Font.letterSpacing 0.7
         ]
         (text (String.toUpper label))
 
@@ -415,7 +485,7 @@ divider label =
     Element.row
         [ width fill, spacing sm, Element.paddingXY 0 xs ]
         [ rule
-        , el [ Font.size 10, Font.color inkSoft, Font.letterSpacing 0.5 ] (text label)
+        , el [ Font.size 10, Font.color inkSoft, Font.letterSpacing 0.6 ] (text (String.toUpper label))
         , rule
         ]
 
@@ -449,30 +519,148 @@ primaryButton config =
         , Font.color accentText
         , Font.size 12
         , Font.semiBold
-        , paddingXY_ 9 3
-        , Border.rounded 4
+        , paddingXY_ 12 4
+        , Border.rounded 5
         , Element.mouseOver [ Background.color ink ]
         ]
         { onPress = config.onPress, label = text config.label }
+
+
+{-| The status strip's roll button: the primary style a size up.
+-}
+rollButton : { onPress : Maybe msg, label : String } -> Element msg
+rollButton config =
+    Input.button
+        [ Background.color accent
+        , Font.color accentText
+        , fontSize 12.5
+        , Font.semiBold
+        , paddingXY_ 12 5
+        , Border.rounded 5
+        , Element.mouseOver [ Background.color ink ]
+        ]
+        { onPress = config.onPress, label = text config.label }
+
+
+{-| A small bordered square holding one glyph — the strip's `‹` `›`, the
+Sheet's boon − / +. With no `onPress` it is muted and does not light up.
+-}
+squareButton :
+    { onPress : Maybe msg
+    , label : String
+    , tip : String
+    , width : Int
+    , height : Int
+    , radius : Int
+    , size : Int
+    }
+    -> Element msg
+squareButton config =
+    Input.button
+        ([ width (Element.px config.width)
+         , height (Element.px config.height)
+         , Background.color panel
+         , Border.width 1
+         , Border.color edge
+         , Border.rounded config.radius
+         , Font.size config.size
+         , Element.htmlAttribute (Html.Attributes.title config.tip)
+         ]
+            ++ (case config.onPress of
+                    Just _ ->
+                        [ Font.color ink
+                        , Element.mouseOver [ Border.color accent, Font.color accent ]
+                        ]
+
+                    Nothing ->
+                        [ Font.color inkSoft ]
+               )
+        )
+        { onPress = config.onPress
+        , label = el [ Element.centerX, Element.centerY ] (text config.label)
+        }
+
+
+{-| A small toggle in a row of choices — the facilitator's ☼ BOON / ☽ BANE.
+A mark and a word in `tone`; the selected one is filled with `tone`, the rest
+are outlined and pick up `tone` on their border when hovered.
+-}
+pill : { selected : Bool, tone : Color, mark : String, label : String, tip : String, onPress : msg } -> Element msg
+pill config =
+    Input.button
+        ([ Element.paddingXY 7 2
+         , Border.rounded 4
+         , Border.width 1
+         , Font.size 10
+         , Font.semiBold
+         , Font.letterSpacing 0.7
+         , Element.htmlAttribute (Html.Attributes.title config.tip)
+         ]
+            ++ (if config.selected then
+                    [ Background.color config.tone, Border.color config.tone, Font.color accentText ]
+
+                else
+                    [ Border.color edge
+                    , Font.color config.tone
+                    , Element.mouseOver [ Border.color config.tone ]
+                    ]
+               )
+        )
+        { onPress = Just config.onPress
+        , label =
+            Element.row [ spacing 5 ]
+                [ el [ glyph, Font.size 12 ] (text config.mark)
+                , text (String.toUpper config.label)
+                ]
+        }
+
+
+{-| An outlined label that presses nothing — the die while a roll is pending.
+-}
+chip : String -> String -> Element msg
+chip tip label =
+    el
+        [ fontSize 12.5
+        , Font.semiBold
+        , Element.paddingXY 10 4
+        , Border.width 1
+        , Border.color edge
+        , Border.rounded 5
+        , Element.htmlAttribute (Html.Attributes.title tip)
+        ]
+        (text label)
 
 
 {-| A bordered secondary button. With no `onPress` it is drawn muted and does
 not light up on hover, so an unavailable control reads as one.
 -}
 ghostButton : { onPress : Maybe msg, label : String } -> Element msg
-ghostButton config =
+ghostButton =
+    ghostButtonHovering accent
+
+
+{-| A ghost button for a discarding action (Reject): it lights up in the
+danger tone instead of the accent.
+-}
+dangerGhostButton : { onPress : Maybe msg, label : String } -> Element msg
+dangerGhostButton =
+    ghostButtonHovering danger
+
+
+ghostButtonHovering : Color -> { onPress : Maybe msg, label : String } -> Element msg
+ghostButtonHovering hover config =
     Input.button
         ([ Background.color panel
          , Font.size 12
-         , paddingXY_ 8 2
-         , Border.color line
+         , paddingXY_ 10 4
+         , Border.color edge
          , Border.width 1
-         , Border.rounded 4
+         , Border.rounded 5
          ]
             ++ (case config.onPress of
                     Just _ ->
                         [ Font.color ink
-                        , Element.mouseOver [ Border.color accent, Font.color accent ]
+                        , Element.mouseOver [ Border.color hover, Font.color hover ]
                         ]
 
                     Nothing ->
@@ -527,51 +715,19 @@ confirmButton config =
         ghostButton { onPress = Just config.onArm, label = config.idle }
 
 
-{-| One entry in a compact tab strip (the character slots on the Sheet): the
-selected one reads as the accent button, the rest are quiet until hovered.
+{-| One tab in the tool strip: a character's sheet, the World or the Guide.
+The selected one sits on the tint in a heavier weight; the rest are quiet until
+hovered. `suffix` is a small trailing word inside the tab ("you" on the
+viewer's own sheet), or `""` for none. `tip` (a native tooltip) says what the
+tab holds.
 -}
-tab : Bool -> String -> msg -> Element msg
-tab selected label msg =
-    Input.button
-        ([ Font.size 12
-         , paddingXY_ 7 2
-         , Border.rounded 4
-         , Font.color
-            (if selected then
-                accentText
-
-             else
-                inkSoft
-            )
-         , Background.color
-            (if selected then
-                accent
-
-             else
-                Element.rgba255 0 0 0 0
-            )
-         ]
-            ++ (if selected then
-                    [ Font.semiBold ]
-
-                else
-                    [ Element.mouseOver [ Font.color ink ] ]
-               )
-        )
-        { onPress = Just msg, label = text label }
-
-
-{-| One tab in the tool strip. Every tab shows its name; the selected one sits
-on a tinted chip in a heavier weight. `tip` (a native tooltip) says what the
-tool holds.
--}
-toolTab : { label : String, tip : String, selected : Bool, onPress : msg } -> Element msg
+toolTab : { label : String, suffix : String, tip : String, selected : Bool, onPress : msg } -> Element msg
 toolTab config =
     Input.button
         ([ Element.htmlAttribute (Html.Attributes.title config.tip)
-         , Border.rounded 4
-         , Font.size 12
-         , paddingXY_ 8 3
+         , Border.rounded 5
+         , fontSize 12.5
+         , paddingXY_ 9 4
          ]
             ++ (if config.selected then
                     [ Background.color selectedWash, Font.color ink, Font.semiBold ]
@@ -582,14 +738,25 @@ toolTab config =
                     ]
                )
         )
-        { onPress = Just config.onPress, label = text config.label }
+        { onPress = Just config.onPress
+        , label =
+            if config.suffix == "" then
+                text config.label
+
+            else
+                Element.row [ spacing xs ]
+                    [ text config.label
+                    , el [ fontSize 10.5, Font.regular ] (text config.suffix)
+                    ]
+        }
 
 
-{-| The run of ☼ marks for `n` boons: a character's boons, a context boon.
+{-| The run of ☼ marks for `n` boons — a character's boons, a context boon —
+in the accent.
 -}
 boonMarks : Int -> Element msg
 boonMarks n =
-    el [ Font.letterSpacing 2 ] (text (String.repeat (Basics.max 0 n) "☼"))
+    el [ glyph, Font.letterSpacing 2, Font.color accent ] (text (String.repeat (Basics.max 0 n) "☼"))
 
 
 {-| The run of ☽ marks for `n` banes, in the danger tone so a boon and a bane
@@ -597,7 +764,7 @@ differ by more than shape.
 -}
 baneMarks : Int -> Element msg
 baneMarks n =
-    el [ Font.letterSpacing 2, Font.color danger ] (text (String.repeat (Basics.max 0 n) "☽"))
+    el [ glyph, Font.letterSpacing 2, Font.color danger ] (text (String.repeat (Basics.max 0 n) "☽"))
 
 
 {-| A CSS class from `client/index.html`, for the few effects elm-ui cannot
@@ -615,21 +782,38 @@ pencil config =
     withTip config.tip (linkButton { onPress = config.onPress, label = "✎" })
 
 
-{-| A button split down the middle into two actions on one piece of text — a
-character aspect, whose left half Complicates and right half Highlights. Each
-half washes in its colour from its outer edge on hover or press and shows its
-label there (`client/index.html`, `.split-*`), so the pair reads by word as
-well as by red / green; on touch, with no hover, both halves keep a faint
-resting tint. A half with no `onPress` is off: no wash, no label, and `tip`
-says why.
+{-| One aspect, in the shape character aspects and context aspects share
+(roadmap 32, Table v2): a bordered block with a small uppercase label (and
+anything else on its meta row) over the statement.
+
+`split`, when given, lays two halves over the whole block — the left
+Complicates, the right Highlights on a character's aspect. Each half washes in
+its colour from its outer edge on hover or press and shows its label at the
+bottom (`client/index.html`, `.split-*`), so the pair reads by word as well as
+by red / green; on touch, with no hover, both halves keep a faint resting tint.
+A half with no `onPress` is off: no wash, no label, and `tip` says why. The
+block's foot grows to make room for the labels.
+
+`corner` (the ✎, or a context aspect's ✎ ×) sits in the top-right corner
+above everything else. `press`, when given, makes the whole block one button
+(Highlight Context on a context aspect), tinted on hover while it has an
+`onPress`; the corner stays outside it, so its controls are not nested in
+another button. `dashed` draws the border dashed (a consumed context aspect).
 -}
-splitButton :
-    { content : String
-    , left : { onPress : Maybe msg, label : String, tip : String }
-    , right : { onPress : Maybe msg, label : String, tip : String }
+aspectBlock :
+    { meta : List (Element msg)
+    , statement : Element msg
+    , corner : Maybe (Element msg)
+    , press : Maybe { onPress : Maybe msg, tip : String }
+    , dashed : Bool
+    , split :
+        Maybe
+            { left : { onPress : Maybe msg, label : String, tip : String }
+            , right : { onPress : Maybe msg, label : String, tip : String }
+            }
     }
     -> Element msg
-splitButton config =
+aspectBlock config =
     let
         half side tone half_ =
             Input.button
@@ -659,32 +843,107 @@ splitButton config =
 
                           else
                             Element.alignRight
-                        , Font.size 10
+                        , fontSize 10.5
                         , Font.semiBold
                         , Font.color tone
-                        , Element.paddingXY 6 2
+                        , glyph
+                        , Element.paddingEach { top = 0, right = 10, bottom = 5, left = 10 }
                         , class "split-label"
                         ]
                         (text half_.label)
                 }
+
+        halves =
+            case config.split of
+                Just split ->
+                    [ Element.inFront
+                        (Element.row [ width fill, height fill ]
+                            [ half "left" danger split.left, half "right" success split.right ]
+                        )
+                    ]
+
+                Nothing ->
+                    []
+
+        corner =
+            case config.corner of
+                Just c ->
+                    [ Element.inFront
+                        (el [ Element.alignRight, Element.alignTop, Element.paddingEach { top = 5, right = 6, bottom = 0, left = 0 } ] c)
+                    ]
+
+                Nothing ->
+                    []
+        body =
+            Element.column
+                [ width fill
+                , spacing 3
+                , Element.paddingEach
+                    { top = 8
+                    , right = 11
+                    , bottom =
+                        if config.split == Nothing then
+                            9
+
+                        else
+                            22
+                    , left = 11
+                    }
+                ]
+                [ Element.row [ width fill, spacing 5 ] config.meta
+                , config.statement
+                ]
     in
     el
-        [ width fill
-        , Border.width 1
-        , Border.color line
-        , Border.rounded 4
-        , Element.clip
-        , Element.inFront
-            (Element.row [ width fill, height fill ]
-                [ half "left" danger config.left, half "right" success config.right ]
-            )
-        ]
-        (Element.paragraph
-            [ Font.size 13
-            , Element.paddingEach { top = 4, right = 8, bottom = 15, left = 8 }
-            ]
-            [ text config.content ]
+        ([ width fill
+         , Border.width 1
+         , Border.color edge
+         , Border.rounded 7
+         , Element.clip
+         ]
+            ++ (if config.dashed then
+                    [ Border.dashed ]
+
+                else
+                    [ Background.color panel ]
+               )
+            ++ halves
+            ++ corner
         )
+        (case config.press of
+            Just button ->
+                Input.button
+                    ([ width fill
+                     , Element.htmlAttribute (Html.Attributes.title button.tip)
+                     ]
+                        ++ (case button.onPress of
+                                Just _ ->
+                                    [ Element.mouseOver [ Background.color tint ] ]
+
+                                Nothing ->
+                                    [ Element.htmlAttribute (Html.Attributes.style "cursor" "default") ]
+                           )
+                    )
+                    { onPress = button.onPress, label = body }
+
+            Nothing ->
+                body
+        )
+
+
+{-| An aspect or context statement: 15px, wrapping, at a reading line height.
+-}
+statement : List (Attribute msg) -> String -> Element msg
+statement attrs content =
+    Element.paragraph
+        ([ width fill
+         , Font.size 15
+         , Element.htmlAttribute (Html.Attributes.style "line-height" "1.35")
+         , wrapAnywhere
+         ]
+            ++ attrs
+        )
+        [ text content ]
 
 
 paddingXY_ : Int -> Int -> Attribute msg
@@ -707,6 +966,29 @@ onEnter msg =
                     (\key ->
                         if key == "Enter" then
                             Decode.succeed msg
+
+                        else
+                            Decode.fail "not Enter"
+                    )
+            )
+        )
+
+
+{-| `onEnter` for a multiline field holding one statement: Enter (without
+Shift) fires `msg` and is swallowed, so it neither inserts a line break nor
+leaves one behind to land in the field after the submit cleared it.
+-}
+onEnterSubmit : msg -> Attribute msg
+onEnterSubmit msg =
+    Element.htmlAttribute
+        (Html.Events.preventDefaultOn "keydown"
+            (Decode.map2 Tuple.pair
+                (Decode.field "key" Decode.string)
+                (Decode.field "shiftKey" Decode.bool)
+                |> Decode.andThen
+                    (\( key, shift ) ->
+                        if key == "Enter" && not shift then
+                            Decode.succeed ( msg, True )
 
                         else
                             Decode.fail "not Enter"

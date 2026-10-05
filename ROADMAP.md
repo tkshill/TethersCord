@@ -6,24 +6,17 @@ incremental work on top of it.
 `DESIGN_PRINCIPLES.md` holds the ten core design principles every item is weighed
 against.
 
-**Phase 1** (sections 1–16, 19, 21, 22) is shipped — each section is the record
-of what landed and the decisions taken along the way. **Phase 2** (sections
-23–31) is the current plan: section 23 was a deliberate simplification for the
-testing phase, moving stone and resource management onto the facilitator by hand
-and rebuilding the view as three viewport-sized columns (section 24 then made it
-two panels); section 26 gave the players their moves back and restored the
-Overcome roll in a simpler form, and `RULES.md` states the resulting rules;
-section 27 reworked the UI to the minimalist mockup; section 31 replaces the
-stone pool with a die ladder, renames the Overcome the Junction, and turns moves
-into direct actions the facilitator can undo. Sections 23, 24, 26 and 27 are
-shipped; 25 and 28–31 are open. **Phase 3**, at the end,
-collects everything else still open, moved out of the Phase 1 sections so the
-outstanding-but-not-next work sits in one list — it kept its original `P2.x`
-item labels since they're referenced from `CLAUDE.md` and commit messages, so
-those weren't renumbered when the phase was renamed. Sections whose entire
-content was still open (17 Campaigns, 18 AI session summary, 20 Character
-growth) moved wholesale into Phase 3, so those numbers are skipped below — the
-section numbers are stable anchors, so nothing is renumbered.
+**Phase 1** (sections 1–16, 19, 21, 22) and **Phase 2** (sections 23–32) are
+shipped — each section is the record of what landed and the decisions taken
+along the way. Phase 2 moved resource management onto the facilitator for the
+testing phase (23), reworked the layout (24, 27, 28), gave the players their
+moves back (26), replaced the stone pool with a die ladder and direct,
+undoable moves (31), and ended with the high-contrast Table v2 visual pass
+(32). **Phase 3**, at the end, is everything still open, numbered `P3.x`.
+Sections whose entire content was still open (17 Campaigns, 18 AI session
+summary, 20 Character growth) moved wholesale into the open list, so those
+numbers are skipped below — the section numbers are stable anchors, so nothing
+is renumbered.
 
 **Shipped sections hold no open items.** When a section ships with something
 still unchecked, that item moves to the open section or Phase 3 item it belongs
@@ -788,7 +781,7 @@ is what the tooltip and glossary work built on.
       buttons.
 - [x] Known limit: `title=` is hover-only — no touch, and it does not render in
       the Discord Activity webview at all. The glossary card below is the tap
-      path; both shipped. A real tooltip element is parked as **P2.11**.
+      path; both shipped. A real tooltip element is parked as **P3.9**.
 
 ### 21.4 — "How to play" glossary card — done
 
@@ -832,7 +825,7 @@ before merge.
 **Largely done.** Steps 1–5 and 7 shipped in full; step 6 shipped its low-risk
 part (a `get game()` accessor, a `commit()` trailer helper, `Promise.all` on the
 cold-start reads). The `GameTable.ts` module split — a route table and
-`worker/src/handlers/*` — is carved out as its own effort (see P2.2 in Phase 3). No
+`worker/src/handlers/*` — is carved out as its own effort (see P3.6 in Phase 3). No
 gameplay change anywhere in this section; each step was its own branch merged
 with `--no-ff`, guarded by the client bundle, both typecheckers, and both test
 suites.
@@ -969,7 +962,7 @@ Part 1 — the low-risk items that need no module reshaping — done:
 - [x] **`const UUID = "[0-9a-fA-F-]{36}"`** shared by the two id route regexes.
 
 Part 2 — the module reshaping (route table + `worker/src/handlers/*`) — is in
-Phase 3 (P2.2).
+Phase 3 (P3.6).
 
 ### Step 7 — smaller TS cleanup — done
 
@@ -986,10 +979,10 @@ Phase 3 (P2.2).
 - **Section 21** (game text / tooltips / glossary / aspect examples) — the
   copy-extraction step wants the new `View/` module layout to exist first, so do
   21 after step 4. Step 4 is done, so section 21 is unblocked.
-- **Phase 2 P2.3** delta broadcasts — untouched here; the route table and
+- **Phase 2 P3.7** delta broadcasts — untouched here; the route table and
   `commit()` helper give it fewer call sites to rewrite when it lands.
 
-# Phase 2 — facilitator-run resources and a three-column layout
+# Phase 2 — shipped
 
 ## 23. Facilitator-run resources and a three-column layout — done
 
@@ -1367,7 +1360,7 @@ order, each its own branch off `main`:
 - Does aspect-Bane tracking freeze as read-only history, become a manual
   facilitator field, or drop off the sheet display while nothing writes it?
   Section 26 left the display alone until advancement is designed; **moved to
-  P2.7**.
+  P3.13**.
 - [x] The narrow-viewport fallback for the three-column shell (23.5's last
       item) — resolved by section 24, which retires the three-column shell
       rather than adding a fallback to it.
@@ -1442,7 +1435,7 @@ question this section is about.
       static screenshot can't show motion); its mouse-subscription gating
       follows the same pattern already exercised elsewhere in `Main.update`.
 
-## 25. Architecture review follow-ups — open
+## 25. Architecture review follow-ups — done; 25.3 and 25.6 moved to P3.2 and P3.3
 
 **Unblocked.** This section waited for section 26, which reshaped the proposal
 kinds, the roll lifecycle and the session reset these items touch. Section 26
@@ -1454,7 +1447,7 @@ An architecture review (2026-09-18) looked for places where a module's
 interface is as wide as its implementation, where a rule lives in several
 hand-synced copies, and where a seam is missing. It ranked seven candidates and
 recommended one — a pure rules core behind `GameTable` — as the only one that
-changes the test surface, and as the one that must be decided *before* P2.2
+changes the test surface, and as the one that must be decided *before* P3.6
 would split the handlers in place.
 
 The review read `main @ dee429e` (2026-09-10), which predates sections 23 and
@@ -1490,9 +1483,9 @@ possible.
       (`GameTable.ts` ~1051–1250, five move arms) is the largest interleave,
       and `gameLogic.ts` is mostly single-caller leaf helpers. The Overcome
       tests in `overcome.test.ts` force draws by shaping the pool, which an
-      injected RNG would make unnecessary. **Supersedes P2.2's handler split** —
+      injected RNG would make unnecessary. **Supersedes P3.6's handler split** —
       that split relocates the interleave into handler files; this removes it.
-      The route-table half of P2.2 survives on its own.
+      The route-table half of P3.6 survives on its own.
 - [x] **25.2 — One "change a sheet" seam** (absorbed by 25.1) — done: `persistDiff` derives every sheet write from the table diff. Four handlers
       still hand-copy the replace-by-slot `this.game.characters.map`
       (`GameTable.ts` ~1779, ~1817, ~1856, ~1894), plus a fate helper (~1302),
@@ -1501,17 +1494,8 @@ possible.
       caller since 23.1). The fix is a `patchSheet(state, slot, patch)` that
       returns the next state and queues the write as data, so the in-memory and
       D1 halves cannot diverge.
-- [ ] **25.3 — A named edit cursor on the client.** "What is locally edited and
-      unsaved" has no name or type: `Model` carries `editingSlot`,
-      `editingEntity`, `dirtySlots` and `dirtyEntities` (`Types.elm`), and
-      `applyServerState` merges the character half and the entity half as
-      near-verbatim copies. `StateMergeTest.elm` covers only the character
-      half. Add an `EditCursor` module owning those fields and the
-      protect-merge (`startEditing`, `markDirty`, `blur`, `flushed`,
-      `protect : EditCursor -> GameState -> GameState -> GameState`), generic
-      over slot / entity id, so the entity half inherits the character tests
-      and `Model` loses several fields for one. Independent of 25.1 — client
-      only, can go first.
+- **25.3 — A named edit cursor on the client — moved to P3.2** when Phase 2
+  closed.
 - [x] **25.4 — Typed in-flight action keys** — done as the first step of 26.3:
       an `Action` custom type in its own `Action.elm` (since `Effect` imports
       `View`); `Model.inflight` is a `List Action`, `MutationOutcome.family` an
@@ -1522,16 +1506,8 @@ possible.
   `handleStartSession` and `handleEndSession`. Since 26.2 sessions clear
   nothing: both handlers touch only the goal and the history, so there is no
   list left to share.
-- [ ] **25.6 — Narrow `Effect`'s backend half** (speculative). The backend half
-      of `Effect.elm` is one constructor per `Api` call — 30 `Post*`
-      constructors after section 26 — so it is as wide as its implementation,
-      and `PostProposalDecision` still carries an `"accept"` / `"reject"`
-      string. The review's option: one `Post Auth Request` constructor over a
-      request-description type built in `Api`, keeping the task / port
-      constructors, which are where tests get their leverage. A new endpoint
-      would touch `Api` only and route strings would leave `Main`.
-      Speculative: do it only if the wide constructor list keeps costing edits
-      after 25.3.
+- **25.6 — Narrow `Effect`'s backend half — moved to P3.3** when Phase 2
+  closed.
 - [x] **25.7 — Worker `Proposal` as a discriminated union** — moot: 31.3
       deleted proposals. (Was absorbed by 25.1's proposals branch.) The client already models the kinds (`Kind.elm`); the
       worker's `Proposal` (`worker/src/types.ts`) is one flat record with
@@ -1551,7 +1527,7 @@ possible.
   ride with it (each is a step it makes cheap, and each can also land as a
   preparatory PR ahead of it if that keeps the diff reviewable).
 - **25.6** waits.
-- P2.2 stays on the Phase 3 list only for its route-table half; retire it once
+- P3.6 stays on the Phase 3 list only for its route-table half; retire it once
   25.1 lands.
 
 ### Open questions
@@ -1797,7 +1773,7 @@ still reference them; the "Goal" label is missing its colon.
       "Claim a character sheet to use moves." instead of nothing.
 The table playtest this sub-section originally ended with, its checklist, and
 the section's open questions moved to **section 30**. Aspect Banes and
-advancement moved to **P2.7**.
+advancement moved to **P3.13**.
 
 ### Sequencing
 
@@ -1900,7 +1876,7 @@ glyphs.
   `tip` go too? Kept: each tip says more than its title ("Cast & locations",
   "How to play", "Your character, and the moves on its aspects").
 
-## 29. Testing away from the live table — 29.1 and 29.2 done
+## 29. Testing away from the live table — done; 29.3 moved to P3.14
 
 Every manual test so far has run against the deployed Worker, in the channel the
 campaign plays in, so test rolls and chat land in the live log and untested code
@@ -1958,19 +1934,9 @@ Discord before it reaches production.
 
 A second Worker and a second D1 database both fit the Cloudflare Free tier.
 
-### 29.3 Local dev inside Discord — optional
+### 29.3 Local dev inside Discord — moved to P3.14
 
-Deploying to staging for every change is slow. With the dev application from
-29.2 in place, `pnpm run dev` can be reached from Discord through a tunnel
-(`cloudflared tunnel --url http://localhost:8787`), with the dev application's
-URL mapping pointed at it. That runs the local D1 and a local Durable Object,
-with no deploy per change.
-
-- [ ] Try it once and record the steps. A quick tunnel's URL changes on every
-      run, so the mapping has to be updated each time unless a named tunnel is
-      set up.
-
-Only worth doing if the staging loop proves too slow in practice.
+The optional tunnel set-up moved to Phase 3 when Phase 2 closed.
 
 ### Sequencing
 
@@ -1984,57 +1950,10 @@ Only worth doing if the staging loop proves too slow in practice.
 - Should staging get a copy of the live characters and NPCs to test against, or
   start empty? Starting empty is simpler and nothing so far needs real data.
 
-## 30. Playtest the Junction loop — planned
+## 30. Playtest the Junction loop — moved to P3.1
 
-Rewritten by 31.6 for section 31's rules (the die ladder, the Junction, direct
-moves and undo); the stone-pool checklist it replaces is in git history.
-Section 31 has been exercised by the test suites and by rendering the view in
-headless Chrome only; this is the first real run at the table. Not something
-the code can do.
-
-- [ ] **One table playtest** against the checklist below, then record what it
-      showed here. Run it in a test channel (29.1) unless it is real play.
-
-### Manual playtest checklist
-
-- The ladder shows the d10 marked, and pressing it rolls: the result appears
-  beside it (`Flow · 7`) and in the log (`Flow — 7 on d10`).
-- Two people press the die at once: one roll lands, the other is refused.
-- A player Highlights from the right half of an aspect: a boon goes, the die
-  steps up, the log line carries `d10 → d12` and an undo link. Undo puts both
-  back.
-- Highlights stack to d20; a fourth Highlight is greyed and refused, and no
-  boon is spent.
-- Complicate from the left half of an aspect: two boons, and a bane reading
-  "Trouble from … — to be worded" that the facilitator words with ✎.
-- Create with words, and with a blank field (`Detail from <name>`).
-- Highlight Context on a context boon (die up) and on a context bane (die
-  down): each shows consumed and cannot be pressed again; undo restores it.
-- After the roll every move but Alter is greyed ("Moves are locked…"), and the
-  undo links on the earlier moves are gone.
-- Alter: two boons, a reroll on the same die; a second Alter by the same
-  character is refused, another character's is not. Undoing it restores the
-  earlier roll and frees the Alter.
-- The facilitator's Reroll is free and on the same die, even after a `‹` `›`
-  step.
-- Accept a Critical Flow → a context boon, the die back to d10; accept a
-  Critical Friction → a context bane; accept a plain result → nothing. Reject →
-  the die stays and the Junction can be rolled again.
-- The split buttons' labels appear on hover, and on a phone both halves show
-  their resting tint and the label on press.
-- Ending a session changes nothing except the history.
-
-### Open questions to settle in play
-
-- [ ] **Generosity.** Is 60 / 40 Flow / Friction on the d10 too kind? The d8 is
-      50 / 50.
-- [ ] **Equal criticals.** Does a bane making a context boon likelier read as
-      backwards at the table?
-- [ ] **Complicate farming.** It is free and unapproved; the facilitator's undo
-      is the only check.
-- [ ] **Unworded banes.** Does "Trouble from <name>'s <Aspect>" carry a
-      Complicate until the facilitator words it, or should the player word it
-      when they make it?
+Moved to Phase 3 when Phase 2 closed; the checklist and the open questions
+are there.
 
 ## 31. Junctions, the die ladder, and direct moves — done
 
@@ -2290,7 +2209,7 @@ shape (ADR 0003).
       (sheets, NPCs, locations, the running session, messages and log clear);
       `GameTable.apply` flushes it in one `DB.batch`, then installs, puts and
       broadcasts with no `await` between them.
-- [x] The route table (P2.2's surviving half): `{ method, path, parse }` to a
+- [x] The route table (P3.6's surviving half): `{ method, path, parse }` to a
       `Command`; role and ownership checks move into the core.
 - [x] Port chat, log clear, sessions (`SessionState.startedAt`, history kept
       in memory), sheet edits / boons / claim / release, NPCs and locations,
@@ -2430,17 +2349,337 @@ shape (ADR 0003).
 - **Stale clients.** A client open across the deploy fails to decode the new
   state. Is a "reload the Activity" note on a decode failure worth adding?
 
-# Phase 3 — potential future plans
+## 32. Table v2 — the high-contrast visual pass — done
 
-Everything still open, moved out of the Phase 1 sections above so it sits in one
-list. Same conventions: each item is its own branch off `main` with a
-professional commit message, and `DESIGN_PRINCIPLES.md` is the yardstick. Items
-are roughly in value-over-effort order; the last two are explicitly not planned
-or not scheduled. The open Phase 2 sections above (25, 28–31) come first;
-everything here is further out. An item that later work resolved or made moot
-says so in place rather than vanishing, since its label may be cited elsewhere.
+A design handoff from the design project (*Table v2*, High contrast): one
+palette and type system, larger reading type, and one shared look for
+character aspects and context aspects. The layout keeps its shape (a status
+strip over tool panel · context · log). Game rules and behaviour are unchanged
+(`RULES.md`, ADR 0001 / 0002); the only state change is the tool strip.
 
-## P2.1 — Remaining test coverage (from §11)
+The handoff is high fidelity: its colours, type, spacing, radii and copy are
+final, aimed at a 1000×560 frame (a Discord Activity on a 13" laptop). Its
+HTML is a reference to recreate in elm-ui through `Ui.elm`, `Copy.elm` and
+`View/*`, not code to ship. Ignore its `theme` and `marks` tweaks: ship High
+contrast with ☼ / ☽.
+
+What changes, in short:
+
+- **Palette and type.** New values for every `Ui.elm` colour, plus `edge`
+  (borders on blocks, buttons and inputs), `accentSoft` and `dangerSoft` (the
+  Guide's odds bars). Atkinson Hyperlegible replaces Inter; IBM Plex Mono for
+  timestamps, die chips and odds labels; Noto Sans Symbols 2 first in the
+  glyph stack, because Apple Symbols draws ☼ as a thin ring that reads as
+  "empty". Statement text (aspects, context, chat, goal) goes to 15px. No
+  shadows.
+- **Frame.** Fixed column widths: tool panel 316px, context 284px, the log
+  takes the rest. This replaces the three equal columns.
+- **Status strip.** The `d6 … d20` labels become six rung bars; the roll
+  button reads "Roll d16"; a pending roll shows as a `d16` chip with the
+  result and the Junction controls. The facilitator's `‹` `›` and the goal's
+  `▾` stay.
+- **Tool strip.** The character slot tabs and the tools merge into one strip,
+  `[Wren you] Halvard Mara | World Guide`. Cast is renamed World.
+- **Sheet.** Name at 22px with the boon marks beside it (and the
+  facilitator's − / +, replacing the Grant row); Notable features as an
+  inline italic line; an owner line ("Played by sam") with Claim / Release;
+  each aspect a bordered block holding the split button; Notes as a
+  minimal textarea. Condition is retired from the UI and the copy (see
+  Decisions).
+- **Context column.** A header with "4 open · 1 consumed". Each aspect is a
+  block in the sheet's style; a consumed one is dashed and struck through.
+  Create / Add becomes a larger dashed entry box, with Boon / Bane pills for
+  the facilitator.
+- **Log.** Event lines lose the italic and the left border and gain a mark
+  column (☼ ☽ ↑ ↓) and a `d10 → d12` step chip. Each roll, reroll and Alter
+  gets a tinted roll row.
+- **Guide.** Rebuilt around three parts: odds bars per rung with a legend,
+  the five moves with their costs, and the four steps of a Junction. The
+  whole glossary moves behind a "See all terms" link; every term stays a
+  tooltip where it is used.
+
+### Decisions (2026-10-04)
+
+- **The Guide keeps the glossary behind "See all terms".** The three new
+  parts lead; the link opens the full `Copy/Terms.elm` list as it renders
+  today. `Copy/Terms.elm` stays the in-app glossary, so `RULES.md` needs no
+  change on this point.
+- **Condition is retired from the UI and every player-facing string.** The
+  sheet stops rendering the field; `Copy.conditionLabel` and the
+  `Copy.Terms` `condition` term go. The data and the wire format stay
+  (`characters.condition` and its decode are untouched), so nothing is lost.
+  `RULES.md` and `CONTEXT.md` say Condition is not part of the game at
+  present, the way they already treat Aspect Banes. Whether it returns is a
+  design question for later (P3.10).
+- **Log marks and step chips come from the stored text, no migration.** A
+  message is stored text plus `kind`. The die change is already in the text
+  as the `— d10 → d12` trailer (`dieChange` in `rules/log.ts`), and the event
+  is named at the start of the line. One client function reads the mark and
+  the die change out of an event line, tested against the lines `logText`
+  writes. `MoveRecord`s close once a Junction is rolled, so they cannot mark
+  older lines; the text can. A line it does not recognise renders with no
+  mark and no chip. If parsing proves brittle, storing the event's kind and
+  die change on the message (a migration) is the fallback.
+- **Desktop only.** The fixed 316px + 284px columns target the 1000×560
+  frame. Phones and narrow windows are out of scope for section 32; a
+  narrow layout is its own design phase later (P3.11).
+
+### Work order
+
+Each step builds and passes `pnpm run build` on its own. One branch,
+`feat/32-table-v2`, merged once the staging check passes.
+
+#### 32.0 Settle the open questions and keep the handoff — docs only
+
+- [x] Decide the open questions (see Decisions).
+- [x] Keep the handoff in the repo (README and the four screenshots, not
+      the HTML reference or `support.js`) under `docs/design/table-v2/`, so
+      later work can check against it.
+
+#### 32.1 Tokens and fonts — done
+
+- [x] Replace the palette in `Ui.elm`; add `edge`, `accentSoft`,
+      `dangerSoft`; the speaker colours.
+- [x] Self-host Atkinson Hyperlegible (400, 700, 400 italic), IBM Plex Mono
+      (400, 500) and Noto Sans Symbols 2 in `client/public/fonts/` with
+      `@font-face` in `client/index.html`. Discord's Activity CSP blocks
+      Google Fonts. Drop Inter. Noto Sans Symbols 2 has ☼ but not ☽ or the
+      arrows, so Noto Sans Symbols joins it; both are subset to the marks
+      the UI draws (4 KB together) and declared with a `unicode-range`.
+- [x] `Ui.sans`, `Ui.mono` and a glyph stack (`Ui.glyph`) applied in
+      `Ui.boonMarks` / `Ui.baneMarks`; the other mark cells take it as each
+      later step restyles them.
+- [x] The split-button washes in `client/index.html`; the label style, the
+      primary, ghost and tool-tab buttons, and `Ui.fontSize` for the
+      fractional sizes. The rest of the type scale and the radii land with
+      the views that use them.
+
+#### 32.2 Frame and tool strip — done
+
+- [x] Fixed widths: tool panel `px 316`, context `px 284`, log `fill`.
+- [x] `type ToolTab = SheetTab Int | WorldTab | GuideTab` in `Types.elm`,
+      replacing `toolTab` + `selectedSlot`. `SelectSlot` is gone; a sheet tab
+      is `SelectTool (SheetTab slot)`, and switching any tool flushes the
+      sheet's unsaved edits. The first game state opens the viewer's own
+      sheet, else slot 0 (falling back to the first sheet). Update the
+      `Main.update` tests.
+- [x] One strip: slot tabs with a "you" suffix (the facilitator sees none),
+      a separator, then World and Guide at the right.
+- [x] `Copy.castTabLabel` → "World", `castTabTip` → "NPCs & locations".
+
+#### 32.3 Status strip — `View/TopBar.elm` — done
+
+- [x] "GOAL" label and goal text (with the facilitator's `▾`).
+- [x] Rung bars with per-bar tooltips and the group tooltip
+      (`Copy.ladderTip`).
+- [x] "Roll d16" (`Copy.rollButton`, `Ui.rollButton`), the pending-roll chip
+      (`Ui.chip`), the result, Alter (cost as ☼☼) or Reroll / Reject
+      (`Ui.dangerGhostButton`) / Accept, step buttons (`Ui.squareButton`).
+      `Ui.glyph` now lists Atkinson before the system symbol fonts, so it is
+      safe on a label that mixes words and marks.
+
+#### 32.4 Sheet — `View/Characters.elm` — done
+
+- [x] Header: name, boon marks, the facilitator's − / + on `FateDecrement` /
+      `FateIncrement` (`Ui.squareButton`). On an editable sheet the name is
+      a field with no chrome.
+- [x] Notable features line, owner line (`Copy.ownerPlayedBy`) with Claim /
+      Release, the locked note. Two departures from the handoff: the
+      player's own sheet keeps a quiet "Your character · Release" line,
+      since Release has nowhere else to live; and the holder's name comes
+      from their latest message in the log (no wire change), falling back
+      to "Claimed".
+- [x] Aspect blocks (`Ui.aspectBlock`, replacing `Ui.splitButton`) with the
+      split button and ✎; an empty aspect, or one being edited, is its field
+      inside the block, with "see examples" beneath.
+- [x] Stop rendering the Condition field (data and wire unchanged); remove
+      `Copy.conditionLabel`.
+- [x] Notes. The placeholder is "Notes…", not the handoff's "Private
+      notes…": every viewer sees a sheet's notes.
+
+#### 32.5 Context column — `View.elm` + `View/ContextAspects.elm` — done
+
+- [x] Header with `Copy.contextCount`, replacing the `Ui.divider` title.
+- [x] Open and consumed aspect blocks, through `Ui.aspectBlock` (now with
+      `press` — the whole block as one button — and `dashed`). The
+      facilitator's ✎ / × sit in its corner, outside the button. The origin
+      on the meta row is "<character> · Complicate" for a Complicate's bane
+      and otherwise who added it (`createdByName`, a Discord name): a
+      context aspect does not record which move made it, so the handoff's
+      "Mara · Create" is not available without a wire change.
+- [x] The entry box: Create (`Copy.createCostNote`) for a player, the Boon /
+      Bane pills (`Ui.pill`) and "free" for the facilitator. Enter submits
+      through `Ui.onEnterSubmit`, which swallows the key so no line break
+      lands in the field; pasted newlines become spaces.
+
+#### 32.6 Log — `View/Log.elm` — done
+
+- [x] Chat lines: timestamp column, speaker name, 15px body. Day dividers
+      read "4 OCT" (`Format.dayMonth`).
+- [x] Event lines: mark column, step chip, undo link. `LogLine.parse` reads
+      the line text (see Decisions), with `LogLineTest` over each line
+      `logText` writes plus lines it does not recognise; it also says
+      whether a line already names who acted, so the "· author" suffix is
+      added only where it is not.
+      `worker/test/rules/logLineParity.test.ts` checks that every line
+      `logText` writes is one of `LogLineTest`'s cases, so rewording a log
+      line fails the Worker suite until the parser's test follows.
+- [x] Roll rows for each roll, reroll and Alter.
+- [x] The composer restyled; `View.Helpers.inputAttrs` takes the `edge`
+      border.
+- Follow-up moved to P3.4: the Worker still logs a facilitator's context
+  aspect as "Session note added …".
+
+#### 32.7 World and Guide — `View/Entities.elm`, `View/Guide.elm` — done
+
+- [x] World: section labels, player rows, the facilitator's inputs restyled.
+- [x] Guide: the die (paragraph, odds bars, legend), the moves, a junction,
+      then a "See all terms" link to the full glossary (`Model.glossaryOpen`,
+      `ToggleGlossary`). `Copy.Terms.ladderOdds` gains each rung's face
+      counts, which size the bars; `CopyTermsTest` checks they add up to
+      the die and follow `RULES.md`'s bands. The Guide's own wording is in
+      `Copy` (`guide*`).
+- [x] Remove the `condition` term from `Copy.Terms`; add "Condition" to
+      `CopyTermsTest`'s retired words.
+
+#### 32.8 Docs and the staging check — done
+
+- [x] `CLAUDE.md` (the layout, `ToolTab`, `Ui.elm`'s palette and fonts, the
+      Guide, the log parser and its parity test), `CHANGELOG.md`.
+- [x] `RULES.md` and `CONTEXT.md`: Condition is not part of the game at
+      present.
+- [x] After the first staging pass: the fixed 316px / 284px columns left
+      the log every spare pixel on a wide window. A 35 / 30 / 35 split was
+      tried next; equal thirds read best, so the columns are back to equal
+      widths (each `fill`, at least 300px). The log's `d10 → d12` chip no
+      longer breaks across lines.
+- [x] Staging, in `#test-app`: the fonts and glyphs load in the Discord
+      webview on desktop; the 1000×560 frame; both roles in preparation and
+      with a roll pending. Also worth a look there, since the scratch
+      preview could not show them: the split halves' hover labels, an aspect
+      being written (empty, or after ✎), the past-sessions list under the
+      context aspects, and a long goal ellipsising.
+
+# Phase 3 — open work
+
+Everything still open, in one numbered list: the Phase 1 leftovers (these were
+labelled `P2.x` while Phase 2 was the current plan) and what Phase 2 left
+unchecked when it closed with section 32. Same conventions: each item is its
+own branch off `main` with a professional commit message, and
+`DESIGN_PRINCIPLES.md` is the yardstick. Items are roughly in value-over-effort
+order, the playtest first; the last two are not scheduled.
+
+Older commits, `CHANGELOG.md` entries and ADR 0003 cite the earlier labels.
+The renumbering on 2026-10-04:
+
+| Was | Now |
+|---|---|
+| P2.1 | P3.5 |
+| P2.2 | P3.6 |
+| P2.3 | P3.7 |
+| P2.4 | P3.8 |
+| P2.5 | P3.12 |
+| P2.7 | P3.13 |
+| P2.8 | P3.16 |
+| P2.9 | P3.15 |
+| P2.11 | P3.9 |
+| P2.14 | P3.10 |
+| P2.15 | P3.11 |
+| §30 | P3.1 |
+| §25.3, §25.6 | P3.2, P3.3 |
+| §29.3 | P3.14 |
+
+Items that later work resolved or made moot are kept under **Closed** at the
+end with their old labels, since those labels may be cited elsewhere.
+
+## P3.1 — Playtest the Junction loop (from §30)
+
+Section 31's rules and section 32's interface have been exercised by the test
+suites, headless-Chrome renders and a staging check, not yet at the table.
+
+- [ ] **One table playtest** against the checklist below, then record what it
+      showed here. Run it in a test channel (`#test-app`) unless it is real
+      play.
+
+#### Manual playtest checklist
+
+- The strip shows the rung bars with d10 marked and "Roll d10"; pressing it
+  rolls: the die becomes a chip with the result beside it (`Flow · 7`), and
+  the log gets a tinted roll row (`Flow 7 on d10`).
+- Two people press the die at once: one roll lands, the other is refused.
+- A player Highlights from the right half of an aspect: a boon goes, the die
+  steps up, the log line carries `d10 → d12` and an undo link. Undo puts both
+  back.
+- Highlights stack to d20; a fourth Highlight is greyed and refused, and no
+  boon is spent.
+- Complicate from the left half of an aspect: two boons, and a bane reading
+  "Trouble from … — to be worded" that the facilitator words with ✎.
+- Create with words, and with a blank field (`Detail from <name>`).
+- Highlight Context on a context boon (die up) and on a context bane (die
+  down): each shows consumed and cannot be pressed again; undo restores it.
+- After the roll every move but Alter is greyed ("Moves are locked…"), and the
+  undo links on the earlier moves are gone.
+- Alter: two boons, a reroll on the same die; a second Alter by the same
+  character is refused, another character's is not. Undoing it restores the
+  earlier roll and frees the Alter.
+- The facilitator's Reroll is free and on the same die, even after a `‹` `›`
+  step.
+- Accept a Critical Flow → a context boon, the die back to d10; accept a
+  Critical Friction → a context bane; accept a plain result → nothing. Reject →
+  the die stays and the Junction can be rolled again.
+- The split buttons' labels appear on hover, and on a phone both halves show
+  their resting tint and the label on press.
+- Ending a session changes nothing except the history.
+
+#### Open questions to settle in play
+
+- [ ] **Generosity.** Is 60 / 40 Flow / Friction on the d10 too kind? The d8 is
+      50 / 50.
+- [ ] **Equal criticals.** Does a bane making a context boon likelier read as
+      backwards at the table?
+- [ ] **Complicate farming.** It is free and unapproved; the facilitator's undo
+      is the only check.
+- [ ] **Unworded banes.** Does "Trouble from <name>'s <Aspect>" carry a
+      Complicate until the facilitator words it, or should the player word it
+      when they make it?
+
+## P3.2 — A named edit cursor on the client (from §25.3)
+
+- [ ] "What is locally edited and unsaved" has no name or type: `Model`
+      carries `editingSlot`, `editingEntity`, `dirtySlots` and `dirtyEntities`
+      (`Types.elm`), and `applyServerState` merges the character half and the
+      entity half as near-verbatim copies. `StateMergeTest.elm` covers only
+      the character half. Add an `EditCursor` module owning those fields and
+      the protect-merge (`startEditing`, `markDirty`, `blur`, `flushed`,
+      `protect : EditCursor -> GameState -> GameState -> GameState`), generic
+      over slot / entity id, so the entity half inherits the character tests
+      and `Model` loses several fields for one. Independent of 25.1 — client
+      only, can go first.
+
+## P3.3 — Narrow `Effect`'s backend half (from §25.6, speculative)
+
+- [ ] The backend half of `Effect.elm` is one constructor per `Api` call — 30
+      `Post*` constructors after section 26 — so it is as wide as its
+      implementation, and `PostProposalDecision` still carries an `"accept"` /
+      `"reject"` string. The review's option: one `Post Auth Request`
+      constructor over a request-description type built in `Api`, keeping the
+      task / port constructors, which are where tests get their leverage. A
+      new endpoint would touch `Api` only and route strings would leave
+      `Main`. Speculative: do it only if the wide constructor list keeps
+      costing edits after 25.3.
+
+## P3.4 — Reword the facilitator's context-aspect log line (from §32.6)
+
+The Worker still logs a facilitator's context aspect as "Session note added
+(Boon) — …" (and "Session note removed …"), names `CONTEXT.md` retired; the
+Table v2 handoff shows "Context boon added: …".
+
+- [ ] Reword both lines in `logText` (`worker/src/rules/log.ts`), with the
+      matching cases in `client/tests/LogLineTest.elm` and the prefixes
+      `LogLine` keys on; `logLineParity` fails until all three agree. Older
+      rows keep the old wording, so `LogLine` should accept both.
+
+## P3.5 — Remaining test coverage (from §11)
 
 The Effect refactor and both `pnpm run test` suites shipped in CI; these gaps
 remain.
@@ -2463,7 +2702,7 @@ remain.
       payout, the section-12 session-end clear) went with the mechanics section
       26 retired; its Overcome loop is covered by `overcome.test.ts`.
 
-## P2.2 — Split `GameTable.ts` — section 22 step 6 Part 2 (from §22)
+## P3.6 — Split `GameTable.ts` — section 22 step 6 Part 2 (from §22)
 
 The module reshaping, deferred as its own effort so it gets the dedicated
 test-coverage pass the "no behaviour change" gate needs — the existing suite
@@ -2491,7 +2730,7 @@ start the handler split before 25.1 is decided.
 - Target: no file in `worker/src/` over ~500 lines. `GameTable.ts` is ~2200
   after Part 1 — the reshaping is what shrinks it.
 
-## P2.3 — Delta broadcasts (from §15)
+## P3.7 — Delta broadcasts (from §15)
 
 - [ ] Replace the whole-`GameState` push on every mutation with a tagged patch
       — `{ t: "message", message }`, `{ t: "stones", … }`,
@@ -2504,7 +2743,7 @@ broadcast call site, and the client fold, and it does not reduce request count.
 The 50-message window (§15) already shrank the payload. Section 22's route table
 and `commit()` helper give it fewer call sites to rewrite when it lands.
 
-## P2.4 — Reuse a still-valid `sessionToken` across reloads (from §14)
+## P3.8 — Reuse a still-valid `sessionToken` across reloads (from §14)
 
 - [ ] Persist the `sessionToken` in `localStorage`; on reload, skip
       `/api/oauth/discord/exchange` while `expires_at` is still in the future.
@@ -2513,7 +2752,43 @@ Lower value — Activities usually launch fresh rather than reload — but one
 request saved when they don't. Needs a new port + a `DiscordBridge` change, so
 its own branch.
 
-## P2.5 — Self-serve facilitator claiming (from §5)
+## P3.9 — A real tooltip element (from §21.3)
+
+The §21.3 tooltips are the native `title=` attribute only (`Ui.withTip`, applied
+through `View.Helpers.glossaryTitle` / `tip` / `tipAttrs`). That is hover-only
+and mouse-only: it needs about a second of a stationary pointer, shows nothing on
+tap or keyboard focus, and in practice does not render at all inside the Discord
+Activity webview — so in the shipping context the glosses are effectively
+invisible and the §21.4 "How to play" card is carrying all of the load. The
+built bundle is correct; this is a limitation of the mechanism, not a bug.
+
+- [ ] Replace `Ui.withTip` with a real tooltip in `Ui` — a small bubble shown on
+      hover, tap, and focus, positioned near the trigger, dismissed on blur /
+      Escape / outside tap. No `Model` state if it can be done with a CSS
+      `:hover` / `:focus-within` sibling; a lightweight `Model` open-id
+      otherwise, following the `aspectExamplesOpen` pattern.
+- [ ] Keep the call sites (`glossaryTitle` / `tip` / `tipAttrs`) and their
+      `Copy.Terms.termShort` source unchanged so only the leaf rendering moves.
+- [ ] Verify it actually appears inside the Discord Activity, not just a desktop
+      browser tab.
+
+## P3.10 — Does Condition come back? (from §32)
+
+Section 32 retired Condition from the UI and the copy; the
+`characters.condition` column and its wire field stay, unused. Decide in
+play whether a character needs one evolving sentence about strain. If it
+returns, it needs a place on the redesigned sheet, its glossary term back,
+and `RULES.md` / `CONTEXT.md`; if not, drop the column and the decode in a
+later migration.
+
+## P3.11 — A narrow layout for phones (from §32)
+
+Section 32 targets desktop: fixed 316px + 284px columns leave a phone no
+room for the log. A narrow layout (tabs or a stacked view instead of three
+columns) is its own design pass, starting from a design handoff rather than
+from section 32.
+
+## P3.12 — Self-serve facilitator claiming (from §5)
 
 - [ ] The first authenticated user at a `tableId` with no facilitator claims it,
       stored per-table (new migration).
@@ -2521,22 +2796,7 @@ its own branch.
 Needs a hand-off path; the obvious failure mode is a player launching first. Not
 needed while `BOOTSTRAP_FACILITATOR_ID` covers a single known facilitator.
 
-## P2.6 — Overcome-aftermath playtest questions (from §19) — moot
-
-**Moot.** Section 26 retired the mechanics these questions are about: the
-session verdict, the carried Banes, untethering, the frenzy and compels. Kept
-for the record; the section-26 playtest questions are in section 30.
-
-- **Cadence.** At base rates a failure lands roughly every ~3 sessions and
-      each character reckons every ~6–9; Highlights lengthen the cycle, hoarding
-      Boons shortens it. Check this feels right at the table.
-- Whether compels need a per-session cap after all.
-- The exact frenzy lockout — broken-aspect-only, or broader.
-- Whether the facilitator may call a foregone-failure session early — once
-      the carried Bane debt exceeds a session's realistic Boon ceiling — and cut
-      straight to the untether scene.
-
-## P2.7 — Character growth on the sheet (from §20)
+## P3.13 — Character growth on the sheet (from §20)
 
 Largely absorbed into §19: growth **is** the untether resolution — the forced
 rewrite or replacement of an aspect after a reckoning — with the `condition`
@@ -2560,23 +2820,21 @@ questions) are part of that design.
       aspect — all Banes clear, but does the character keep any marker of what
       they went through?
 
-## P2.8 — Campaigns: multiple games per facilitator (from §17, not scheduled)
+## P3.14 — Local dev inside Discord (from §29.3, optional)
 
-Today `tableId` (`guildId-channelId`) is the unit of persistence: one Durable
-Object per channel owns one set of characters, one message log, one session
-history. A **campaign** would become the real container — a named game a
-facilitator creates and manages, owning its characters, NPCs, locations, session
-history, and log — and the facilitator would pick which campaign is active for
-the channel at Activity start.
+Deploying to staging for every change is slow. With the dev application from
+29.2 in place, `pnpm run dev` can be reached from Discord through a tunnel
+(`cloudflared tunnel --url http://localhost:8787`), with the dev application's
+URL mapping pointed at it. That runs the local D1 and a local Durable Object,
+with no deploy per change.
 
-This is a large reshaping. It touches the Durable Object's binding model (the
-object is keyed by `tableId` and eagerly loads everything for it), needs a
-`campaigns` table and an active-campaign pointer per table, a campaign-selection
-screen, and a migration path for existing single-campaign tables.
+- [ ] Try it once and record the steps. A quick tunnel's URL changes on every
+      run, so the mapping has to be updated each time unless a named tunnel is
+      set up.
 
-- [ ] Design the data model and the DO-binding change before committing to it.
+Only worth doing if the staging loop proves too slow in practice.
 
-## P2.9 — AI session summary (from §18, exploratory)
+## P3.15 — AI session summary (from §18, exploratory)
 
 A short written recap of each session, generated when the facilitator ends it
 and stored on the `game_sessions` row for the history view.
@@ -2593,35 +2851,50 @@ unreliable over hours; hosted Whisper-class APIs are not free at that length).
       Claude API call at `/session/end`, and judge whether the log alone carries
       the session.
 
-## P2.10 — Split `KEY_STONES` storage (from §16, not planned)
+## P3.16 — Campaigns: multiple games per facilitator (from §17, not scheduled)
 
-- [ ] Split `KEY_STONES` into `stones` / `proposals` / `session` / `overcome`
+Today `tableId` (`guildId-channelId`) is the unit of persistence: one Durable
+Object per channel owns one set of characters, one message log, one session
+history. A **campaign** would become the real container — a named game a
+facilitator creates and manages, owning its characters, NPCs, locations, session
+history, and log — and the facilitator would pick which campaign is active for
+the channel at Activity start.
+
+This is a large reshaping. It touches the Durable Object's binding model (the
+object is keyed by `tableId` and eagerly loads everything for it), needs a
+`campaigns` table and an active-campaign pointer per table, a campaign-selection
+screen, and a migration path for existing single-campaign tables.
+
+- [ ] Design the data model and the DO-binding change before committing to it.
+
+## Closed
+
+Resolved or made moot; kept for the record under their old labels.
+
+### P2.6 — Overcome-aftermath playtest questions (from §19) — moot
+
+**Moot.** Section 26 retired the mechanics these questions are about: the
+session verdict, the carried Banes, untethering, the frenzy and compels. Kept
+for the record; the section-26 playtest questions are in section 30.
+
+- **Cadence.** At base rates a failure lands roughly every ~3 sessions and
+      each character reckons every ~6–9; Highlights lengthen the cycle, hoarding
+      Boons shortens it. Check this feels right at the table.
+- Whether compels need a per-session cap after all.
+- The exact frenzy lockout — broken-aspect-only, or broader.
+- Whether the facilitator may call a foregone-failure session early — once
+      the carried Bane debt exceeds a session's realistic Boon ceiling — and cut
+      straight to the untether scene.
+
+### P2.10 — Split `KEY_STONES` storage (from §16) — moot
+
+- Split `KEY_STONES` into `stones` / `proposals` / `session` / `overcome`
       keys so adding a proposal does not rewrite the whole blob.
 
-**Not planned** — the write-skip in §16 already removes the no-op rewrites;
-revisit only if Durable Object write metrics move.
+**Moot.** Section 31 retired the stones; the DO now keeps one `KEY_TABLE_STATE`
+blob, and `saveTableState` skips a byte-identical write.
 
-## P2.11 — A real tooltip element (from §21.3)
-
-The §21.3 tooltips are the native `title=` attribute only (`Ui.withTip`, applied
-through `View.Helpers.glossaryTitle` / `tip` / `tipAttrs`). That is hover-only
-and mouse-only: it needs about a second of a stationary pointer, shows nothing on
-tap or keyboard focus, and in practice does not render at all inside the Discord
-Activity webview — so in the shipping context the glosses are effectively
-invisible and the §21.4 "How to play" card is carrying all of the load. The
-built bundle is correct; this is a limitation of the mechanism, not a bug.
-
-- [ ] Replace `Ui.withTip` with a real tooltip in `Ui` — a small bubble shown on
-      hover, tap, and focus, positioned near the trigger, dismissed on blur /
-      Escape / outside tap. No `Model` state if it can be done with a CSS
-      `:hover` / `:focus-within` sibling; a lightweight `Model` open-id
-      otherwise, following the `aspectExamplesOpen` pattern.
-- [ ] Keep the call sites (`glossaryTitle` / `tip` / `tipAttrs`) and their
-      `Copy.Terms.termShort` source unchanged so only the leaf rendering moves.
-- [ ] Verify it actually appears inside the Discord Activity, not just a desktop
-      browser tab.
-
-## P2.12 — Complicate drops the suggester's own payout (from the Alter/Complicate copy pass) — resolved
+### P2.12 — Complicate drops the suggester's own payout (from the Alter/Complicate copy pass) — resolved
 
 **Resolved by section 26.2**, which deleted the suggester payout. Complicate has
 since changed again: it now targets the proposer's own character, which gains
@@ -2639,7 +2912,7 @@ are unreachable from the current inert Moves card (23.4) regardless.
 - [x] When Moves are re-wired, drop `SUGGEST_COMPEL_SUGGESTER_BOONS` and pay
       only the compelled character, to match the Complicate description.
 
-## P2.13 — Section 24 follow-ups (from code review) — moot
+### P2.13 — Section 24 follow-ups (from code review) — moot
 
 Findings from a post-merge review of section 24 (two-panel layout). **All moot
 or closed:** section 26.3 closed the Facilitator proposal count and dropped the

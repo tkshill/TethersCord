@@ -101,9 +101,9 @@ tipAttrs termKey =
 inputAttrs : List (Element.Attribute msg)
 inputAttrs =
     [ Element.paddingXY 8 5
-    , Border.color Ui.line
+    , Border.color Ui.edge
     , Border.width 1
-    , Border.rounded 4
+    , Border.rounded 5
     , Font.size 13
     ]
 

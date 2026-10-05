@@ -13,6 +13,61 @@ version yet, so headings are dates.
 Everything up to and including this deploy. Earlier deploys were not given
 their own headings, so their entries are gathered here too, newest first.
 
+### Changed (third deploy)
+
+- **Table v2 palette and type** (roadmap 32.1). The warm-paper palette gives
+  way to the high-contrast one from the Table v2 handoff: white surfaces,
+  black ink, a deep-blue accent, and a darker `edge` border for controls.
+  Atkinson Hyperlegible replaces Inter and IBM Plex Mono sets the timestamps,
+  both self-hosted. The ☼ / ☽ marks draw from two Noto symbol faces cut down
+  to the handful of marks the UI uses, because Apple Symbols draws ☼ as a
+  thin ring that reads as "empty".
+- **One tool strip** (roadmap 32.2). The character tabs leave the Sheet and
+  join the tool strip — `Wren you · Halvard · Mara | World · Guide` — so
+  the left panel has a single selected item, and the player's own sheet
+  opens first. Cast is renamed World. The three columns stay equal
+  widths, each at least 300px so a 1000px window still fits.
+- **A compact status strip** (roadmap 32.3). The `d6 … d20` labels become
+  six rising rung bars, the current die in the accent, and the die itself is
+  a "Roll d16" button, or an outlined chip while a roll is pending. Alter
+  shows its cost (☼☼); the facilitator's step buttons sit either side of the
+  die.
+- **The sheet as a page, not a form** (roadmap 32.4). The name is a heading
+  with the boons beside it (the facilitator's − / + after them), the
+  notable features an italic line beneath, and each aspect a bordered
+  block — the same shape the context aspects take in 32.5 — holding the
+  Complicate / Highlight halves on the player's own sheet. A pending roll
+  shows a note saying why the moves are locked.
+- **Context aspects as blocks** (roadmap 32.5). Each context boon or bane
+  is a block like the sheet's aspects, labelled BOON or BANE with who it
+  came from, and the whole block is the Highlight Context button; a
+  consumed one is dashed and struck through. The column has a header
+  counting open and consumed aspects, and Create (or the facilitator's Add,
+  with ☼ BOON / ☽ BANE pills) is a larger dashed box at its foot.
+- **A log that reads at a glance** (roadmap 32.6). Event lines lose the
+  italic and the rule and gain a mark — ☼ / ☽ for a boon or bane added,
+  ↑ / ↓ for a step of the die — with the die change set in a small
+  `d10 → d12` chip. Each roll, reroll and Alter stands out as a tinted row
+  with its outcome in colour. Chat is set larger, and the day dividers
+  read "4 OCT". The marks and chips are read from the stored line text, so
+  no stored message changed.
+- **A shorter Guide** (roadmap 32.7). The Guide leads with what a player
+  needs at the table: the die, with each rung's odds as a coloured bar; the
+  five moves and their costs; and the four steps of a junction. The full
+  glossary is still there behind "See all terms". The World tab (was Cast)
+  is restyled to match.
+- **The roadmap closes Phase 2** with section 32. What Phase 2 left open
+  (section 25's last two items, 29.3, the section 30 playtest) moved into
+  the open list, which is renumbered `P3.x`, playtest first; `ROADMAP.md`
+  maps each old `P2.x` label to its new one.
+
+### Removed (third deploy)
+
+- **Condition is off the sheet and out of the glossary** (roadmap 32.4,
+  32.7). It is retired from the UI and the copy until play shows it is
+  wanted (roadmap P3.10); the stored value and the wire field are
+  untouched.
+
 ### Changed (second deploy)
 
 - **Tool tabs always show their titles** (roadmap 28.2). The left panel's

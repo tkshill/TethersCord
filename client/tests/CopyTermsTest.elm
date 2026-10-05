@@ -50,7 +50,7 @@ suite =
             \_ ->
                 let
                     retired =
-                        [ "compel", "pledge", "floating", "once per session", "once-per-session", "insight", "the bag", "untether", "stone", "pool", "proposal", "propose", "add detail", "alter fate", "overcome", "withdraw" ]
+                        [ "compel", "pledge", "floating", "once per session", "once-per-session", "insight", "the bag", "untether", "stone", "pool", "proposal", "propose", "add detail", "alter fate", "overcome", "withdraw", "condition" ]
 
                     mentions t =
                         let
@@ -65,7 +65,7 @@ suite =
                     |> Expect.equalLists []
         , test "every term a view looks up for a tooltip exists" <|
             \_ ->
-                [ "Archetype", "Desire", "Quest", "Condition", "Junction", "Context aspect", "Highlight", "Complicate", "Create", "Alter" ]
+                [ "Archetype", "Desire", "Quest", "Junction", "Context aspect", "Highlight", "Complicate", "Create", "Alter" ]
                     |> List.filter (\name -> Terms.termShort name == "")
                     |> Expect.equalLists []
         , test "termShort returns \"\" for an unknown name" <|
@@ -76,6 +76,18 @@ suite =
             \_ ->
                 List.map .die Terms.ladderOdds
                     |> Expect.equal [ "d6", "d8", "d10", "d12", "d16", "d20" ]
+        , test "each rung's face counts add up to the die and follow RULES.md's bands" <|
+            \_ ->
+                Terms.ladderOdds
+                    |> List.map
+                        (\o ->
+                            ( o.die
+                            , [ o.faces.criticalFriction, o.faces.friction, o.faces.criticalFlow ]
+                            , o.faces.criticalFriction + o.faces.friction + o.faces.flow + o.faces.criticalFlow
+                            )
+                        )
+                    |> Expect.equal
+                        (List.map (\n -> ( "d" ++ String.fromInt n, [ 2, 2, 2 ], n )) [ 6, 8, 10, 12, 16, 20 ])
         ]
 
 

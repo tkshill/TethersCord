@@ -105,7 +105,6 @@ init flags =
       , dirtySlots = Set.empty
       , dirtyEntities = Set.empty
       , fieldSaveSeq = 0
-      , selectedSlot = 0
       , logAtBottom = True
       , newSessionGoal = ""
       , goalEdit = ""
@@ -121,7 +120,8 @@ init flags =
       , connection = Connected
       , gameStateAttempts = 0
       , timeZone = Time.utc
-      , toolTab = SheetTab
+      , toolTab = SheetTab 0
+      , glossaryOpen = False
       }
     , Effect.Batch [ Effect.Authorize, Effect.GetTimeZone ]
     )
@@ -301,6 +301,7 @@ update msg model =
                         | gameState = Just (applyServerState model gs)
                         , status = "Connected."
                         , gameStateAttempts = 0
+                        , toolTab = openOwnSheet model gs
                       }
                     , Effect.ScrollLogToBottom
                     )
@@ -385,13 +386,9 @@ update msg model =
         ClearLog ->
             guard ClearingLog { model | confirming = Nothing } Effect.PostClearMessages
 
-        SelectSlot slot ->
-            -- Leaving a tab flushes any unsaved edits on the sheet behind it.
-            flushFieldSaves { model | selectedSlot = slot }
-
         ClaimSlot slot ->
             -- Bring the claimed sheet's tab to the front as well.
-            guard ClaimingSlot { model | selectedSlot = slot } (\auth -> Effect.PostClaimSlot auth slot)
+            guard ClaimingSlot { model | toolTab = SheetTab slot } (\auth -> Effect.PostClaimSlot auth slot)
 
         ReleaseSlot slot ->
             guard ReleasingSlot model (\auth -> Effect.PostReleaseSlot auth slot)
@@ -483,8 +480,12 @@ update msg model =
         ToggleSessionControls ->
             ( { model | sessionControlsExpanded = not model.sessionControlsExpanded }, Effect.None )
 
+        ToggleGlossary ->
+            ( { model | glossaryOpen = not model.glossaryOpen }, Effect.None )
+
         SelectTool tab ->
-            ( { model | toolTab = tab }, Effect.None )
+            -- Leaving a tab flushes any unsaved edits on the sheet behind it.
+            flushFieldSaves { model | toolTab = tab }
 
         ToggleAspectExamples slot aspect ->
             let
@@ -679,6 +680,12 @@ update msg model =
                     ( { model
                         | gameState = Just (applyServerState model gs)
                         , connection = Connected
+                        , toolTab =
+                            if model.gameState == Nothing then
+                                openOwnSheet model gs
+
+                            else
+                                model.toolTab
                       }
                     , if model.logAtBottom then
                         Effect.ScrollLogToBottom
@@ -702,6 +709,24 @@ update msg model =
 
 
 -- STATE MERGING
+
+
+{-| The tool to show once the first game state arrives: the viewer's own
+sheet if they hold one, otherwise whatever is already selected (slot 0 by
+default).
+-}
+openOwnSheet : Model -> GameState -> ToolTab
+openOwnSheet model gs =
+    let
+        myId =
+            Maybe.map .userId model.auth
+    in
+    case ( model.toolTab, List.filter (\c -> c.ownerId /= Nothing && c.ownerId == myId) gs.characters ) of
+        ( SheetTab _, own :: _ ) ->
+            SheetTab own.slot
+
+        _ ->
+            model.toolTab
 
 
 {-| Accept a server snapshot, but keep every character sheet / reference row that

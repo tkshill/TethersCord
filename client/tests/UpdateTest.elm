@@ -49,6 +49,20 @@ m =
     Fixtures.model
 
 
+{-| The fixture table with its one sheet (slot 1) held by the fixture player.
+-}
+ownedState : Types.GameState
+ownedState =
+    let
+        gs =
+            Fixtures.gameState
+
+        ch =
+            Fixtures.character
+    in
+    { gs | characters = [ { ch | ownerId = Just Fixtures.playerAuth.userId } ] }
+
+
 {-| `ready`, with one context boon on the table to edit or spend.
 -}
 withAspect : Model
@@ -106,6 +120,24 @@ suite =
                             ( { ready | gameState = Just Fixtures.gameState, status = "Connected." }
                             , Effect.ScrollLogToBottom
                             )
+            , test "the first snapshot opens the viewer's own sheet" <|
+                \_ ->
+                    Main.update (GotGameState (Ok ownedState)) { ready | gameState = Nothing }
+                        |> Tuple.first
+                        |> .toolTab
+                        |> Expect.equal (SheetTab 1)
+            , test "the first snapshot leaves a tool other than a sheet alone" <|
+                \_ ->
+                    Main.update (GotGameState (Ok ownedState)) { ready | gameState = Nothing, toolTab = GuideTab }
+                        |> Tuple.first
+                        |> .toolTab
+                        |> Expect.equal GuideTab
+            , test "the first snapshot keeps slot 0 for a viewer with no sheet" <|
+                \_ ->
+                    Main.update (GotGameState (Ok Fixtures.gameState)) { ready | gameState = Nothing }
+                        |> Tuple.first
+                        |> .toolTab
+                        |> Expect.equal (SheetTab 0)
             , test "a later seed does not overwrite state the socket already delivered" <|
                 \_ ->
                     let
@@ -267,14 +299,22 @@ suite =
                 \_ ->
                     Main.update (NewMessageChanged "typing") ready
                         |> Expect.equal ( { ready | newMessage = "typing" }, Effect.None )
-            , test "SelectSlot only moves the open tab" <|
+            , test "SelectTool on a sheet tab only moves the open tab" <|
                 \_ ->
-                    Main.update (SelectSlot 2) ready
-                        |> Expect.equal ( { ready | selectedSlot = 2 }, Effect.None )
+                    Main.update (SelectTool (SheetTab 2)) ready
+                        |> Expect.equal ( { ready | toolTab = SheetTab 2 }, Effect.None )
+            , test "ToggleGlossary opens and shuts the Guide's full glossary, no effect" <|
+                \_ ->
+                    let
+                        opened =
+                            Main.update ToggleGlossary ready |> Tuple.first
+                    in
+                    ( opened.glossaryOpen, Main.update ToggleGlossary opened |> Tuple.first |> .glossaryOpen )
+                        |> Expect.equal ( True, False )
             , test "SelectTool switches the left panel's tool, no effect" <|
                 \_ ->
-                    Main.update (SelectTool CastTab) ready
-                        |> Expect.equal ( { ready | toolTab = CastTab }, Effect.None )
+                    Main.update (SelectTool WorldTab) ready
+                        |> Expect.equal ( { ready | toolTab = WorldTab }, Effect.None )
             , test "ToggleSessionControls flips the top-bar expander open and shut, no effect" <|
                 \_ ->
                     let

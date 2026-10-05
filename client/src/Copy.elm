@@ -28,6 +28,13 @@ baneLabel =
     "Bane"
 
 
+{-| The kind label on a context boon's block.
+-}
+boonLabel : String
+boonLabel =
+    "Boon"
+
+
 
 -- THE STRIP (View/TopBar.elm) — the die ladder, the pending roll and the
 -- controls that resolve it.
@@ -45,7 +52,28 @@ rollResult outcome face =
     outcome ++ " · " ++ String.fromInt face
 
 
-{-| The current rung's tooltip while it is the roll button.
+{-| The status strip's roll button.
+-}
+rollButton : String -> String
+rollButton die =
+    "Roll " ++ die
+
+
+{-| The label before the running goal in the status strip.
+-}
+goalLabel : String
+goalLabel =
+    "Goal"
+
+
+{-| The rung bars' tooltip: the whole ladder and where the die sits on it.
+-}
+ladderTip : List String -> String -> String
+ladderTip rungs current =
+    "The ladder: " ++ String.join " · " rungs ++ ". The die is at " ++ current ++ "."
+
+
+{-| The roll button's tooltip.
 -}
 rollTip : String -> String
 rollTip die =
@@ -198,12 +226,58 @@ noContextAspects =
     "No context boons or banes yet."
 
 
+{-| A roll line's lead in the log: "Halvard rolled", "Rerolled",
+"Wren altered".
+-}
+rolledBy : String -> String
+rolledBy name =
+    name ++ " rolled"
+
+
+rerolledLead : String
+rerolledLead =
+    "Rerolled"
+
+
+alteredBy : String -> String
+alteredBy name =
+    name ++ " altered"
+
+
 {-| The mark on a context boon or bane that has been highlighted. It stays on
 the table, visibly consumed, and cannot be highlighted again.
 -}
 contextAspectConsumed : String
 contextAspectConsumed =
     "consumed"
+
+
+{-| The context column's header count: "4 open · 1 consumed".
+-}
+contextCount : Int -> Int -> String
+contextCount open consumed =
+    String.fromInt open ++ " open · " ++ String.fromInt consumed ++ " consumed"
+
+
+{-| Where a Complicate's bane came from, on its block: "Wren · Complicate".
+-}
+complicateOrigin : String -> String
+complicateOrigin name =
+    name ++ " · Complicate"
+
+
+{-| What a player's Create costs, on the entry box.
+-}
+createCostNote : String
+createCostNote =
+    "costs ☼"
+
+
+{-| What the facilitator's Add costs, on the entry box.
+-}
+addCostNote : String
+addCostNote =
+    "free"
 
 
 {-| Facilitator-only: remove a context boon or bane outright.
@@ -256,9 +330,11 @@ createButton =
     "Create"
 
 
+{-| The player's Alter, its cost shown as marks.
+-}
 alterButton : String
 alterButton =
-    "Alter"
+    "Alter " ++ String.repeat alterCost "☼"
 
 
 alterNeedsBoons : String
@@ -382,9 +458,11 @@ noCharacterSheets =
     "No character sheets."
 
 
+{-| The small suffix on the viewer's own character tab in the tool strip.
+-}
 youMarker : String
 youMarker =
-    " (you)"
+    "you"
 
 
 {-| Tab / label fallback for a sheet with no name yet. Mirrors the worker's
@@ -398,6 +476,13 @@ characterFallback slot =
 ownerMine : String
 ownerMine =
     "Your character"
+
+
+{-| The owner line on a claimed sheet, naming the Discord user who holds it.
+-}
+ownerPlayedBy : String -> String
+ownerPlayedBy name =
+    "Played by " ++ name
 
 
 ownerRelease : String
@@ -425,14 +510,38 @@ notableFeaturesLabel =
     "Notable features"
 
 
-conditionLabel : String
-conditionLabel =
-    "Condition"
+notableFeaturesPlaceholder : String
+notableFeaturesPlaceholder =
+    "Notable features…"
 
 
-boonsLabel : String
-boonsLabel =
-    "Boons"
+namePlaceholder : String
+namePlaceholder =
+    "Name…"
+
+
+notesLabel : String
+notesLabel =
+    "Notes"
+
+
+{-| Not "Private notes…" as the Table v2 handoff has it: every viewer sees a
+sheet's notes.
+-}
+notesPlaceholder : String
+notesPlaceholder =
+    "Notes…"
+
+
+{-| The tooltip on a character's boon marks.
+-}
+boonsTip : Int -> String
+boonsTip n =
+    if n == 1 then
+        "1 boon"
+
+    else
+        String.fromInt n ++ " boons"
 
 
 boonsNone : String
@@ -440,9 +549,14 @@ boonsNone =
     "None"
 
 
-grant : String
-grant =
-    "Grant"
+grantBoonTip : String
+grantBoonTip =
+    "Grant a boon"
+
+
+removeBoonTip : String
+removeBoonTip =
+    "Remove a boon"
 
 
 
@@ -495,24 +609,21 @@ entityUnnamed =
 -- glyph tab, and the tooltip on each unselected one.
 
 
-sheetTabLabel : String
-sheetTabLabel =
-    "Sheet"
-
-
-sheetTabTip : String
-sheetTabTip =
-    "Your character, and the moves on its aspects"
+{-| The tooltip on a character's tab in the tool strip.
+-}
+sheetTabTip : String -> String
+sheetTabTip name =
+    name ++ "'s sheet"
 
 
 castTabLabel : String
 castTabLabel =
-    "Cast"
+    "World"
 
 
 castTabTip : String
 castTabTip =
-    "Cast & locations"
+    "NPCs & locations"
 
 
 noCast : String
@@ -523,6 +634,89 @@ noCast =
 contextTabLabel : String
 contextTabLabel =
     "Context"
+
+
+-- GUIDE (View/Guide.elm)
+
+
+guideDieTitle : String
+guideDieTitle =
+    "The die"
+
+
+guideDieText : String
+guideDieText =
+    "One die decides each junction. Boons step it up, banes step it down. It returns to the d10 when a junction is accepted."
+
+
+{-| An odds bar's tooltip: "d16: Critical Friction 12.5% · Friction 12.5% · …".
+-}
+guideOddsTip : { a | die : String, criticalFriction : String, friction : String, flow : String, criticalFlow : String } -> String
+guideOddsTip o =
+    o.die
+        ++ ": Critical Friction "
+        ++ o.criticalFriction
+        ++ " · Friction "
+        ++ o.friction
+        ++ " · Flow "
+        ++ o.flow
+        ++ " · Critical Flow "
+        ++ o.criticalFlow
+
+
+{-| The odds bars' legend, Friction first as the bars run.
+-}
+guideLegend : { criticalFriction : String, friction : String, flow : String, criticalFlow : String }
+guideLegend =
+    { criticalFriction = "Critical Friction · 1–2"
+    , friction = "Friction · 3–4"
+    , flow = "Flow · 5 and up"
+    , criticalFlow = "Critical Flow · top two"
+    }
+
+
+guideMovesTitle : String
+guideMovesTitle =
+    "Moves"
+
+
+{-| The Guide's moves: name, what it does, its cost as marks, and the cost in
+words for the tooltip.
+-}
+guideMoves : List { name : String, effect : String, cost : String, costTip : String }
+guideMoves =
+    [ { name = "Highlight", effect = "Make one of your aspects matter. The die steps up.", cost = "☼", costTip = "1 boon" }
+    , { name = "Highlight Context", effect = "Use a context aspect once. Boon steps up, bane steps down.", cost = "free", costTip = "Free" }
+    , { name = "Complicate", effect = "Your aspect drags you into trouble. Gain two boons; a bane appears.", cost = "+☼☼", costTip = "Gain 2 boons" }
+    , { name = "Create", effect = "Make something true about the scene, a context boon in your words.", cost = "☼", costTip = "1 boon" }
+    , { name = "Alter", effect = "After a roll, reroll on the same die. Once per junction.", cost = "☼☼", costTip = "2 boons" }
+    ]
+
+
+guideJunctionTitle : String
+guideJunctionTitle =
+    "A junction"
+
+
+{-| The four steps of a junction: a bold lead word, then the rest.
+-}
+guideJunctionSteps : List ( String, String )
+guideJunctionSteps =
+    [ ( "Prepare.", "Make moves and play the scene. Moves can be undone." )
+    , ( "Roll.", "Anyone rolls the die. Moves lock." )
+    , ( "Alter.", "The only move left after the roll." )
+    , ( "Resolve.", "The facilitator accepts or rejects. Accepting resets to d10." )
+    ]
+
+
+guideAllTermsShow : String
+guideAllTermsShow =
+    "See all terms"
+
+
+guideAllTermsHide : String
+guideAllTermsHide =
+    "Hide the terms"
 
 
 guideTabLabel : String

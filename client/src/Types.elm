@@ -332,9 +332,6 @@ type alias Model =
     -- `FieldSaveDue` only fires the write if it still carries the latest value.
     , fieldSaveSeq : Int
 
-    -- Which character sheet's tab is open. Sheets are shown one at a time.
-    , selectedSlot : Int
-
     -- Whether the message log is scrolled to (or near) its bottom. New messages
     -- only pull the log down when this holds, so a viewer reading back history
     -- is left where they are.
@@ -395,10 +392,15 @@ type alias Model =
     -- UTC and is replaced once Time.here resolves.
     , timeZone : Time.Zone
 
-    -- Which tool the left panel's glyph strip is showing (roadmap section
-    -- 27). Purely local view state, toggled by `SelectTool`; the event log and
-    -- composer are not tools — they own the right panel outright.
+    -- What the left panel's tool strip is showing: one character's sheet, the
+    -- World or the Guide (roadmap 32.2). Purely local view state, toggled by
+    -- `SelectTool`; the event log and composer are not tools — they own the
+    -- right column outright.
     , toolTab : ToolTab
+
+    -- Whether the Guide's full glossary is open under its "See all terms"
+    -- link (roadmap 32.7). Local view state, toggled by `ToggleGlossary`.
+    , glossaryOpen : Bool
     }
 
 
@@ -411,13 +413,14 @@ type Connection
     | Rejected
 
 
-{-| The left panel's tool strip (roadmap section 27, mockup 2a): one tool shown
-at a time under a row of glyph tabs — the character sheet, the cast, the guide.
-The event log is not a tool — it fills the right panel.
+{-| The left panel's tool strip (roadmap 32.2): one strip holding a tab per
+character sheet, then the World (NPCs and locations) and the Guide, with one
+selected item across all of them. `SheetTab` carries the sheet's slot. The
+event log is not a tool — it fills the right column.
 -}
 type ToolTab
-    = SheetTab
-    | CastTab
+    = SheetTab Int
+    | WorldTab
     | GuideTab
 
 
@@ -447,7 +450,6 @@ type Msg
     | GotEarlierMessages (Result Http.Error (List Message))
     | ClearLog
     | FromDiscordRaw Decode.Value
-    | SelectSlot Int
     | ClaimSlot Int
     | ReleaseSlot Int
     | PressJunction
@@ -472,6 +474,7 @@ type Msg
     | DismissError
     | ToggleSessionControls
     | SelectTool ToolTab
+    | ToggleGlossary
     | ToggleAspectExamples Int Aspect
     | EditAspect Int Aspect
     | EditContextAspect String

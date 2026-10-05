@@ -5,15 +5,63 @@
     <title>TTRPG Discord Activity</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-      /* Self-hosted so it loads under Discord's Activity CSP; the latin subset
-         of Inter as a single variable file. Ui.sans lists "Inter" first with a
-         system fallback, so a failed load degrades quietly. */
+      /* Fonts (roadmap 32.1), self-hosted because Discord's Activity CSP blocks
+         Google Fonts; all OFL, latin subsets from Fontsource. Ui.sans is
+         Atkinson Hyperlegible, Ui.mono IBM Plex Mono. Ui.glyph puts the two
+         Noto symbol faces first for the marks: Apple Symbols draws ☼ as a thin
+         ring that reads as "empty". Noto Sans Symbols 2 has ☼ but not ☽ or the
+         arrows, which come from Noto Sans Symbols; each is cut down to the few
+         marks the UI draws (☼ ✎ ◈ ▾ / ☽ ↑ ↓ →). */
       @font-face {
-        font-family: "Inter";
+        font-family: "Atkinson Hyperlegible";
         font-style: normal;
-        font-weight: 100 900;
+        font-weight: 400;
         font-display: swap;
-        src: url("/fonts/inter-latin-wght-normal.woff2") format("woff2");
+        src: url("/fonts/atkinson-hyperlegible-latin-400-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Atkinson Hyperlegible";
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+        src: url("/fonts/atkinson-hyperlegible-latin-700-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Atkinson Hyperlegible";
+        font-style: italic;
+        font-weight: 400;
+        font-display: swap;
+        src: url("/fonts/atkinson-hyperlegible-latin-400-italic.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "IBM Plex Mono";
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url("/fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "IBM Plex Mono";
+        font-style: normal;
+        font-weight: 500;
+        font-display: swap;
+        src: url("/fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Noto Sans Symbols 2";
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url("/fonts/noto-sans-symbols-2-marks.woff2") format("woff2");
+        unicode-range: U+263C, U+270E, U+25C8, U+25BE;
+      }
+      @font-face {
+        font-family: "Noto Sans Symbols";
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url("/fonts/noto-sans-symbols-marks.woff2") format("woff2");
+        unicode-range: U+263D, U+2191-2193;
       }
 
       /* The three-column layout (roadmap section 23.5) is a fixed-height
@@ -46,19 +94,19 @@
       .split-left:hover,
       .split-left:focus-visible,
       .split-left:active {
-        background: linear-gradient(to right, rgba(168, 74, 74, 0.24), rgba(168, 74, 74, 0)) !important;
+        background: linear-gradient(to right, rgba(158, 0, 0, 0.16), rgba(158, 0, 0, 0)) !important;
       }
       .split-right:hover,
       .split-right:focus-visible,
       .split-right:active {
-        background: linear-gradient(to left, rgba(64, 128, 88, 0.26), rgba(64, 128, 88, 0)) !important;
+        background: linear-gradient(to left, rgba(0, 102, 43, 0.18), rgba(0, 102, 43, 0)) !important;
       }
       @media (hover: none) {
         .split-left {
-          background: linear-gradient(to right, rgba(168, 74, 74, 0.09), rgba(168, 74, 74, 0)) !important;
+          background: linear-gradient(to right, rgba(158, 0, 0, 0.07), rgba(158, 0, 0, 0)) !important;
         }
         .split-right {
-          background: linear-gradient(to left, rgba(64, 128, 88, 0.1), rgba(64, 128, 88, 0)) !important;
+          background: linear-gradient(to left, rgba(0, 102, 43, 0.08), rgba(0, 102, 43, 0)) !important;
         }
       }
       .split-half.is-off,

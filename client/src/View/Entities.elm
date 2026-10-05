@@ -11,6 +11,7 @@ import Element exposing (Element, el, fill, height, none, px, spacing, text, wid
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
+import Html.Attributes
 import Types exposing (..)
 import Ui
 import View.Helpers exposing (ViewContext, inputAttrs, placeholder)
@@ -34,7 +35,7 @@ view ctx kind gs =
         none
 
     else
-        Ui.flat
+        Element.column [ width fill, spacing Ui.xs ]
             (Ui.sectionTitle title
                 :: (if List.isEmpty entities then
                         [ placeholder (Copy.noEntitiesYet title) ]
@@ -62,14 +63,13 @@ entityRow kind facilitator entity =
     let
         boxAttrs =
             [ spacing Ui.xs
-            , Element.paddingEach { top = 0, right = 0, bottom = Ui.sm, left = 0 }
             , width fill
             , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
             , Border.color Ui.line
             ]
     in
     if facilitator then
-        Element.column boxAttrs
+        Element.column (Element.paddingEach { top = Ui.xs, right = 0, bottom = Ui.sm, left = 0 } :: boxAttrs)
             [ Element.row [ width fill, spacing Ui.sm, Element.centerY ]
                 [ el [ width fill ]
                     (Input.text
@@ -94,7 +94,7 @@ entityRow kind facilitator entity =
             ]
 
     else
-        Element.column boxAttrs
+        Element.column (Element.paddingXY 0 7 :: boxAttrs)
             [ el [ Font.semiBold, Font.size 13 ]
                 (text
                     (if String.trim entity.name == "" then
@@ -108,5 +108,10 @@ entityRow kind facilitator entity =
                 none
 
               else
-                Element.paragraph [ Font.size 12, Font.color Ui.inkSoft ] [ text entity.notes ]
+                Element.paragraph
+                    [ Font.size 14
+                    , Font.color Ui.inkSoft
+                    , Element.htmlAttribute (Html.Attributes.style "line-height" "1.35")
+                    ]
+                    [ text entity.notes ]
             ]

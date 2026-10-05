@@ -1,15 +1,14 @@
 module View.TopBar exposing (view)
 
-{-| The status strip across the top of the page (roadmap 27, mockup 2a; the
-ladder from 31.5): one line holding the running session's goal, the die
-ladder, the junction controls, and who the viewer is.
+{-| The status strip across the top of the page (roadmap 32.3, Table v2): one
+line holding the running session's goal, the die ladder as six rung bars, the
+die, the junction controls, and who the viewer is.
 
-The ladder is the roll button: `d6 d8 [d10] d12 d16 d20`, the current die
-marked, and that one cell pressable — any player, or the facilitator, rolls the
-junction with it. While a roll is pending it stops being a button and the
-result sits beside the ladder (`Flow · 7`); a player sees **Alter**, the
-facilitator **Reroll / Reject / Accept**. The facilitator's `‹` `›` either side
-of the ladder step the die directly, at any time.
+While no roll is pending the die is the roll button ("Roll d16") — any player,
+or the facilitator, rolls the junction with it. While one is pending the die is
+an outlined chip and the result sits beside it (`Flow · 7`); a player sees
+**Alter ☼☼**, the facilitator **Reroll / Reject / Accept**. The facilitator's
+`‹` `›` either side of the die step it directly, at any time.
 
 Session start / end / goal-edit controls — facilitator-only — open as a row
 beneath the strip when the facilitator clicks the goal (`ToggleSessionControls`),
@@ -57,76 +56,103 @@ strip : ViewContext -> Props -> GameState -> Element Msg
 strip ctx props gs =
     Element.row
         [ width fill
-        , Element.height (Element.px 34)
-        , Element.paddingXY 10 0
-        , spacing 10
+        , Element.height (Element.px 42)
+        , Element.paddingEach { top = 0, right = 12, bottom = 0, left = 14 }
+        , spacing 14
         , Element.centerY
         , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
         , Border.color Ui.line
         ]
-        [ goalSummary ctx.facilitator gs.session
-        , ladder ctx gs
+        [ el [ Element.centerY ] (Ui.sectionTitle Copy.goalLabel)
+        , goalSummary ctx.facilitator gs.session
+        , rungs gs.die
+        , dieControl ctx gs
         , result gs.junction
         , controls ctx gs
         , who ctx
         ]
 
 
-{-| The ladder, the current die marked and — while no roll is pending — the
-button that rolls the junction. The facilitator's `‹` `›` sit either side.
+{-| The ladder as six bars rising left to right, the current die in the
+accent and the base die (d10) a shade darker than the rest so the reset
+point reads. Each bar's tooltip is its die; the group's names the whole
+ladder.
 -}
-ladder : ViewContext -> GameState -> Element Msg
-ladder ctx gs =
+rungs : Die -> Element msg
+rungs current =
     let
-        rung die =
-            if die == gs.die then
-                currentRung ctx gs.junction die
-
-            else
-                el [ Font.size 11, Font.color Ui.inkSoft ] (text (Die.label die))
-
-        arrow direction glyph tip =
-            Ui.withTip tip
-                (Ui.linkButton
-                    { onPress =
-                        Die.step direction gs.die
-                            |> Maybe.andThen (\_ -> Ui.press ctx.inflight (SteppingDie direction) (StepDie direction))
-                    , label = glyph
-                    }
-                )
-    in
-    Element.row [ spacing 6, Element.centerY ]
-        (Ui.onlyWhen ctx.facilitator [ arrow Die.Down "‹" Copy.stepDownTip ]
-            ++ List.map rung Die.ladder
-            ++ Ui.onlyWhen ctx.facilitator [ arrow Die.Up "›" Copy.stepUpTip ]
-        )
-
-
-{-| The current die: the roll button, or — while a roll is pending — a marked
-cell that presses nothing.
--}
-currentRung : ViewContext -> Maybe Junction -> Die -> Element Msg
-currentRung ctx junction die =
-    case junction of
-        Nothing ->
-            Ui.withTip (Copy.rollTip (Die.label die))
-                (Ui.primaryButton
-                    { onPress = Ui.press ctx.inflight RollingJunction PressJunction
-                    , label = Die.label die
-                    }
-                )
-
-        Just _ ->
+        bar index die =
             el
-                [ Font.size 12
-                , Font.semiBold
-                , Element.paddingXY 6 2
-                , Border.width 1
-                , Border.color Ui.line
-                , Border.rounded 4
-                , Element.htmlAttribute (Html.Attributes.title (Copy.dieTip (Die.label die)))
+                [ width (Element.px 5)
+                , Element.alignBottom
+                , Element.htmlAttribute (Html.Attributes.style "height" (String.fromFloat (6 + 2.4 * toFloat index) ++ "px"))
+                , Element.htmlAttribute (Html.Attributes.style "border-radius" "1.5px")
+                , Background.color
+                    (if die == current then
+                        Ui.accent
+
+                     else if die == Die.base then
+                        Ui.inkSoft
+
+                     else
+                        Ui.line
+                    )
+                , Element.htmlAttribute (Html.Attributes.title (Die.label die))
                 ]
-                (text (Die.label die))
+                none
+    in
+    Element.row
+        [ spacing 3
+        , Element.height (Element.px 18)
+        , Element.centerY
+        , Element.htmlAttribute
+            (Html.Attributes.title (Copy.ladderTip (List.map Die.label Die.ladder) (Die.label current)))
+        ]
+        (List.indexedMap bar Die.ladder)
+
+
+{-| The die: while no roll is pending, the button that rolls the junction
+("Roll d16"); while one is, an outlined chip that presses nothing. The
+facilitator's `‹` `›` either side step the die at any time, disabled at an
+end of the ladder.
+-}
+dieControl : ViewContext -> GameState -> Element Msg
+dieControl ctx gs =
+    let
+        die =
+            Die.label gs.die
+
+        stepButton direction glyph tip =
+            Ui.squareButton
+                { onPress =
+                    Die.step direction gs.die
+                        |> Maybe.andThen (\_ -> Ui.press ctx.inflight (SteppingDie direction) (StepDie direction))
+                , label = glyph
+                , tip = tip
+                , width = 24
+                , height = 26
+                , radius = 5
+                , size = 15
+                }
+
+        current =
+            case gs.junction of
+                Nothing ->
+                    Ui.withTip (Copy.rollTip die)
+                        (Ui.rollButton
+                            { onPress = Ui.press ctx.inflight RollingJunction PressJunction
+                            , label = Copy.rollButton die
+                            }
+                        )
+
+                Just _ ->
+                    Ui.chip (Copy.dieTip die) die
+    in
+    Element.row [ spacing Ui.xs, Element.centerY ]
+        (Ui.onlyWhen ctx.facilitator [ stepButton Die.Down "‹" Copy.stepDownTip ]
+            ++ [ current ]
+            ++ Ui.onlyWhen ctx.facilitator [ stepButton Die.Up "›" Copy.stepUpTip ]
+        )
 
 
 {-| The pending roll beside the ladder: `Flow · 7`, frictions in the danger
@@ -138,13 +164,13 @@ result junction =
     case junction of
         Just j ->
             el
-                [ Font.size 12
+                [ Font.size 13
                 , Font.color (outcomeTone j.outcome)
                 , if j.outcome == CriticalFlow || j.outcome == CriticalFriction then
                     Font.bold
 
                   else
-                    Font.regular
+                    Font.semiBold
                 , Element.htmlAttribute
                     (Html.Attributes.title
                         (Copy.junctionRolled j.rolledBy ++ " " ++ Die.label j.die ++ " · " ++ Copy.rerollsNote j.rerolls)
@@ -188,7 +214,7 @@ controls ctx gs =
                         { onPress = Ui.press ctx.inflight RerollingJunction RerollJunction
                         , label = Copy.rerollButton
                         }
-                    , Ui.ghostButton
+                    , Ui.dangerGhostButton
                         { onPress = Ui.press ctx.inflight RejectingJunction RejectJunction
                         , label = Copy.reject
                         }
@@ -227,15 +253,17 @@ alter ctx gs junction =
                         ( True, Copy.alterTip )
     in
     Ui.withTip tip
-        (Ui.ghostButton
-            { onPress =
-                if enabled then
-                    Ui.press ctx.inflight (MakingMove MoveRecord.Alter) MakeAlter
+        (el [ Ui.glyph ]
+            (Ui.ghostButton
+                { onPress =
+                    if enabled then
+                        Ui.press ctx.inflight (MakingMove MoveRecord.Alter) MakeAlter
 
-                else
-                    Nothing
-            , label = Copy.alterButton
-            }
+                    else
+                        Nothing
+                , label = Copy.alterButton
+                }
+            )
         )
 
 
@@ -245,8 +273,9 @@ role.
 who : ViewContext -> Element msg
 who ctx =
     el
-        [ Font.size 11
+        [ Ui.fontSize 11.5
         , Font.color Ui.inkSoft
+        , Ui.glyph
         , Element.htmlAttribute
             (Html.Attributes.title
                 (ctx.username
@@ -286,7 +315,7 @@ goalSummary facilitator session =
                     Copy.noSessionRunning
 
         line =
-            Ui.oneLine [ Font.size 12 ] label
+            Ui.oneLine [ Font.size 15 ] label
     in
     if facilitator then
         Input.button
@@ -294,7 +323,15 @@ goalSummary facilitator session =
             , Element.htmlAttribute (Html.Attributes.style "min-width" "0")
             , Element.htmlAttribute (Html.Attributes.title Copy.goalTip)
             ]
-            { onPress = Just ToggleSessionControls, label = line }
+            { onPress = Just ToggleSessionControls
+            , label =
+                Element.row [ width fill, spacing 6, Ui.shrinkableWidth ]
+                    [ -- Sized to its text but free to shrink, so the ▾ follows the
+                      -- goal and the goal still ellipsises when the strip is full.
+                      el [ Ui.shrinkableWidth, Element.htmlAttribute (Html.Attributes.style "flex" "0 1 auto") ] line
+                    , el [ Font.size 10, Font.color Ui.inkSoft, Ui.glyph ] (text "▾")
+                    ]
+            }
 
     else
         line
