@@ -2633,9 +2633,9 @@ Each step builds and passes `pnpm run build` on its own. One branch,
 - [x] `RULES.md` and `CONTEXT.md`: Condition is not part of the game at
       present.
 - [x] After the first staging pass: the fixed 316px / 284px columns left
-      the log every spare pixel on a wide window, so the columns now share
-      the width 35 / 30 / 35 (`fillPortion` 7 : 6 : 7) with the handoff's
-      widths as minimums (316 / 284 / 340px). The log's `d10 → d12` chip no
+      the log every spare pixel on a wide window. A 35 / 30 / 35 split was
+      tried next; equal thirds read best, so the columns are back to equal
+      widths (each `fill`, at least 300px). The log's `d10 → d12` chip no
       longer breaks across lines.
 - [ ] Staging, in `#test-app`: the fonts and glyphs load in the Discord
       webview on desktop; the 1000×560 frame; both roles in preparation and

@@ -2,7 +2,7 @@ module View exposing (aspectFieldId, contextAspectFieldId, logDomId, view)
 
 {-| The Activity view (roadmap 27, mockup 2a; moves placed by 31.5): a one-line
 status strip (`View.TopBar`, the die ladder and the junction) over three
-columns shared 35 / 30 / 35 (`columnWidth`) — a tool panel on the left (one strip
+equal columns (`columnWidth`) — a tool panel on the left (one strip
 of tabs, a sheet per character then World and Guide, showing one at a time); the context boons and banes in the middle with the
 Create field pinned beneath; and, on the right, the event log with the composer
 pinned beneath it. Every move is made where its subject is: Highlight and
@@ -123,17 +123,18 @@ notes model =
         [ Element.column [ width fill, Element.paddingXY 10 4, spacing 2 ] lines ]
 
 
-{-| A column's share of the page's width — the three split 7 : 6 : 7, so 35 /
-30 / 35 (roadmap 32, after the staging check: fixed tool and context widths left
-the log every spare pixel on a wide window) — never narrower than `floor`, the
-width each needs at the 1000px frame the Table v2 handoff was drawn for.
+{-| Each column's width: an equal third of the page, never narrower than
+300px. Roadmap 32 first gave the tool and context columns the Table v2
+handoff's fixed widths, then a 35 / 30 / 35 split; on staging, equal thirds
+read best at the widths the Activity really runs at. 300px keeps all three
+usable at the 1000px frame the handoff was drawn for.
 -}
-columnWidth : Int -> Int -> Element.Length
-columnWidth portion floor =
-    Element.fillPortion portion |> Element.minimum floor
+columnWidth : Element.Length
+columnWidth =
+    Element.fill |> Element.minimum 300
 
 
-{-| The left panel (35%, at least 316px): the tool strip and the selected tool's body
+{-| The left panel (a third): the tool strip and the selected tool's body
 (scrolling on its own).
 -}
 toolPanel : ViewContext -> Model -> GameState -> Element Msg
@@ -144,7 +145,7 @@ toolPanel ctx model gs =
     in
     Element.column
         [ Element.height fill
-        , width (columnWidth 7 316)
+        , width columnWidth
         , Ui.shrinkable
         ]
         [ toolStrip ctx selected gs
@@ -259,7 +260,7 @@ toolBody ctx model gs tab =
             View.Guide.view model.glossaryOpen gs.die
 
 
-{-| The middle column (30%, at least 284px): the context boons and banes and the past sessions,
+{-| The middle column (a third): the context boons and banes and the past sessions,
 scrolling on their own, with the Create field pinned at the foot of the list.
 -}
 contextPanel : ViewContext -> Model -> GameState -> Element Msg
@@ -274,7 +275,7 @@ contextPanel ctx model gs =
     in
     Element.column
         [ Element.height fill
-        , width (columnWidth 6 284)
+        , width columnWidth
         , Ui.shrinkable
         ]
         [ View.ContextAspects.header gs
@@ -293,14 +294,14 @@ contextPanel ctx model gs =
         ]
 
 
-{-| The right column (35%, at least 340px): the event log filling it, the
+{-| The right column (a third): the event log filling it, the
 composer beneath.
 -}
 logPanel : ViewContext -> Model -> GameState -> Element Msg
 logPanel ctx model gs =
     Element.column
         [ Element.height fill
-        , width (columnWidth 7 340)
+        , width columnWidth
         , Background.color Ui.panel
         , Ui.shrinkable
         ]

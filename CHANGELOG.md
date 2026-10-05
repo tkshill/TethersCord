@@ -20,9 +20,8 @@ version yet, so headings are dates.
 - **One tool strip** (roadmap 32.2). The character tabs leave the Sheet and
   join the tool strip — `Wren you · Halvard · Mara | World · Guide` — so
   the left panel has a single selected item, and the player's own sheet
-  opens first. Cast is renamed World. The columns share the width
-  35 / 30 / 35 (tools, context, log), each with a minimum so a 1000px
-  window still fits.
+  opens first. Cast is renamed World. The three columns stay equal
+  widths, each at least 300px so a 1000px window still fits.
 - **A compact status strip** (roadmap 32.3). The `d6 … d20` labels become
   six rising rung bars, the current die in the accent, and the die itself is
   a "Roll d16" button, or an outlined chip while a roll is pending. Alter
