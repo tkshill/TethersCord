@@ -11,8 +11,9 @@ module Fixtures exposing
 value; a test overrides only the fields it cares about with record update.
 -}
 
+import ContextAspect exposing (Polarity(..))
 import Dict
-import Roll exposing (Stone(..))
+import Die
 import Set
 import Time
 import Types
@@ -72,13 +73,13 @@ gameState : GameState
 gameState =
     { sessionId = "sess-1"
     , messages = []
-    , stonePool = []
-    , overcome = Nothing
-    , proposals = []
+    , die = Die.base
+    , junction = Nothing
+    , moves = []
     , session = Nothing
     , characters = [ character ]
     , sessionHistory = []
-    , sessionAspects = []
+    , contextAspects = []
     , npcs = []
     , locations = []
     }
@@ -107,14 +108,14 @@ model =
     , newSessionGoal = ""
     , goalEdit = ""
     , sessionControlsExpanded = False
-    , proposalDrafts = Dict.empty
-    , addDetailDraft = ""
-    , sessionAspectEdits = Dict.empty
-    , newSessionAspectNote = ""
-    , newSessionAspectKind = Boon
+    , createDraft = ""
+    , contextAspectEdits = Dict.empty
+    , newContextAspectNote = ""
+    , newContextAspectKind = Boon
     , loadingHistory = False
     , noMoreHistory = False
     , aspectExamplesOpen = Nothing
+    , aspectEditing = Nothing
     , connection = Connected
     , gameStateAttempts = 0
     , timeZone = Time.utc
@@ -122,9 +123,10 @@ model =
     }
 
 
-{-| A full `GameState` wire payload as the Worker broadcasts it (the 26.2 shape),
-exercising every sub-decoder: a pending Overcome, session aspects with their
-consumed flag, and a proposal of each `kind`.
+{-| A full `GameState` wire payload as the Worker broadcasts it (the 31.3
+shape), exercising every sub-decoder: the die, a pending Junction, a move of
+each kind open to undo, and context aspects with their consumed flag and
+`fromAspect`.
 -}
 snapshotJson : String
 snapshotJson =
@@ -136,19 +138,19 @@ snapshotJson =
         , { "id": "m2", "authorId": "u2", "authorName": "Gm", "role": "facilitator"
           , "kind": "event", "content": "welcome", "createdAt": 1700000001000 }
         ]
-    , "stonePool": ["Boon", "Bane", "Boon"]
-    , "overcome": { "rolledBy": "Ada", "stones": ["Boon", "Bane"], "rerolls": 1, "alteredSlots": [1] }
-    , "proposals":
-        [ { "id": "p1", "kind": "alter", "proposerId": "u1", "proposerName": "Ada"
-          , "slot": 1, "sessionAspectId": null, "targetSlot": null, "text": null }
-        , { "id": "p2", "kind": "highlight", "proposerId": "u1", "proposerName": "Ada"
-          , "slot": 1, "sessionAspectId": null, "targetSlot": null, "text": null }
-        , { "id": "p3", "kind": "complicate", "proposerId": "u1", "proposerName": "Ada"
-          , "slot": 1, "sessionAspectId": null, "targetSlot": 2, "text": null }
-        , { "id": "p4", "kind": "use-session-boon", "proposerId": "u1", "proposerName": "Ada"
-          , "slot": 1, "sessionAspectId": "f1", "targetSlot": null, "text": null }
-        , { "id": "p5", "kind": "add-detail", "proposerId": "u1", "proposerName": "Ada"
-          , "slot": 1, "sessionAspectId": null, "targetSlot": null, "text": "the door is barred" }
+    , "die": 12
+    , "junction": { "rolledBy": "Ada", "die": 12, "face": 11, "outcome": "critical-flow", "rerolls": 1, "alteredSlots": [1] }
+    , "moves":
+        [ { "id": "mv1", "kind": "highlight", "actorId": "u1", "actorName": "Ada", "slot": 1
+          , "aspect": "desire", "effects": [{ "type": "die", "direction": "up" }], "messageId": "m1" }
+        , { "id": "mv2", "kind": "highlight-context", "actorId": "u2", "actorName": "Gm", "slot": null
+          , "aspect": null, "effects": [], "messageId": "m2" }
+        , { "id": "mv3", "kind": "complicate", "actorId": "u1", "actorName": "Ada", "slot": 1
+          , "aspect": "quest", "effects": [], "messageId": "m3" }
+        , { "id": "mv4", "kind": "create", "actorId": "u1", "actorName": "Ada", "slot": 1
+          , "aspect": null, "effects": [], "messageId": "m4" }
+        , { "id": "mv5", "kind": "alter", "actorId": "u1", "actorName": "Ada", "slot": 1
+          , "aspect": null, "effects": [], "messageId": "m5" }
         ]
     , "session": { "id": "s1", "goal": "Escape the vault" }
     , "characters":
@@ -161,11 +163,12 @@ snapshotJson =
         [ { "id": "s0", "goal": "The bridge", "startedAt": 1699000000000
           , "endedAt": 1699000900000 }
         ]
-    , "sessionAspects":
-        [ { "id": "f1", "kind": "Bane", "text": "the rope still holds", "createdByName": "Gm"
-          , "createdAt": 1700000002000, "consumed": false }
+    , "contextAspects":
+        [ { "id": "f1", "kind": "Bane", "text": "", "createdByName": "Ada"
+          , "createdAt": 1700000002000, "consumed": false
+          , "fromAspect": { "slot": 1, "aspect": "quest" } }
         , { "id": "f2", "kind": "Boon", "text": "the guard looked away", "createdByName": "Ada"
-          , "createdAt": 1700000002500, "consumed": true }
+          , "createdAt": 1700000002500, "consumed": true, "fromAspect": null }
         ]
     , "npcs":
         [ { "id": "n1", "name": "The Archivist", "notes": "keeps the vault keys"

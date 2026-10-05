@@ -13,39 +13,65 @@ is the character-creation prompt list, a curated subset of `ASPECTS.md`.
 
 -}
 
-import Types exposing (Aspect(..))
+import Aspect exposing (Aspect(..))
+import ContextAspect exposing (Polarity(..))
 
 
 
--- STONE VOCABULARY — chip captions shared across cards
+-- VOCABULARY shared across cards
 
 
-boonStone : String
-boonStone =
-    "Boon"
-
-
-baneStone : String
-baneStone =
+{-| An aspect's legacy Bane count on the Sheet ("2 Banes on this aspect").
+-}
+baneLabel : String
+baneLabel =
     "Bane"
 
 
--- OVERCOME STAGE (View/TopBar.elm, roadmap 26.3)
+
+-- THE STRIP (View/TopBar.elm) — the die ladder, the pending roll and the
+-- controls that resolve it.
 
 
-overcome : String
-overcome =
-    "Overcome"
+junctionRolled : String -> String
+junctionRolled who =
+    who ++ " rolled"
 
 
-thePool : String
-thePool =
-    "the pool"
+{-| The pending roll beside the ladder: `Flow · 7`.
+-}
+rollResult : String -> Int -> String
+rollResult outcome face =
+    outcome ++ " · " ++ String.fromInt face
 
 
-overcomeDrew : String -> String
-overcomeDrew who =
-    who ++ " drew"
+{-| The current rung's tooltip while it is the roll button.
+-}
+rollTip : String -> String
+rollTip die =
+    "Roll the Junction on the " ++ die
+
+
+stepUpTip : String
+stepUpTip =
+    "Step the die up a rung"
+
+
+stepDownTip : String
+stepDownTip =
+    "Step the die down a rung"
+
+
+alterTip : String
+alterTip =
+    "Alter: pay 2 boons to reroll on the same die, once this Junction"
+
+
+{-| What Alter costs, in boons (RULES.md "Moves"); the Worker checks it too.
+-}
+alterCost : Int
+alterCost =
+    2
 
 
 rerollsNote : Int -> String
@@ -66,18 +92,13 @@ rerollButton =
     "Reroll"
 
 
-waitingForFacilitator : String
-waitingForFacilitator =
-    "Waiting for the facilitator…"
-
-
 
 -- SHARED CONTROLS
 
 
-withdraw : String
-withdraw =
-    "withdraw"
+undo : String
+undo =
+    "undo"
 
 
 
@@ -115,10 +136,9 @@ messagePlaceholder =
 
 
 
--- TOP BAR (View/TopBar.elm) — the running session's goal and the shared
--- stone pool, both moved off the old Session / Stones cards by roadmap
--- section 23.6. Session start / end / goal-edit sit behind the bar's
--- expander so it stays one line at rest.
+-- SESSION CONTROLS (View/TopBar.elm) — the running session's goal on the
+-- strip; start / end / goal-edit sit behind its expander so the strip stays
+-- one line at rest.
 
 
 endSession : String
@@ -146,10 +166,10 @@ saveGoal =
     "Save goal"
 
 
-{-| The status strip's tooltip over the pool marks. -}
-bagTip : Int -> Int -> String
-bagTip boons banes =
-    "The pool: " ++ String.fromInt boons ++ " Boon, " ++ String.fromInt banes ++ " Bane"
+{-| The status strip's tooltip over the die. -}
+dieTip : String -> String
+dieTip die =
+    "The die: the next Junction rolls a " ++ die
 
 
 {-| The strip's tooltip on the running goal for the facilitator, who can click
@@ -170,83 +190,49 @@ sessionHistoryTitle =
 
 
 
--- SESSION BOONS & BANES CARD (View/SessionAspects.elm)
+-- CONTEXT BOONS & BANES (View/ContextAspects.elm)
 
 
-noSessionAspects : String
-noSessionAspects =
-    "No session boons or banes yet."
+noContextAspects : String
+noContextAspects =
+    "No context boons or banes yet."
 
 
-{-| The mark on a session boon or bane that has been spent into the pool. It
-stays on the table, visibly consumed, and cannot be spent again.
+{-| The mark on a context boon or bane that has been highlighted. It stays on
+the table, visibly consumed, and cannot be highlighted again.
 -}
-sessionAspectConsumed : String
-sessionAspectConsumed =
-    "used"
+contextAspectConsumed : String
+contextAspectConsumed =
+    "consumed"
 
 
-{-| Facilitator-only: clear a consumed mark, to correct a table miscommunication.
+{-| Facilitator-only: remove a context boon or bane outright.
 -}
-sessionAspectUnconsume : String
-sessionAspectUnconsume =
-    "Unconsume"
-
-
-sessionAspectUse : String
-sessionAspectUse =
-    "Use"
-
-
-{-| Facilitator-only: remove a session boon or bane outright.
--}
-sessionAspectRemove : String
-sessionAspectRemove =
+contextAspectRemove : String
+contextAspectRemove =
     "Remove"
 
 
-{-| Facilitator-only: the field and button that plant a session boon or bane
-directly, below the existing ones.
+{-| Facilitator-only: the field at the foot of the list that adds a context
+boon or bane directly, free.
 -}
-addSessionAspectPlaceholder : String
-addSessionAspectPlaceholder =
-    "Add a session boon or bane…"
+addContextAspectPlaceholder : String
+addContextAspectPlaceholder =
+    "Add a context boon or bane…"
 
 
-addSessionAspect : String
-addSessionAspect =
+addContextAspect : String
+addContextAspect =
     "Add"
 
 
 
--- FACILITATOR PANEL (View/FacilitatorPanel.elm) — direct pool edits and the
--- queue of proposals awaiting a decision, in their own facilitator-only section
--- of the left panel. The Overcome controls are on the top bar's stage.
-
-
-facilitatorPanelTitle : String
-facilitatorPanelTitle =
-    "Facilitator"
+-- JUNCTION CONTROLS (View/TopBar.elm) — the facilitator's accept / reject.
 
 
 accept : String
 accept =
     "Accept"
-
-
-proposalsTitle : String
-proposalsTitle =
-    "Proposals"
-
-
-noProposals : String
-noProposals =
-    "Nothing is waiting on you."
-
-
-sessionAspectContextPlaceholder : String
-sessionAspectContextPlaceholder =
-    "Wording for the session boon…"
 
 
 reject : String
@@ -255,74 +241,24 @@ reject =
 
 
 
--- PROPOSAL DESCRIPTIONS (View/FacilitatorPanel.elm describeProposal)
+
+-- MOVES — the aspect split buttons (View/Characters.elm), Highlight Context
+-- and Create (View/ContextAspects.elm), Alter (View/TopBar.elm).
 
 
-proposalHighlight : String
-proposalHighlight =
-    "Highlight — pays 1 boon, the pool gains a Boon"
+createPlaceholder : String
+createPlaceholder =
+    "Something true about the scene, or leave blank…"
 
 
-proposalAlter : String
-proposalAlter =
-    "Alter Fate — pays 2 boons, rerolls the Overcome"
-
-
-proposalAddDetail : String
-proposalAddDetail =
-    "Add Detail — pays 1 boon, makes a session boon"
-
-
-proposalComplicate : String
-proposalComplicate =
-    "Complicate — gains 2 boons"
-
-
-proposalUseSessionBoon : String -> String
-proposalUseSessionBoon note =
-    "Use Session Boon — " ++ note ++ "; the pool gains a Boon"
-
-
-proposalUseSessionBoonGone : String
-proposalUseSessionBoonGone =
-    "a session boon that is gone"
-
-
-{-| The header note beside the Facilitator accordion title: how many proposals
-are waiting, so a collapsed panel still signals that one is.
--}
-proposalsWaiting : Int -> String
-proposalsWaiting n =
-    String.fromInt n ++ " waiting"
-
-
-
--- MOVES CARD (View/Moves.elm)
-
-
-movesHeading : String
-movesHeading =
-    "Moves"
-
-
-highlightButton : String
-highlightButton =
-    "Highlight"
-
-
-addDetailPlaceholder : String
-addDetailPlaceholder =
-    "Suggest a detail, or leave blank to ask for one…"
-
-
-addDetailButton : String
-addDetailButton =
-    "Add Detail"
+createButton : String
+createButton =
+    "Create"
 
 
 alterButton : String
 alterButton =
-    "Alter Fate"
+    "Alter"
 
 
 alterNeedsBoons : String
@@ -332,12 +268,7 @@ alterNeedsBoons =
 
 alterAlreadyUsed : String
 alterAlreadyUsed =
-    "You have already altered fate this Overcome."
-
-
-alterAlreadyProposed : String
-alterAlreadyProposed =
-    "An Alter Fate is already waiting for the facilitator."
+    "You have already altered this Junction."
 
 
 needsABoon : String
@@ -345,19 +276,97 @@ needsABoon =
     "You need a boon."
 
 
-useSessionBoonButton : String
-useSessionBoonButton =
-    "Use boon"
+{-| Why the preparation moves are off: the junction has been rolled.
+-}
+movesLocked : String
+movesLocked =
+    "Moves are locked once the Junction is rolled."
 
 
-complicateButton : String
-complicateButton =
-    "Complicate"
+dieAtTop : String
+dieAtTop =
+    "The die is already at the top of the ladder."
 
 
-noSessionBoons : String
-noSessionBoons =
-    "No unspent session boons."
+dieAtEnd : String
+dieAtEnd =
+    "The die is already at that end of the ladder."
+
+
+{-| A context aspect's tooltip while it can be highlighted.
+-}
+highlightContextTip : Polarity -> String
+highlightContextTip polarity =
+    case polarity of
+        Boon ->
+            "Highlight Context: the die steps up, and this boon is consumed"
+
+        Bane ->
+            "Highlight Context: the die steps down, and this bane is consumed"
+
+
+contextAspectConsumedTip : String
+contextAspectConsumedTip =
+    "Consumed: its one use is spent"
+
+
+contextAspectWordingPlaceholder : String
+contextAspectWordingPlaceholder =
+    "Word this context aspect…"
+
+
+{-| A Complicate's bane before the facilitator words it.
+-}
+unwordedFrom : String -> String -> String
+unwordedFrom character aspect =
+    "Trouble from " ++ character ++ "'s " ++ aspect ++ " — to be worded"
+
+
+unworded : String
+unworded =
+    "To be worded"
+
+
+createTip : String
+createTip =
+    "Create: pay 1 boon to make something true about the scene, a context boon in your words"
+
+
+contextBoonToggleTip : String
+contextBoonToggleTip =
+    "Add a context boon"
+
+
+contextBaneToggleTip : String
+contextBaneToggleTip =
+    "Add a context bane"
+
+
+editTip : String
+editTip =
+    "Edit"
+
+
+{-| The two halves of a character aspect's split button.
+-}
+highlightHalf : String
+highlightHalf =
+    "Highlight ☼"
+
+
+complicateHalf : String
+complicateHalf =
+    "☽ Complicate"
+
+
+highlightTip : String
+highlightTip =
+    "Highlight: pay 1 boon to make this aspect matter — the die steps up"
+
+
+complicateTip : String
+complicateTip =
+    "Complicate: this aspect drags you into trouble — gain 2 boons, and a context bane appears"
 
 
 claimASheetForMoves : String
@@ -366,11 +375,6 @@ claimASheetForMoves =
 
 
 -- CHARACTERS CARD (View/Characters.elm)
-
-
-charactersTitle : String
-charactersTitle =
-    "Characters"
 
 
 noCharacterSheets : String
@@ -486,9 +490,6 @@ entityUnnamed =
 
 
 
--- LOG CARD (View/Log.elm)
-
-
 
 -- TOOL STRIP (View.elm, roadmap section 27) — the label shown on the selected
 -- glyph tab, and the tooltip on each unselected one.
@@ -501,19 +502,7 @@ sheetTabLabel =
 
 sheetTabTip : String
 sheetTabTip =
-    "Sheet, moves & session context"
-
-
-{-| The Facilitator tab's tooltip: how many proposals are waiting, so the count
-shows even while another tool is open. -}
-facilitatorTabTip : Int -> String
-facilitatorTabTip n =
-    case n of
-        0 ->
-            "Facilitator controls"
-
-        _ ->
-            "Facilitator controls — " ++ proposalsWaiting n
+    "Your character, and the moves on its aspects"
 
 
 castTabLabel : String
@@ -544,6 +533,10 @@ guideTabLabel =
 guideTabTip : String
 guideTabTip =
     "How to play"
+
+
+
+-- LOG (View/Log.elm)
 
 
 noMessages : String

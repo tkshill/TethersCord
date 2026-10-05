@@ -9,15 +9,15 @@ that into a `Cmd` once, here at the boundary.
 
 -}
 
-import Action exposing (Action(..), Decision(..), Family(..))
-import Api
+import Action exposing (Action(..), Family(..))
+import Api.Decode
 import Browser
+import ContextAspect exposing (Polarity(..))
 import Dict
 import Effect exposing (Effect)
 import Json.Decode as Decode
-import Kind
+import MoveRecord
 import Ports
-import Roll exposing (Stone(..), stoneLabel)
 import Set
 import Time
 import Types exposing (..)
@@ -110,14 +110,14 @@ init flags =
       , newSessionGoal = ""
       , goalEdit = ""
       , sessionControlsExpanded = False
-      , proposalDrafts = Dict.empty
-      , addDetailDraft = ""
-      , sessionAspectEdits = Dict.empty
-      , newSessionAspectNote = ""
-      , newSessionAspectKind = Boon
+      , createDraft = ""
+      , contextAspectEdits = Dict.empty
+      , newContextAspectNote = ""
+      , newContextAspectKind = Boon
       , loadingHistory = False
       , noMoreHistory = False
       , aspectExamplesOpen = Nothing
+      , aspectEditing = Nothing
       , connection = Connected
       , gameStateAttempts = 0
       , timeZone = Time.utc
@@ -396,91 +396,53 @@ update msg model =
         ReleaseSlot slot ->
             guard ReleasingSlot model (\auth -> Effect.PostReleaseSlot auth slot)
 
-        AcceptProposal id ->
-            let
-                context =
-                    model.proposalDrafts
-                        |> Dict.get id
-                        |> Maybe.map String.trim
-                        |> Maybe.andThen
-                            (\text ->
-                                if text == "" then
-                                    Nothing
-
-                                else
-                                    Just text
-                            )
-            in
-            guard (ResolvingProposal Accepting id)
-                model
-                (\auth -> Effect.PostProposalDecision auth id "accept" context)
-
-        RejectProposal id ->
-            guard (ResolvingProposal Rejecting id)
-                model
-                (\auth -> Effect.PostProposalDecision auth id "reject" Nothing)
-
-        WithdrawProposal id ->
-            guard (ResolvingProposal Withdrawing id)
-                model
-                (\auth -> Effect.PostWithdrawProposal auth id)
-
-        ProposalDraftChanged id s ->
-            ( { model | proposalDrafts = Dict.insert id s model.proposalDrafts }, Effect.None )
-
-        ProposalResolved id (Ok ()) ->
-            ( clearInflight ProposalFamily { model | proposalDrafts = Dict.remove id model.proposalDrafts }
-            , Effect.None
-            )
-
-        ProposalResolved _ (Err _) ->
-            fail "Failed to resolve the proposal." (clearInflight ProposalFamily model)
-
-        -- The Overcome loop (26.2). Anyone may roll; the rest are the
+        -- The Junction loop (26.2). Anyone may roll; the rest are the
         -- facilitator's, and the Worker enforces that.
-        PressOvercome ->
-            guard RollingOvercome model Effect.PostOvercomeRoll
+        PressJunction ->
+            guard RollingJunction model Effect.PostJunctionRoll
 
-        RerollOvercome ->
-            guard RerollingOvercome model Effect.PostOvercomeReroll
+        RerollJunction ->
+            guard RerollingJunction model Effect.PostJunctionReroll
 
-        AcceptOvercome ->
-            guard AcceptingOvercome model Effect.PostOvercomeAccept
+        AcceptJunction ->
+            guard AcceptingJunction model Effect.PostJunctionAccept
 
-        RejectOvercome ->
-            guard RejectingOvercome model Effect.PostOvercomeReject
+        RejectJunction ->
+            guard RejectingJunction model Effect.PostJunctionReject
 
-        -- Player moves: each is queued as a proposal for the facilitator. The
-        -- Moves card disables a button the player cannot afford; the Worker
-        -- checks the cost again.
-        ProposeHighlight ->
-            guard (RaisingMove Kind.Highlight) model Effect.PostHighlight
+        -- The facilitator's direct die step: a correction, not a move.
+        StepDie direction ->
+            guard (SteppingDie direction) model (\auth -> Effect.PostStepDie auth direction)
 
-        ProposeComplicate ->
-            guard (RaisingMove Kind.Complicate) model Effect.PostComplicate
+        -- Moves act at once (ADR 0002). The view disables a move the player
+        -- cannot afford, at a ladder end, or once the junction is rolled; the
+        -- Worker checks each again.
+        MakeHighlight aspect ->
+            guard (MakingMove MoveRecord.Highlight) model (\auth -> Effect.PostHighlight auth aspect)
 
-        ProposeAddDetail ->
-            let
-                suggestion =
-                    case String.trim model.addDetailDraft of
-                        "" ->
-                            Nothing
+        MakeHighlightContext contextAspectId ->
+            guard (MakingMove MoveRecord.HighlightContext)
+                model
+                (\auth -> Effect.PostHighlightContext auth contextAspectId)
 
-                        trimmed ->
-                            Just trimmed
-            in
-            guard (RaisingMove Kind.AddDetail)
-                { model | addDetailDraft = "" }
-                (\auth -> Effect.PostAddDetail auth suggestion)
+        MakeComplicate aspect ->
+            guard (MakingMove MoveRecord.Complicate) model (\auth -> Effect.PostComplicate auth aspect)
 
-        ProposeAlter ->
-            guard (RaisingMove Kind.Alter) model Effect.PostAlter
+        -- A blank draft is still a Create: the Worker records it as a detail
+        -- from the player, for the facilitator to reword.
+        MakeCreate ->
+            guard (MakingMove MoveRecord.Create)
+                { model | createDraft = "" }
+                (\auth -> Effect.PostCreate auth (String.trim model.createDraft))
 
-        ProposeUseSessionBoon sessionAspectId ->
-            guard (RaisingMove Kind.UseSessionBoon) model (\auth -> Effect.PostUseSessionBoon auth sessionAspectId)
+        CreateDraftChanged s ->
+            ( { model | createDraft = s }, Effect.None )
 
-        AddDetailDraftChanged s ->
-            ( { model | addDetailDraft = s }, Effect.None )
+        MakeAlter ->
+            guard (MakingMove MoveRecord.Alter) model Effect.PostAlter
+
+        UndoMove moveId ->
+            guard (UndoingMove moveId) model (\auth -> Effect.PostUndo auth moveId)
 
         SessionGoalChanged s ->
             ( { model | newSessionGoal = s }, Effect.None )
@@ -535,6 +497,27 @@ update msg model =
             in
             ( { model | aspectExamplesOpen = next }, Effect.None )
 
+        -- ✎ on an aspect of the viewer's own sheet: swap its split button
+        -- for the text field, and put the cursor in it.
+        EditAspect slot aspect ->
+            ( { model | aspectEditing = Just ( slot, aspect ) }
+            , Effect.Focus (View.aspectFieldId slot aspect)
+            )
+
+        -- ✎ on a context aspect (facilitator): open its field on the current
+        -- text. Leaving the field saves it and closes it (`SaveContextAspectText`).
+        EditContextAspect contextAspectId ->
+            let
+                current =
+                    model.gameState
+                        |> Maybe.andThen (\gs -> gs.contextAspects |> List.filter (\a -> a.id == contextAspectId) |> List.head)
+                        |> Maybe.map .text
+                        |> Maybe.withDefault ""
+            in
+            ( { model | contextAspectEdits = Dict.insert contextAspectId current model.contextAspectEdits }
+            , Effect.Focus (View.contextAspectFieldId contextAspectId)
+            )
+
         WsStatusChanged raw ->
             ( { model | connection = connectionFromString raw }, Effect.None )
 
@@ -546,72 +529,54 @@ update msg model =
                 _ ->
                     ( model, Effect.None )
 
-        -- Facilitator-only hand-edits of the shared pool, independent of an
-        -- Overcome and of each other.
-        AddStone stone ->
-            guard (AddingStone stone) model (\auth -> Effect.PostAddStone auth stone)
+        ContextAspectDraftChanged s ->
+            ( { model | newContextAspectNote = s }, Effect.None )
 
-        RemoveStone stone ->
-            guard (RemovingStone stone) model (\auth -> Effect.PostRemoveStone auth stone)
+        ContextAspectKindChanged kind ->
+            ( { model | newContextAspectKind = kind }, Effect.None )
 
-        SessionAspectDraftChanged s ->
-            ( { model | newSessionAspectNote = s }, Effect.None )
-
-        SessionAspectKindChanged kind ->
-            ( { model | newSessionAspectKind = kind }, Effect.None )
-
-        AddSessionAspect ->
-            if String.trim model.newSessionAspectNote == "" then
+        AddContextAspect ->
+            if String.trim model.newContextAspectNote == "" then
                 ( model, Effect.None )
 
             else
-                guard AddingSessionAspect
-                    { model | newSessionAspectNote = "" }
-                    (\auth -> Effect.PostAddSessionAspect auth model.newSessionAspectKind model.newSessionAspectNote)
+                guard AddingContextAspect
+                    { model | newContextAspectNote = "" }
+                    (\auth -> Effect.PostAddContextAspect auth model.newContextAspectKind model.newContextAspectNote)
 
-        UseSessionAspect sessionAspectId ->
-            guard (UsingSessionAspect sessionAspectId)
-                model
-                (\auth -> Effect.PostUseSessionAspect auth sessionAspectId)
-
-        UnconsumeSessionAspect sessionAspectId ->
-            guard (UnconsumingSessionAspect sessionAspectId)
-                model
-                (\auth -> Effect.PostUnconsumeSessionAspect auth sessionAspectId)
-
-        SessionAspectTextChanged sessionAspectId s ->
-            ( { model | sessionAspectEdits = Dict.insert sessionAspectId s model.sessionAspectEdits }
+        ContextAspectTextChanged contextAspectId s ->
+            ( { model | contextAspectEdits = Dict.insert contextAspectId s model.contextAspectEdits }
             , Effect.None
             )
 
         -- Saved when the field loses focus, and only if it actually changed.
-        SaveSessionAspectText sessionAspectId ->
-            case Dict.get sessionAspectId model.sessionAspectEdits of
+        SaveContextAspectText contextAspectId ->
+            case Dict.get contextAspectId model.contextAspectEdits of
                 Nothing ->
                     ( model, Effect.None )
 
                 Just draft ->
                     let
                         released =
-                            { model | sessionAspectEdits = Dict.remove sessionAspectId model.sessionAspectEdits }
+                            { model | contextAspectEdits = Dict.remove contextAspectId model.contextAspectEdits }
 
                         current =
                             model.gameState
-                                |> Maybe.andThen (\gs -> gs.sessionAspects |> List.filter (\a -> a.id == sessionAspectId) |> List.head)
+                                |> Maybe.andThen (\gs -> gs.contextAspects |> List.filter (\a -> a.id == contextAspectId) |> List.head)
                                 |> Maybe.map .text
                     in
                     if String.trim draft == "" || Just (String.trim draft) == current then
                         ( released, Effect.None )
 
                     else
-                        guard (EditingSessionAspect sessionAspectId)
+                        guard (EditingContextAspect contextAspectId)
                             released
-                            (\auth -> Effect.PostUpdateSessionAspect auth sessionAspectId (String.trim draft))
+                            (\auth -> Effect.PostUpdateContextAspect auth contextAspectId (String.trim draft))
 
-        DeleteSessionAspect sessionAspectId ->
-            guard (DeletingSessionAspect sessionAspectId)
+        DeleteContextAspect contextAspectId ->
+            guard (DeletingContextAspect contextAspectId)
                 model
-                (\auth -> Effect.PostDeleteSessionAspect auth sessionAspectId)
+                (\auth -> Effect.PostDeleteContextAspect auth contextAspectId)
 
         -- Field edits update the local sheet at once and mark the slot dirty; the
         -- write is deferred to a single debounced flush (`FieldSaveDue`).
@@ -627,11 +592,25 @@ update msg model =
         CharacterFieldBlur slot ->
             let
                 released =
-                    if model.editingSlot == Just slot then
-                        { model | editingSlot = Nothing }
+                    { model
+                        | editingSlot =
+                            if model.editingSlot == Just slot then
+                                Nothing
 
-                    else
-                        model
+                            else
+                                model.editingSlot
+                        , aspectEditing =
+                            case model.aspectEditing of
+                                Just ( editingSlot, _ ) ->
+                                    if editingSlot == slot then
+                                        Nothing
+
+                                    else
+                                        model.aspectEditing
+
+                                Nothing ->
+                                    Nothing
+                    }
             in
             if Set.member slot released.dirtySlots then
                 armFieldSave released
@@ -695,7 +674,7 @@ update msg model =
                 (\auth -> Effect.PostDeleteEntity auth kind entityId)
 
         WsGameStateRaw value ->
-            case Decode.decodeValue Api.decodeGameState value of
+            case Decode.decodeValue Api.Decode.gameState value of
                 Ok gs ->
                     ( { model
                         | gameState = Just (applyServerState model gs)

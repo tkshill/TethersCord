@@ -1,14 +1,11 @@
 module Types exposing
-    ( Aspect(..)
-    , AspectBanes
+    ( AspectBanes
     , Auth
     , CharacterField(..)
     , CharacterSheet
     , Connection(..)
     , EntityField(..)
     , EntityKind(..)
-    , Overcome
-    , SessionAspect
     , Flags
     , GameState
     , Message
@@ -16,7 +13,6 @@ module Types exposing
     , Model
     , Msg(..)
     , MutationOutcome
-    , Proposal
     , Role(..)
     , ToolTab(..)
     , Session
@@ -24,10 +20,7 @@ module Types exposing
     , TableEntity
     , actionPending
     , aspectBaneCount
-    , aspectLabel
     , characterAtSlot
-    , decodeMessageKind
-    , decodeRole
     , entitiesForKind
     , entityKindPath
     , roleLabel
@@ -44,11 +37,14 @@ without creating an import cycle (`Main` imports `View`, so `View` cannot import
 -}
 
 import Action exposing (Action)
+import Aspect exposing (Aspect(..))
+import ContextAspect exposing (ContextAspect, Polarity)
+import Die exposing (Die)
 import Dict exposing (Dict)
 import Http
 import Json.Decode as Decode
-import Kind exposing (ProposalKind)
-import Roll exposing (Stone)
+import Junction exposing (Junction)
+import MoveRecord exposing (MoveRecord)
 import Set exposing (Set)
 import Time
 
@@ -91,8 +87,7 @@ type alias Auth =
 
 
 {-| `Chat` is a line someone typed into the composer; `Event` is a line the
-table wrote when something happened (a roll, an accepted proposal, a session
-starting). The log styles them apart.
+table wrote when something happened (a roll, a move, a session starting). The log styles them apart.
 -}
 type MessageKind
     = Chat
@@ -110,60 +105,12 @@ type alias Message =
     }
 
 
-{-| The Overcome in progress: one roll waiting on the facilitator to accept or
-reject it (roadmap 26.2). `stones` is the current draw — a reroll replaces it —
-`rerolls` counts redraws, and `alteredSlots` lists the characters whose Alter Fate
-has already been accepted this Overcome (each may succeed at one). The pool is not
-touched by a roll, so nothing here shows the pool.
--}
-type alias Overcome =
-    { rolledBy : String
-    , stones : List Stone
-    , rerolls : Int
-    , alteredSlots : List Int
-    }
-
-
 {-| The character holding `slot`, if any. One shared slot lookup for `Main` (the
-state-merge helpers) and `View` (the panels that resolve a proposal's
-character).
+state-merge helpers) and `View` (the panels that resolve a move's character).
 -}
 characterAtSlot : Int -> List CharacterSheet -> Maybe CharacterSheet
 characterAtSlot slot characters =
     characters |> List.filter (\c -> c.slot == slot) |> List.head
-
-
-{-| A player move waiting on the facilitator (Overcome is not one — it needs no
-approval). See `Kind.ProposalKind` for the kinds. `sessionAspectId` names the
-boon for `UseSessionBoon`; `targetSlot` is set only on an older `Complicate`
-that named another character; `text` is an Add Detail's suggested wording, if
-the player gave one.
--}
-type alias Proposal =
-    { id : String
-    , kind : ProposalKind
-    , proposerId : String
-    , proposerName : String
-    , slot : Maybe Int
-    , sessionAspectId : Maybe String
-    , targetSlot : Maybe Int
-    , text : Maybe String
-    }
-
-
-{-| A session boon or session bane: a note of something true in the fiction,
-owned by nobody, that can be spent into the pool. It comes from an accepted
-Overcome pair, an accepted Add Detail (always a Boon) or the facilitator.
-Spending it marks it `consumed` rather than deleting it, and a consumed one
-cannot be spent again (roadmap 26.2).
--}
-type alias SessionAspect =
-    { id : String
-    , kind : Stone
-    , text : String
-    , createdByName : String
-    , consumed : Bool
-    }
 
 
 {-| Whether the given action currently has a request in flight. Controls consult this to disable themselves and show a pending state.
@@ -192,28 +139,6 @@ type alias SessionSummary =
     , startedAt : Time.Posix
     , endedAt : Time.Posix
     }
-
-
-{-| The three fixed aspects a character is written around. An aspect only ever
-accumulates Banes (section 19).
--}
-type Aspect
-    = Archetype
-    | Desire
-    | Quest
-
-
-aspectLabel : Aspect -> String
-aspectLabel aspect =
-    case aspect of
-        Archetype ->
-            "Archetype"
-
-        Desire ->
-            "Desire"
-
-        Quest ->
-            "Quest"
 
 
 {-| Bane counts for a character's three aspects. Carried between sessions.
@@ -347,13 +272,13 @@ setEntityField field value entity =
 type alias GameState =
     { sessionId : String
     , messages : List Message
-    , stonePool : List Stone
-    , overcome : Maybe Overcome
-    , proposals : List Proposal
+    , die : Die
+    , junction : Maybe Junction
+    , moves : List MoveRecord
     , session : Maybe Session
     , characters : List CharacterSheet
     , sessionHistory : List SessionSummary
-    , sessionAspects : List SessionAspect
+    , contextAspects : List ContextAspect
     , npcs : List TableEntity
     , locations : List TableEntity
     }
@@ -427,25 +352,20 @@ type alias Model =
     -- by `ToggleSessionControls`, purely local view state.
     , sessionControlsExpanded : Bool
 
-    -- The wording the facilitator has typed for an Add Detail proposal before
-    -- accepting it (it starts as the player's suggestion, if any), keyed by
-    -- proposal id so each queued proposal has its own field.
-    , proposalDrafts : Dict String String
+    -- The player's wording for their next Create.
+    , createDraft : String
 
-    -- The player's own suggested wording in the Moves card's Add Detail field.
-    , addDetailDraft : String
-
-    -- Unsaved edits to a session aspect's text, keyed by aspect id; saved when
+    -- Unsaved edits to a context aspect's text, keyed by aspect id; saved when
     -- the field loses focus.
-    , sessionAspectEdits : Dict String String
+    , contextAspectEdits : Dict String String
 
-    -- Draft text in the facilitator's "add a session boon or bane" field —
+    -- Draft text in the facilitator's "add a context boon or bane" field —
     -- planting one directly, not through a move.
-    , newSessionAspectNote : String
+    , newContextAspectNote : String
 
-    -- Which kind the facilitator's next planted session boon or bane will be
-    -- (23.3) — toggled by the Boon / Bane picker next to the draft field.
-    , newSessionAspectKind : Stone
+    -- Which kind the facilitator's next planted context boon or bane will be
+    -- — toggled by the Boon / Bane picker next to the draft field.
+    , newContextAspectKind : Polarity
 
     -- A `GET /messages/history` fetch for older log rows is in flight.
     , loadingHistory : Bool
@@ -457,6 +377,11 @@ type alias Model =
     -- Which aspect field, if any, has its "see examples" list open on the
     -- character sheet: `Just ( slot, aspect )`. One at a time; `ToggleAspectExamples`.
     , aspectExamplesOpen : Maybe ( Int, Aspect )
+
+    -- The character aspect whose text field is swapped in for its split
+    -- button (✎), on the viewer's own sheet: `Just ( slot, aspect )`. Leaving
+    -- the field swaps the button back.
+    , aspectEditing : Maybe ( Int, Aspect )
 
     -- Backend WebSocket connection state, as last reported by the JS socket.
     , connection : Connection
@@ -487,13 +412,11 @@ type Connection
 
 
 {-| The left panel's tool strip (roadmap section 27, mockup 2a): one tool shown
-at a time under a row of glyph tabs. The facilitator's queue and pool edits
-(`FacilitatorTab`) are for the facilitator only. `SheetTab` stacks the character
-sheet, the moves and the session context in one scroll. The event log is not a tool — it fills the right panel.
+at a time under a row of glyph tabs — the character sheet, the cast, the guide.
+The event log is not a tool — it fills the right panel.
 -}
 type ToolTab
     = SheetTab
-    | FacilitatorTab
     | CastTab
     | GuideTab
 
@@ -527,21 +450,18 @@ type Msg
     | SelectSlot Int
     | ClaimSlot Int
     | ReleaseSlot Int
-    | AcceptProposal String
-    | RejectProposal String
-    | WithdrawProposal String
-    | ProposalResolved String (Result Http.Error ())
-    | ProposalDraftChanged String String
-    | PressOvercome
-    | RerollOvercome
-    | AcceptOvercome
-    | RejectOvercome
-    | ProposeHighlight
-    | ProposeComplicate
-    | ProposeAddDetail
-    | ProposeAlter
-    | ProposeUseSessionBoon String
-    | AddDetailDraftChanged String
+    | PressJunction
+    | RerollJunction
+    | AcceptJunction
+    | RejectJunction
+    | StepDie Die.Direction
+    | MakeHighlight Aspect
+    | MakeHighlightContext String
+    | MakeComplicate Aspect
+    | MakeCreate
+    | CreateDraftChanged String
+    | MakeAlter
+    | UndoMove String
     | SessionGoalChanged String
     | SessionGoalEditChanged String
     | SaveSessionGoal
@@ -553,18 +473,16 @@ type Msg
     | ToggleSessionControls
     | SelectTool ToolTab
     | ToggleAspectExamples Int Aspect
+    | EditAspect Int Aspect
+    | EditContextAspect String
     | WsStatusChanged String
     | RetryGetGameState
-    | AddStone Stone
-    | RemoveStone Stone
-    | SessionAspectDraftChanged String
-    | SessionAspectKindChanged Stone
-    | AddSessionAspect
-    | DeleteSessionAspect String
-    | UseSessionAspect String
-    | UnconsumeSessionAspect String
-    | SessionAspectTextChanged String String
-    | SaveSessionAspectText String
+    | ContextAspectDraftChanged String
+    | ContextAspectKindChanged Polarity
+    | AddContextAspect
+    | DeleteContextAspect String
+    | ContextAspectTextChanged String String
+    | SaveContextAspectText String
     | CharacterFieldInput Int CharacterField String
     | CharacterFieldBlur Int
     | FieldSaveDue Int
@@ -580,39 +498,3 @@ type Msg
     | GotTimeZone Time.Zone
     | NoOp
 
-
-
--- WIRE FORMAT
-
-
-decodeRole : Decode.Decoder Role
-decodeRole =
-    Decode.string
-        |> Decode.andThen
-            (\s ->
-                case s of
-                    "facilitator" ->
-                        Decode.succeed Facilitator
-
-                    "player" ->
-                        Decode.succeed Player
-
-                    _ ->
-                        Decode.fail "Unknown role"
-            )
-
-
-{-| An unknown kind reads as `Chat`, the styling every row had before kinds
-existed.
--}
-decodeMessageKind : Decode.Decoder MessageKind
-decodeMessageKind =
-    Decode.string
-        |> Decode.map
-            (\s ->
-                if s == "event" then
-                    Event
-
-                else
-                    Chat
-            )

@@ -16,11 +16,13 @@ user is authorised — `perform` only translates.
 
 import Action exposing (Family(..))
 import Api
+import Aspect exposing (Aspect)
 import Browser.Dom
+import ContextAspect exposing (Polarity)
+import Die
 import Http
 import Ports
 import Process
-import Roll exposing (Stone)
 import Task
 import Time
 import Types exposing (Auth, CharacterSheet, EntityKind, Flags, Msg(..), TableEntity)
@@ -37,34 +39,31 @@ type Effect
     | RetryGetGameStateIn Float
     | DismissErrorIn Float
     | DebounceFieldSave Int Float
+    | Focus String
       -- Reads
     | GetGameState Auth
     | GetMessageHistory Auth Int
       -- Mutations (204-only; the result arrives on the socket)
     | PostMessage Auth String
     | PostClearMessages Auth
-    | PostOvercomeRoll Auth
-    | PostOvercomeReroll Auth
-    | PostOvercomeAccept Auth
-    | PostOvercomeReject Auth
-    | PostHighlight Auth
+    | PostJunctionRoll Auth
+    | PostJunctionReroll Auth
+    | PostJunctionAccept Auth
+    | PostJunctionReject Auth
+    | PostStepDie Auth Die.Direction
+    | PostHighlight Auth Aspect
+    | PostHighlightContext Auth String
+    | PostComplicate Auth Aspect
+    | PostCreate Auth String
+    | PostAlter Auth
+    | PostUndo Auth String
     | PostFate Auth Int Int
     | PostCharacterUpdate Auth Int CharacterSheet
     | PostClaimSlot Auth Int
     | PostReleaseSlot Auth Int
-    | PostProposalDecision Auth String String (Maybe String)
-    | PostWithdrawProposal Auth String
-    | PostComplicate Auth
-    | PostAddDetail Auth (Maybe String)
-    | PostAlter Auth
-    | PostUseSessionBoon Auth String
-    | PostAddStone Auth Stone
-    | PostRemoveStone Auth Stone
-    | PostAddSessionAspect Auth Stone String
-    | PostDeleteSessionAspect Auth String
-    | PostUseSessionAspect Auth String
-    | PostUnconsumeSessionAspect Auth String
-    | PostUpdateSessionAspect Auth String String
+    | PostAddContextAspect Auth Polarity String
+    | PostDeleteContextAspect Auth String
+    | PostUpdateContextAspect Auth String String
     | PostStartSession Auth String
     | PostSessionGoal Auth String
     | PostEndSession Auth
@@ -103,6 +102,9 @@ perform flags effect =
         DebounceFieldSave seq ms ->
             Process.sleep ms |> Task.perform (\_ -> FieldSaveDue seq)
 
+        Focus domId ->
+            Browser.Dom.focus domId |> Task.attempt (\_ -> NoOp)
+
         GetGameState auth ->
             Api.getGameState flags auth GotGameState
 
@@ -115,20 +117,38 @@ perform flags effect =
         PostClearMessages auth ->
             Api.postClearMessages flags auth logCleared
 
-        PostOvercomeRoll auth ->
-            Api.postOvercome flags auth "roll" overcomeUpdated
+        PostJunctionRoll auth ->
+            Api.postJunction flags auth "roll" junctionUpdated
 
-        PostOvercomeReroll auth ->
-            Api.postOvercome flags auth "reroll" overcomeUpdated
+        PostJunctionReroll auth ->
+            Api.postJunction flags auth "reroll" junctionUpdated
 
-        PostOvercomeAccept auth ->
-            Api.postOvercome flags auth "accept" overcomeUpdated
+        PostJunctionAccept auth ->
+            Api.postJunction flags auth "accept" junctionUpdated
 
-        PostOvercomeReject auth ->
-            Api.postOvercome flags auth "reject" overcomeUpdated
+        PostJunctionReject auth ->
+            Api.postJunction flags auth "reject" junctionUpdated
 
-        PostHighlight auth ->
-            Api.postHighlight flags auth moveRaised
+        PostStepDie auth direction ->
+            Api.postStepDie flags auth direction dieStepped
+
+        PostHighlight auth aspect ->
+            Api.postHighlight flags auth aspect moveMade
+
+        PostHighlightContext auth contextAspectId ->
+            Api.postHighlightContext flags auth contextAspectId moveMade
+
+        PostComplicate auth aspect ->
+            Api.postComplicate flags auth aspect moveMade
+
+        PostCreate auth text ->
+            Api.postCreate flags auth text moveMade
+
+        PostAlter auth ->
+            Api.postAlter flags auth moveMade
+
+        PostUndo auth moveId ->
+            Api.postUndo flags auth moveId moveUndone
 
         PostFate auth slot delta ->
             Api.postFate flags auth slot delta characterUpdated
@@ -142,44 +162,14 @@ perform flags effect =
         PostReleaseSlot auth slot ->
             Api.postReleaseSlot flags auth slot slotClaimed
 
-        PostProposalDecision auth id decision context ->
-            Api.postProposalDecision flags auth id decision context (ProposalResolved id)
+        PostAddContextAspect auth kind text ->
+            Api.postAddContextAspect flags auth kind text contextUpdated
 
-        PostWithdrawProposal auth id ->
-            Api.postWithdrawProposal flags auth id (ProposalResolved id)
+        PostDeleteContextAspect auth contextAspectId ->
+            Api.postDeleteContextAspect flags auth contextAspectId contextUpdated
 
-        PostComplicate auth ->
-            Api.postComplicate flags auth moveRaised
-
-        PostAddDetail auth text ->
-            Api.postAddDetail flags auth text moveRaised
-
-        PostAlter auth ->
-            Api.postAlter flags auth moveRaised
-
-        PostUseSessionBoon auth sessionAspectId ->
-            Api.postUseSessionBoon flags auth sessionAspectId moveRaised
-
-        PostAddStone auth stone ->
-            Api.postAddStone flags auth stone stonesUpdated
-
-        PostRemoveStone auth stone ->
-            Api.postRemoveStone flags auth stone stonesUpdated
-
-        PostAddSessionAspect auth kind text ->
-            Api.postAddSessionAspect flags auth kind text stonesUpdated
-
-        PostDeleteSessionAspect auth sessionAspectId ->
-            Api.postDeleteSessionAspect flags auth sessionAspectId stonesUpdated
-
-        PostUseSessionAspect auth sessionAspectId ->
-            Api.postUseSessionAspect flags auth sessionAspectId stonesUpdated
-
-        PostUnconsumeSessionAspect auth sessionAspectId ->
-            Api.postUnconsumeSessionAspect flags auth sessionAspectId stonesUpdated
-
-        PostUpdateSessionAspect auth sessionAspectId text ->
-            Api.postUpdateSessionAspect flags auth sessionAspectId text stonesUpdated
+        PostUpdateContextAspect auth contextAspectId text ->
+            Api.postUpdateContextAspect flags auth contextAspectId text contextUpdated
 
         PostStartSession auth goal ->
             Api.postStartSession flags auth goal sessionUpdated
@@ -222,14 +212,19 @@ slotClaimed =
     MutationDone { family = SlotFamily, failMsg = "Couldn't claim that character sheet." }
 
 
-moveRaised : Result Http.Error () -> Msg
-moveRaised =
-    MutationDone { family = MoveFamily, failMsg = "Couldn't raise that move." }
+moveMade : Result Http.Error () -> Msg
+moveMade =
+    MutationDone { family = MoveFamily, failMsg = "Couldn't make that move." }
 
 
-overcomeUpdated : Result Http.Error () -> Msg
-overcomeUpdated =
-    MutationDone { family = OvercomeFamily, failMsg = "Couldn't update the Overcome." }
+moveUndone : Result Http.Error () -> Msg
+moveUndone =
+    MutationDone { family = UndoFamily, failMsg = "Couldn't undo that move." }
+
+
+junctionUpdated : Result Http.Error () -> Msg
+junctionUpdated =
+    MutationDone { family = JunctionFamily, failMsg = "Couldn't update the Junction." }
 
 
 sessionUpdated : Result Http.Error () -> Msg
@@ -237,9 +232,14 @@ sessionUpdated =
     MutationDone { family = SessionFamily, failMsg = "Failed to update the session." }
 
 
-stonesUpdated : Result Http.Error () -> Msg
-stonesUpdated =
-    MutationDone { family = StonesFamily, failMsg = "Failed to update stones." }
+dieStepped : Result Http.Error () -> Msg
+dieStepped =
+    MutationDone { family = DieFamily, failMsg = "Couldn't step the die." }
+
+
+contextUpdated : Result Http.Error () -> Msg
+contextUpdated =
+    MutationDone { family = ContextFamily, failMsg = "Failed to update the context aspects." }
 
 
 characterUpdated : Result Http.Error () -> Msg

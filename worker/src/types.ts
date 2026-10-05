@@ -4,12 +4,13 @@ import type {
   D1Database,
   DurableObjectNamespace,
 } from "@cloudflare/workers-types";
+import type { Die, Direction, Outcome, Roll } from "./rules/dice";
 
 export type Role = "facilitator" | "player";
 
 /**
  * `chat` is a line a person typed into the composer; `event` is a line the table
- * wrote when a mutation happened (a roll, an accepted proposal, a session start).
+ * wrote when a mutation happened (a roll, a move, a session start).
  */
 export type MessageKind = "chat" | "event";
 
@@ -25,98 +26,102 @@ export type Message = {
 };
 
 /**
- * A stone names its outcome, not a colour: `Boon` is favourable, `Bane` is not.
- * (Earlier builds called these `WhiteStone` / `BlackStone`; `GameTable` migrates
- * the legacy names out of Durable Object storage on load.)
+ * Which way a context aspect pushes the die: a `Boon` steps it up, a `Bane`
+ * steps it down. (Called `StoneKind` while the stone pool existed; the wire
+ * values are unchanged.)
  */
-export type StoneKind = "Boon" | "Bane";
+export type Polarity = "Boon" | "Bane";
 
 /**
- * The result of one draw from the pool: `chosen` is what a facilitator's
- * `/overcome/roll` shows, `rest` the remainder — the pool itself is never
- * written by a draw, so `rest` is only ever read, never persisted.
+ * The Junction in progress: one roll waiting on the facilitator to accept or
+ * reject it. `die`, `face` and `outcome` are the current roll (a reroll or an
+ * Alter replaces them, on the same die), `rerolls` counts the replacements, and
+ * `alteredSlots` lists the characters whose Alter has already been accepted
+ * this Junction — each may succeed at one. `null` on the `GameState` means
+ * nothing is pending.
  */
-export type PendingRoll = {
-  chosen: StoneKind[];
-  rest: StoneKind[];
-};
-
-/**
- * The Overcome in progress: one roll waiting on the facilitator to accept or
- * reject it. `stones` is the current draw (a reroll replaces it), `rerolls`
- * counts how many times it has been redrawn, and `alteredSlots` lists the
- * characters whose Alter Fate has already been accepted this Overcome — each
- * may succeed at one. `null` on the `GameState` means nothing is pending.
- */
-export type Overcome = {
+export type Junction = {
   rolledBy: string;
-  stones: StoneKind[];
+  die: Die;
+  face: number;
+  outcome: Outcome;
   rerolls: number;
   alteredSlots: number[];
 };
 
-/**
- * The player moves the facilitator resolves through the one accept / reject
- * queue (Overcome is not one — it needs no approval):
- * - `highlight` — pay 1 boon to add a Boon to the pool.
- * - `complicate` — suggest a complication for your own character; on approval
- *   it gains 2 boons.
- * - `add-detail` — pay 1 boon to establish a fact; on approval a session boon.
- * - `alter` — Alter Fate: pay 2 boons to reroll the pending Overcome.
- * - `use-session-boon` — spend a session boon (named by `sessionAspectId`),
- *   adding a Boon to the pool.
- */
-export type ProposalKind =
+/** The five moves (RULES.md "Moves"). Rolling a Junction is not one. */
+export type MoveKind =
   | "highlight"
+  | "highlight-context"
   | "complicate"
-  | "add-detail"
-  | "alter"
-  | "use-session-boon";
+  | "create"
+  | "alter";
 
 /**
- * A player-initiated change to shared state, waiting on the facilitator. One per
- * click. `slot` is the proposer's claimed sheet. `sessionAspectId` names the
- * boon for `use-session-boon`. `targetSlot` is only set on an older
- * `complicate`, which named another character; it is null otherwise.
+ * One thing a move did to the table, as data. A move records its effects so
+ * that undo can apply their inverse (ADR 0002, ADR 0003) — reversing that
+ * move and nothing else, so moves made since survive.
  */
-export type Proposal = {
+export type MoveEffect =
+  | { type: "die"; direction: Direction }
+  | { type: "boons"; slot: number; delta: number }
+  | { type: "aspect-added"; aspect: ContextAspect }
+  | { type: "aspect-consumed"; id: string }
+  | {
+      type: "rerolled";
+      slot: number;
+      previous: Roll;
+      next: Roll;
+      /** The Junction's reroll count with this Alter applied; a higher count
+       * at undo means a later reroll replaced it. */
+      rerolls: number;
+    };
+
+/**
+ * A move that can still be undone. Held in `gameState.moves` (Durable Object
+ * state, never D1) until its window closes: when a Junction is rolled, or for
+ * an Alter when its Junction is accepted or rejected. `messageId` is the move's
+ * log line, so the client can put the undo link on it.
+ */
+export type MoveRecord = {
   id: string;
-  kind: ProposalKind;
-  proposerId: string;
-  proposerName: string;
+  kind: MoveKind;
+  actorId: string;
+  actorName: string;
+  /** The mover's sheet, or null for a Highlight Context made without one. */
   slot: number | null;
-  sessionAspectId: string | null;
-  targetSlot: number | null;
-  /** `add-detail` only: the player's suggested wording, or null to ask the
-   * facilitator for one. */
-  text: string | null;
-  createdAt: number;
+  /** The character aspect a Highlight or Complicate drew on. */
+  aspect: AspectName | null;
+  effects: MoveEffect[];
+  messageId: string;
 };
 
 /**
- * A session context owned by no character — a Boon or (23.3) a Bane, with a
- * note of the context it stands for. It comes from an accepted Overcome that
- * drew a matched pair, an accepted Add Detail (always a Boon), or the
- * facilitator directly (`POST /session-aspects`). It stays in
- * `gameState.sessionAspects` until the facilitator deletes it; spending it marks
+ * An aspect of the situation owned by no character — a context boon or a
+ * context bane. It comes from an accepted Critical Flow (a boon) or Critical
+ * Friction (a bane), a Create (a boon), a Complicate (a bane), or the
+ * facilitator directly (`POST /context-aspects`). It stays in
+ * `gameState.contextAspects` until the facilitator deletes it; spending it marks
  * it `consumed` rather than removing it, and a session ending does not clear it.
  */
-export type SessionAspect = {
+export type ContextAspect = {
   id: string;
-  kind: StoneKind;
+  kind: Polarity;
   text: string;
   createdByName: string;
   createdAt: number;
-  /** Set once the aspect has been spent into the pool. It is not deleted: it
+  /** Set once the aspect has stepped the die. It is not deleted: it
    * stays on the table, visibly consumed, and cannot be spent again. */
   consumed: boolean;
+  /** The character aspect a Complicate drew this bane from, or null. */
+  fromAspect: { slot: number; aspect: AspectName } | null;
 };
 
 /** The three fixed aspects a character is written around. */
 export type AspectName = "archetype" | "desire" | "quest";
 
 /**
- * How many Banes each aspect carries. A mixed overcome roll marks one aspect;
+ * How many Banes each aspect carries. A mixed junction roll marks one aspect;
  * the counts persist between sessions.
  */
 export type AspectBanes = Record<AspectName, number>;
@@ -167,6 +172,9 @@ export type EntityKind = "npcs" | "locations";
 export type SessionState = {
   id: string;
   goal: string;
+  /** Epoch millis, matching `game_sessions.started_at`; carried so ending the
+   * session can add it to `sessionHistory` without re-reading D1. */
+  startedAt: number;
 };
 
 /**
@@ -183,61 +191,17 @@ export type SessionSummary = {
 export type GameState = {
   sessionId: string;
   messages: Message[];
-  stonePool: StoneKind[];
-  overcome: Overcome | null;
-  sessionAspects: SessionAspect[];
-  proposals: Proposal[];
+  /** The die the next Junction rolls; back to `BASE_DIE` on every accept. */
+  die: Die;
+  junction: Junction | null;
+  contextAspects: ContextAspect[];
+  /** Moves that can still be undone, oldest first. */
+  moves: MoveRecord[];
   session: SessionState | null;
   sessionHistory: SessionSummary[];
   characters: CharacterSheet[];
   npcs: TableEntity[];
   locations: TableEntity[];
-};
-
-export type PostMessageInput = {
-  content: string;
-};
-
-export type UpdateCharacterInput = Partial<CharacterSheetFields>;
-
-export type UpdateFateInput = {
-  delta: number;
-};
-
-export type StartSessionInput = {
-  goal: string;
-};
-
-export type UpdateSessionGoalInput = {
-  goal: string;
-};
-
-export type UseSessionBoonInput = {
-  sessionAspectId: string;
-};
-
-/** `POST /stones/{add,remove}` (23.2): a facilitator hand-edit of the shared
- * pool, one stone at a time, independent of any draw. */
-export type AddOrRemoveStoneInput = {
-  kind: StoneKind;
-};
-
-/** `POST /session-aspects` (23.2, widened 23.3): the facilitator plants
- * a session context directly, picking its `kind`. */
-export type AddSessionAspectInput = {
-  kind: StoneKind;
-  text: string;
-};
-
-/** Create (`POST /npcs`) or update (`POST /npcs/:id/update`) a reference row. */
-export type EntityInput = {
-  name?: string;
-  notes?: string;
-};
-
-export type ProposalDecisionInput = {
-  /** The facilitator's wording, when accepting an Add Detail. */
-  text?: string;
 };
 
 export type BackendAuthResult = {

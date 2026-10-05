@@ -1,21 +1,19 @@
 module View.Helpers exposing
     ( ViewContext
+    , aspectFieldId
     , characterLabel
-    , countProposals
+    , contextAspectFieldId
     , glossaryTitle
     , inlineInputAttrs
     , inputAttrs
-    , latestProposalId
-    , pendingHint
     , placeholder
     , tip
     , tipAttrs
-    , withdrawLink
     )
 
 {-| Small view helpers shared by more than one of the `View.*` section modules:
-the `ViewContext` record threaded through every section, the proposal-count /
-latest-id lookups, the "(n pending) · withdraw" hint, the bordered-input
+the `ViewContext` record threaded through every section, the DOM ids ✎ focuses,
+the bordered-input
 attributes (boxed, and the hairline-only form the sheet and context rows use),
 the plain placeholder line, and the two glossary-tooltip helpers that pair a
 label with its `Copy.Terms` gloss.
@@ -29,7 +27,7 @@ import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
 import Html.Attributes
-import Kind
+import Aspect exposing (Aspect)
 import Time
 import Types exposing (..)
 import Ui
@@ -48,6 +46,20 @@ type alias ViewContext =
     }
 
 
+{-| The DOM id of an aspect's text field on a sheet, so ✎ can focus it.
+-}
+aspectFieldId : Int -> Aspect -> String
+aspectFieldId slot aspect =
+    "aspect-" ++ String.fromInt slot ++ "-" ++ Aspect.toWire aspect
+
+
+{-| The DOM id of a context aspect's text field, so ✎ can focus it.
+-}
+contextAspectFieldId : String -> String
+contextAspectFieldId contextAspectId =
+    "context-" ++ contextAspectId
+
+
 placeholder : String -> Element msg
 placeholder label =
     el [ Font.size 13, Font.color Ui.inkSoft ] (text label)
@@ -55,7 +67,7 @@ placeholder label =
 
 {-| A section-card title carrying a native tooltip with its glossary gloss.
 `label` is the card heading; `termKey` is the `Copy.Terms` name to look the gloss
-up by (they differ where the card is plural, e.g. "Stones" / "Stone").
+up by (they differ where the card is plural, e.g. "Moves" / "Move").
 -}
 glossaryTitle : String -> String -> Element msg
 glossaryTitle label termKey =
@@ -122,61 +134,3 @@ characterLabel ch =
 
     else
         Copy.characterFallback ch.slot
-
-
-countProposals : Maybe String -> Kind.ProposalKind -> List Proposal -> Int
-countProposals myId kind proposals =
-    case myId of
-        Just id ->
-            List.length
-                (List.filter (\p -> p.proposerId == id && p.kind == kind) proposals)
-
-        Nothing ->
-            0
-
-
-{-| The id of the proposer's most recently queued proposal of `kind`, if any.
-This is what the "withdraw" link beside a "(pending)" hint pulls back — the
-latest matching one.
--}
-latestProposalId : Maybe String -> Kind.ProposalKind -> List Proposal -> Maybe String
-latestProposalId myId kind proposals =
-    myId
-        |> Maybe.andThen
-            (\id ->
-                proposals
-                    |> List.filter (\p -> p.proposerId == id && p.kind == kind)
-                    |> List.reverse
-                    |> List.head
-            )
-        |> Maybe.map .id
-
-
-{-| A muted "(n pending)" note for the proposer, with a "withdraw" link for the
-proposal it refers to. Nothing when there are none.
--}
-pendingHint : Int -> Maybe String -> List (Element Msg)
-pendingHint n maybeId =
-    if n <= 0 then
-        []
-
-    else
-        [ Element.row [ spacing Ui.xs, Element.centerY ]
-            [ el [ Font.size 11, Font.color Ui.inkSoft ]
-                (text ("(" ++ String.fromInt n ++ " pending)"))
-            , withdrawLink maybeId
-            ]
-        ]
-
-
-{-| A small "withdraw" link for whichever pending proposal a hint refers to.
-Renders nothing when there is no id to act on.
--}
-withdrawLink : Maybe String -> Element Msg
-withdrawLink maybeId =
-    case maybeId of
-        Just pid ->
-            Ui.linkButton { onPress = Just (WithdrawProposal pid), label = Copy.withdraw }
-
-        Nothing ->
-            none

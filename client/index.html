@@ -27,6 +27,49 @@
         height: 100%;
         margin: 0;
       }
+
+      /* Ui.splitButton (roadmap 31.5): a character aspect whose left half
+         Complicates and right half Highlights. elm-ui's mouseOver cannot draw
+         a gradient, so the washes and the hover labels live here. Each half
+         washes from its outer edge; its label (red / green is the commonest
+         colour-blind confusion) appears on hover, focus or press. On touch
+         there is no hover, so both halves keep a faint resting tint. */
+      .split-half .split-label {
+        opacity: 0;
+        transition: opacity 120ms;
+      }
+      .split-half:hover .split-label,
+      .split-half:focus-visible .split-label,
+      .split-half:active .split-label {
+        opacity: 1;
+      }
+      .split-left:hover,
+      .split-left:focus-visible,
+      .split-left:active {
+        background: linear-gradient(to right, rgba(168, 74, 74, 0.24), rgba(168, 74, 74, 0)) !important;
+      }
+      .split-right:hover,
+      .split-right:focus-visible,
+      .split-right:active {
+        background: linear-gradient(to left, rgba(64, 128, 88, 0.26), rgba(64, 128, 88, 0)) !important;
+      }
+      @media (hover: none) {
+        .split-left {
+          background: linear-gradient(to right, rgba(168, 74, 74, 0.09), rgba(168, 74, 74, 0)) !important;
+        }
+        .split-right {
+          background: linear-gradient(to left, rgba(64, 128, 88, 0.1), rgba(64, 128, 88, 0)) !important;
+        }
+      }
+      .split-half.is-off,
+      .split-half.is-off:hover,
+      .split-half.is-off:active {
+        background: none !important;
+        cursor: default;
+      }
+      .split-half.is-off .split-label {
+        opacity: 0 !important;
+      }
     </style>
     <script>
       // Inject environment-style values for the client

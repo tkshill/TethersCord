@@ -10,6 +10,69 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **The Guide and the app's text describe the die ladder and direct moves**
+  (roadmap 31.6). The glossary is rewritten to `RULES.md` — the die and its
+  ladder, Flow and Friction, the Junction and preparation, boons and aspects,
+  the five moves and undo — and the Guide shows the odds on each rung. The
+  last references to stones, the pool and proposals are gone, and `RULES.md`
+  no longer marks its rules as not yet built.
+
+- **Moves are made where their subject is** (roadmap 31.5). The status strip
+  shows the die ladder, and the current die is the button that rolls the
+  Junction; the result sits beside it, with Alter for players and Reroll /
+  Reject / Accept for the facilitator, whose ‹ › step the die. On your own
+  sheet each aspect is split: the left half Complicates, the right half
+  Highlights, with a ✎ to edit it. Context boons and banes are highlighted by
+  pressing them, and Create is the field beneath them. Each move's log line
+  carries an undo link. Boons and banes are marked ☼ and ☽. The Facilitator
+  tab and the Moves panel are gone.
+
+- **The client speaks the die ladder and direct moves** (roadmap 31.4). It
+  reads the die, the pending roll's face and outcome, the moves open to undo
+  and each context aspect's polarity through one decoder module that refuses
+  anything it cannot represent. Moves are made at once from the Moves column
+  (Highlight and Complicate name an aspect) and can be undone there; any
+  context boon or bane can be highlighted from the context list; the
+  facilitator steps the die from the Facilitator tab. The approval queue and
+  the pool marks are gone. The layout is interim until 31.5.
+
+- **Moves act at once and the facilitator undoes them, instead of approving
+  them** (roadmap 31.3, ADR 0002). In the Worker, Highlight, Highlight
+  Context, Complicate, Create and Alter (`/moves/*`) take effect when made,
+  and `/moves/:id/undo` reverses one move's own effects for the facilitator
+  or the player who made it. Every move except Alter is refused once a
+  Junction is rolled, and rolling closes undo on them. Complicate now also
+  adds a blank context bane for the facilitator to word. The proposal queue,
+  its routes, and the facilitator's context aspect use and unconsume are
+  gone; Highlight Context covers them. Queued proposals are dropped on load.
+  The client follows in 31.4.
+
+- **The die ladder replaces the stone pool in the Worker** (roadmap 31.2,
+  ADR 0001). A Junction rolls one die — d10 at the base, stepped along
+  d6, d8, d10, d12, d16, d20 — and reads Critical Friction, Friction, Flow
+  or Critical Flow from the face. Accepting resets the die to d10 and adds a
+  context boon from a Critical Flow or a context bane from a Critical
+  Friction. The facilitator steps the die with `/die/{step-up,step-down}`,
+  which replace `/stones/{add,remove}`; a Highlight, a context boon or a
+  context bane steps it a rung, and a step past either end is refused. A
+  stored stone pool and any pending stone draw are dropped on load. The
+  client follows in 31.4.
+
+- **The Worker's rules run through one pure core** (roadmap 31.2a, ADR 0003;
+  no change to play). Chat, sessions, character sheets, NPCs and locations,
+  and the facilitator's context aspect edits are now computed by
+  `transition` in `worker/src/rules/`, and each mutation's D1 rows are
+  written in a single batch before the table updates and broadcasts, so a
+  failed write can no longer leave D1 and the live table disagreeing. Ending
+  a session no longer re-reads the history from D1.
+
+- **The Overcome is now the Junction, and session boons and banes are context
+  boons and banes** (roadmap 31.1, a rename only — the rules are unchanged).
+  The new names run through the app's text, the log, the wire format and the
+  routes (`/junction/*`, `/context-aspects/*`, `/moves/use-context-boon`).
+  State stored by an earlier build is read under the new names on load,
+  including a pending roll and queued proposals. A client left open across the
+  deploy needs reloading.
 - **Complicate is about your own character**: the move no longer names another
   character. Proposing it suggests a complication for your own character, and
   on approval that character gains two boons. One button instead of one per

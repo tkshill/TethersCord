@@ -85,21 +85,21 @@ describe("route auth", () => {
     });
   });
 
-  describe("/overcome/roll", () => {
-    it("204s a player rolling — Overcome is open to any player", async () => {
+  describe("/junction/roll", () => {
+    it("204s a player rolling — Junction is open to any player", async () => {
       await seedAuth("player-draw");
-      const res = await call("t-draw", "/overcome/roll", { token: "player-draw" });
+      const res = await call("t-draw", "/junction/roll", { token: "player-draw" });
       expect(res.status).toBe(204);
     });
 
     it("401s an unauthenticated roll", async () => {
-      const res = await call("t-nodraw", "/overcome/roll");
+      const res = await call("t-nodraw", "/junction/roll");
       expect(res.status).toBe(401);
     });
 
     it("204s a facilitator drawing", async () => {
       await seedAuth("fac-draw", { facilitator: true });
-      const res = await call("t-facdraw", "/overcome/roll", { token: "fac-draw" });
+      const res = await call("t-facdraw", "/junction/roll", { token: "fac-draw" });
       expect(res.status).toBe(204);
     });
   });

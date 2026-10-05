@@ -1,11 +1,10 @@
 module FormatTest exposing (suite)
 
-{-| The pure log-formatting helpers and the stone labels.
+{-| The pure log-formatting helpers.
 -}
 
 import Expect
 import Format
-import Roll exposing (Stone(..))
 import Test exposing (Test, describe, test)
 import Time
 
@@ -31,17 +30,5 @@ suite =
                     in
                     Format.timestamp Time.utc t
                         |> Expect.equal (Format.date Time.utc t ++ " " ++ Format.clock Time.utc t)
-            ]
-        , describe "Roll"
-            [ test "stoneLabel names the outcome" <|
-                \_ ->
-                    ( Roll.stoneLabel Boon, Roll.stoneLabel Bane )
-                        |> Expect.equal ( "Boon", "Bane" )
-            , test "the bag opens two Boon and two Bane" <|
-                \_ ->
-                    ( List.length (List.filter ((==) Boon) Roll.initialStones)
-                    , List.length (List.filter ((==) Bane) Roll.initialStones)
-                    )
-                        |> Expect.equal ( 2, 2 )
             ]
         ]

@@ -1,15 +1,18 @@
-module View exposing (logDomId, view)
+module View exposing (aspectFieldId, contextAspectFieldId, logDomId, view)
 
-{-| The Activity view (roadmap section 27, mockup 2a): a one-line status strip
-(`View.TopBar`) over three equal columns — a tool panel on the left (a row of
-glyph tabs showing one tool at a time: Sheet, Facilitator (facilitator only),
-Cast, Guide); the session context in the middle with the Moves pinned beneath;
-and, on the right, the event log with the composer pinned beneath it, so neither
-playing a move nor sending a message depends on which tool is open. Only the
-session context and the log scroll, being the two that grow over play. Each
-tool is handed a `ViewContext` computed once here.
+{-| The Activity view (roadmap 27, mockup 2a; moves placed by 31.5): a one-line
+status strip (`View.TopBar`, the die ladder and the junction) over three equal
+columns — a tool panel on the left (a row of glyph tabs showing one tool at a
+time: Sheet, Cast, Guide); the context boons and banes in the middle with the
+Create field pinned beneath; and, on the right, the event log with the composer
+pinned beneath it. Every move is made where its subject is: Highlight and
+Complicate on the Sheet's aspects, Highlight Context on the context list, Create
+under it, Alter on the strip, and undo on the move's own log line. Only the
+context list and the log scroll, being the two that grow over play. Each tool is
+handed a `ViewContext` computed once here.
 -}
 
+import Aspect
 import Copy
 import Element exposing (Element, el, fill, none, spacing, text, width)
 import Element.Background as Background
@@ -21,13 +24,11 @@ import Types exposing (..)
 import Ui
 import View.Characters
 import View.Entities
-import View.FacilitatorPanel
 import View.Guide
 import View.Helpers exposing (ViewContext, inputAttrs, placeholder)
 import View.Log
-import View.Moves
 import View.Session
-import View.SessionAspects
+import View.ContextAspects
 import View.TopBar
 
 
@@ -37,6 +38,18 @@ log pinned to the bottom when new messages arrive; it is defined in `View.Log`.
 logDomId : String
 logDomId =
     View.Log.logDomId
+
+
+{-| The DOM ids `Main` focuses when ✎ swaps in a field.
+-}
+aspectFieldId : Int -> Aspect.Aspect -> String
+aspectFieldId =
+    View.Helpers.aspectFieldId
+
+
+contextAspectFieldId : String -> String
+contextAspectFieldId =
+    View.Helpers.contextAspectFieldId
 
 
 view : Model -> Html Msg
@@ -73,7 +86,7 @@ view model =
                 , columns =
                     [ toolPanel ctx model gs
                     , Ui.columnRule
-                    , movesPanel ctx model gs
+                    , contextPanel ctx model gs
                     , Ui.columnRule
                     , logPanel ctx model gs
                     ]
@@ -110,15 +123,14 @@ notes model =
         [ Element.column [ width fill, Element.paddingXY 10 4, spacing 2 ] lines ]
 
 
-{-| The left panel: the glyph tab strip, the selected tool's body (scrolling on
-its own), and — for the facilitator, under any tool but their own — the oldest
-waiting proposal.
+{-| The left panel: the glyph tab strip and the selected tool's body
+(scrolling on its own).
 -}
 toolPanel : ViewContext -> Model -> GameState -> Element Msg
 toolPanel ctx model gs =
     let
         selected =
-            effectiveTool ctx model.toolTab
+            model.toolTab
     in
     Element.column
         [ Element.height fill
@@ -133,29 +145,7 @@ toolPanel ctx model gs =
             , Element.paddingEach { top = 8, right = 10, bottom = 8, left = 10 }
             ]
             (Ui.scrollArea [ toolBody ctx model gs selected ])
-        , if selected == FacilitatorTab then
-            none
-
-          else
-            View.FacilitatorPanel.strip ctx gs
         ]
-
-
-{-| The tool actually shown: the selected one, unless this viewer has no such
-tool (the Facilitator tab is the facilitator's only), in which case the Sheet.
--}
-effectiveTool : ViewContext -> ToolTab -> ToolTab
-effectiveTool ctx tab =
-    case tab of
-        FacilitatorTab ->
-            if ctx.facilitator then
-                FacilitatorTab
-
-            else
-                SheetTab
-
-        _ ->
-            tab
 
 
 toolStrip : ViewContext -> ToolTab -> GameState -> Element Msg
@@ -178,17 +168,10 @@ toolStrip ctx selected gs =
         , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
         , Border.color Ui.line
         ]
-        (tool SheetTab "◆" Copy.sheetTabLabel Copy.sheetTabTip
-            :: (if ctx.facilitator then
-                    [ tool FacilitatorTab "⚑" Copy.facilitatorPanelTitle (Copy.facilitatorTabTip (List.length gs.proposals)) ]
-
-                else
-                    []
-               )
-            ++ [ tool CastTab "☺" Copy.castTabLabel Copy.castTabTip
-               , el [ Element.alignRight ] (tool GuideTab "?" Copy.guideTabLabel Copy.guideTabTip)
-               ]
-        )
+        [ tool SheetTab "◆" Copy.sheetTabLabel Copy.sheetTabTip
+        , tool CastTab "☺" Copy.castTabLabel Copy.castTabTip
+        , el [ Element.alignRight ] (tool GuideTab "?" Copy.guideTabLabel Copy.guideTabTip)
+        ]
 
 
 toolBody : ViewContext -> Model -> GameState -> ToolTab -> Element Msg
@@ -198,11 +181,9 @@ toolBody ctx model gs tab =
             View.Characters.view ctx
                 { selectedSlot = model.selectedSlot
                 , aspectExamplesOpen = model.aspectExamplesOpen
+                , aspectEditing = model.aspectEditing
                 }
                 gs
-
-        FacilitatorTab ->
-            View.FacilitatorPanel.view ctx { drafts = model.proposalDrafts } gs
 
         CastTab ->
             if not ctx.facilitator && List.isEmpty gs.npcs && List.isEmpty gs.locations then
@@ -218,12 +199,19 @@ toolBody ctx model gs tab =
             View.Guide.view
 
 
-{-| The middle column: the session context (session boons and banes, past
-sessions) filling it and scrolling on its own, then the Moves pinned beneath at
-their natural height.
+{-| The middle column: the context boons and banes and the past sessions,
+scrolling on their own, with the Create field pinned at the foot of the list.
 -}
-movesPanel : ViewContext -> Model -> GameState -> Element Msg
-movesPanel ctx model gs =
+contextPanel : ViewContext -> Model -> GameState -> Element Msg
+contextPanel ctx model gs =
+    let
+        props =
+            { facilitatorDraft = model.newContextAspectNote
+            , facilitatorKind = model.newContextAspectKind
+            , createDraft = model.createDraft
+            , edits = model.contextAspectEdits
+            }
+    in
     Element.column
         [ Element.height fill
         , width fill
@@ -233,16 +221,10 @@ movesPanel ctx model gs =
         ]
         [ Ui.divider (String.toUpper Copy.contextTabLabel)
         , Ui.scrollArea
-            [ View.SessionAspects.view ctx
-                { sessionAspectDraft = model.newSessionAspectNote
-                , sessionAspectKind = model.newSessionAspectKind
-                , edits = model.sessionAspectEdits
-                }
-                gs
+            [ View.ContextAspects.view ctx props gs
             , View.Session.view ctx gs
             ]
-        , Ui.divider (String.toUpper Copy.movesHeading)
-        , View.Moves.view ctx { addDetailDraft = model.addDetailDraft, selectedSlot = model.selectedSlot } gs
+        , View.ContextAspects.createField ctx props gs
         ]
 
 

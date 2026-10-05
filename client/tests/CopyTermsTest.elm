@@ -44,13 +44,13 @@ suite =
                     |> Expect.equal (List.length (dedupe names))
         , test "termShort resolves a known term" <|
             \_ ->
-                Terms.termShort "Overcome"
-                    |> Expect.equal overcomeShort
+                Terms.termShort "Junction"
+                    |> Expect.equal junctionShort
         , test "no term describes a mechanic RULES.md retired" <|
             \_ ->
                 let
                     retired =
-                        [ "compel", "pledge", "floating", "once per session", "once-per-session", "insight", "the bag", "untether" ]
+                        [ "compel", "pledge", "floating", "once per session", "once-per-session", "insight", "the bag", "untether", "stone", "pool", "proposal", "propose", "add detail", "alter fate", "overcome", "withdraw" ]
 
                     mentions t =
                         let
@@ -65,20 +65,24 @@ suite =
                     |> Expect.equalLists []
         , test "every term a view looks up for a tooltip exists" <|
             \_ ->
-                [ "Session", "Session boon", "Aspect", "Highlight", "Complicate", "Add Detail", "Alter Fate" ]
+                [ "Archetype", "Desire", "Quest", "Condition", "Junction", "Context aspect", "Highlight", "Complicate", "Create", "Alter" ]
                     |> List.filter (\name -> Terms.termShort name == "")
                     |> Expect.equalLists []
         , test "termShort returns \"\" for an unknown name" <|
             \_ ->
                 Terms.termShort "Nonsense"
                     |> Expect.equal ""
+        , test "the ladder's odds cover every rung, in order" <|
+            \_ ->
+                List.map .die Terms.ladderOdds
+                    |> Expect.equal [ "d6", "d8", "d10", "d12", "d16", "d20" ]
         ]
 
 
-overcomeShort : String
-overcomeShort =
+junctionShort : String
+junctionShort =
     Terms.terms
-        |> List.filter (\t -> t.term == "Overcome")
+        |> List.filter (\t -> t.term == "Junction")
         |> List.head
         |> Maybe.map .short
         |> Maybe.withDefault "MISSING"

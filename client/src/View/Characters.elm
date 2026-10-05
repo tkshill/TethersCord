@@ -1,22 +1,33 @@
 module View.Characters exposing (view)
 
 {-| The Sheet tool (roadmap section 27): a strip of character slots over the
-selected sheet — owner row, boons (facilitator Grant only, for now — see
-`boonsBlock`), and the fields, each a label and a hairline input. An aspect
-shows the Banes it has accumulated as `−` marks at its end.
+selected sheet — owner row, boons (as ☼ marks; the facilitator's Grant beside
+them), and the fields, each a label and a hairline input.
+
+On the viewer's own sheet each written aspect is a split button (31.5): the
+left half Complicates, the right half Highlights, each greyed with its reason
+when it cannot be made. A small ✎ beside it swaps in the text field; leaving
+the field saves it and swaps the button back. On any other sheet an aspect is a
+field like the rest. An aspect shows the Banes it accumulated before 23.1 as ☽
+marks at its end.
 -}
 
+import Action exposing (Action(..))
+import Aspect exposing (Aspect(..))
 import Copy
 import Element exposing (Element, el, fill, height, px, spacing, text, width)
 import Element.Font as Font
 import Element.Input as Input
 import Format
+import Die
 import Html.Attributes
+import MoveRecord
 import Types exposing (..)
 import Ui
 import View.Helpers
     exposing
         ( ViewContext
+        , aspectFieldId
         , characterLabel
         , inlineInputAttrs
         , inputAttrs
@@ -28,6 +39,7 @@ import View.Helpers
 type alias Props =
     { selectedSlot : Int
     , aspectExamplesOpen : Maybe ( Int, Aspect )
+    , aspectEditing : Maybe ( Int, Aspect )
     }
 
 
@@ -53,7 +65,7 @@ view ctx props gs =
         [ tabStrip ctx.myId props.selectedSlot gs.characters
         , case selected of
             Just ch ->
-                characterSheet ctx.facilitator ctx.myId props.aspectExamplesOpen ch
+                characterSheet ctx props gs ch
 
             Nothing ->
                 placeholder Copy.noCharacterSheets
@@ -81,34 +93,99 @@ tabLabel myId ch =
         characterLabel ch
 
 
-characterSheet : Bool -> Maybe String -> Maybe ( Int, Aspect ) -> CharacterSheet -> Element Msg
-characterSheet facilitator myId aspectExamplesOpen ch =
+characterSheet : ViewContext -> Props -> GameState -> CharacterSheet -> Element Msg
+characterSheet ctx props gs ch =
     let
+        facilitator =
+            ctx.facilitator
+
         mine =
-            ch.ownerId /= Nothing && ch.ownerId == myId
+            ch.ownerId /= Nothing && ch.ownerId == ctx.myId
 
         editable =
             facilitator || mine || ch.ownerId == Nothing
+
+        aspectField aspect fieldTag value =
+            if mine && props.aspectEditing /= Just ( ch.slot, aspect ) && String.trim value /= "" then
+                aspectMoves ctx gs ch aspect value
+
+            else
+                aspectInput editable props.aspectExamplesOpen ch aspect fieldTag value
     in
     Element.column [ spacing Ui.md, width fill ]
         [ ownerRow facilitator mine ch
         , boonsBlock facilitator ch
         , field editable ch NameField "" "Name" ch.name
         , field editable ch NotableFeaturesField "" Copy.notableFeaturesLabel ch.notableFeatures
-        , aspectField editable aspectExamplesOpen ch Archetype ArchetypeField ch.archetype
-        , aspectField editable aspectExamplesOpen ch Desire DesireField ch.desire
-        , aspectField editable aspectExamplesOpen ch Quest QuestField ch.quest
+        , aspectField Archetype ArchetypeField ch.archetype
+        , aspectField Desire DesireField ch.desire
+        , aspectField Quest QuestField ch.quest
         , field editable ch ConditionField "Condition" Copy.conditionLabel ch.condition
         , notesField editable ch
         ]
 
 
-{-| An aspect field: the input, its accumulated Banes as `−` marks at the end
+{-| A written aspect on the viewer's own sheet: the split button (Complicate on
+the left, Highlight on the right) and its ✎, under the aspect's label.
+-}
+aspectMoves : ViewContext -> GameState -> CharacterSheet -> Aspect -> String -> Element Msg
+aspectMoves ctx gs ch aspect value =
+    let
+        lockedOr ok =
+            if gs.junction /= Nothing then
+                Err Copy.movesLocked
+
+            else
+                ok
+
+        highlight =
+            lockedOr
+                (if ch.fate < highlightCost then
+                    Err Copy.needsABoon
+
+                 else if Die.stepUp gs.die == Nothing then
+                    Err Copy.dieAtTop
+
+                 else
+                    Ok (MakeHighlight aspect)
+                )
+
+        complicate =
+            lockedOr (Ok (MakeComplicate aspect))
+
+        half label okTip kind outcome =
+            case outcome of
+                Ok msg ->
+                    { onPress = Ui.press ctx.inflight (MakingMove kind) msg, label = label, tip = okTip }
+
+                Err reason ->
+                    { onPress = Nothing, label = label, tip = reason }
+    in
+    labelled (Aspect.label aspect)
+        (Element.row [ width fill, Ui.shrinkableWidth, spacing Ui.xs ]
+            [ Ui.splitButton
+                { content = value
+                , left = half Copy.complicateHalf Copy.complicateTip MoveRecord.Complicate complicate
+                , right = half Copy.highlightHalf Copy.highlightTip MoveRecord.Highlight highlight
+                }
+            , el [ Element.alignTop ] (Ui.pencil { onPress = Just (EditAspect ch.slot aspect), tip = Copy.editTip })
+            ]
+        )
+
+
+{-| What a Highlight costs, in boons (RULES.md "Moves"); the Worker checks it too.
+-}
+highlightCost : Int
+highlightCost =
+    1
+
+
+{-| An aspect field: the input, its accumulated Banes as ☽ marks at the end
 of the row, and — while the sheet is editable — a "see examples" toggle that
 opens a short list of sample aspects from `ASPECTS.md` to write against.
 -}
-aspectField : Bool -> Maybe ( Int, Aspect ) -> CharacterSheet -> Aspect -> CharacterField -> String -> Element Msg
-aspectField editable examplesOpen ch aspect fieldTag value =
+aspectInput : Bool -> Maybe ( Int, Aspect ) -> CharacterSheet -> Aspect -> CharacterField -> String -> Element Msg
+aspectInput editable examplesOpen ch aspect fieldTag value =
     let
         count =
             aspectBaneCount aspect ch.aspectBanes
@@ -119,7 +196,7 @@ aspectField editable examplesOpen ch aspect fieldTag value =
                     [ Element.centerY
                     , Font.size 12
                     , Element.htmlAttribute
-                        (Html.Attributes.title (String.fromInt count ++ " " ++ Format.pluralize count Copy.baneStone ++ " on this aspect"))
+                        (Html.Attributes.title (String.fromInt count ++ " " ++ Format.pluralize count Copy.baneLabel ++ " on this aspect"))
                     ]
                     (Ui.baneMarks count)
                 ]
@@ -129,7 +206,7 @@ aspectField editable examplesOpen ch aspect fieldTag value =
     in
     Element.column [ spacing Ui.xs, width fill ]
         (Element.row [ width fill, spacing Ui.xs ]
-            (field editable ch fieldTag (aspectLabel aspect) (aspectLabel aspect) value :: banes)
+            (fieldWithId (Just (aspectFieldId ch.slot aspect)) editable ch fieldTag (Aspect.label aspect) (Aspect.label aspect) value :: banes)
             :: aspectExamplesBlock editable examplesOpen ch.slot aspect
         )
 
@@ -223,11 +300,28 @@ the field grows to show it instead of running past the column's edge. A line
 break (Enter, or a paste) becomes a space, so the value stays one line.
 -}
 field : Bool -> CharacterSheet -> CharacterField -> String -> String -> String -> Element Msg
-field editable ch fieldTag tipKey label value =
+field =
+    fieldWithId Nothing
+
+
+{-| `field`, with a DOM id on the input so ✎ can focus it.
+-}
+fieldWithId : Maybe String -> Bool -> CharacterSheet -> CharacterField -> String -> String -> String -> Element Msg
+fieldWithId domId editable ch fieldTag tipKey label value =
     if editable then
         labelled label
             (Input.multiline
-                (inlineInputAttrs ++ tipAttrs tipKey ++ [ width fill, Ui.onBlur (CharacterFieldBlur ch.slot) ])
+                (inlineInputAttrs
+                    ++ tipAttrs tipKey
+                    ++ [ width fill, Ui.onBlur (CharacterFieldBlur ch.slot) ]
+                    ++ (case domId of
+                            Just id ->
+                                [ Element.htmlAttribute (Html.Attributes.id id) ]
+
+                            Nothing ->
+                                []
+                       )
+                )
                 { onChange = String.replace "\n" " " >> CharacterFieldInput ch.slot fieldTag
                 , text = value
                 , placeholder = Nothing
@@ -294,9 +388,9 @@ readOnlyField tipKey label value =
 
 
 {-| A character's boons, at the top of the sheet where a player can see what
-they can spend on a move, as a run of `+` marks. Only the facilitator gets a
-control here (Grant `+` / `−`); a player moves their own boons through the moves
-in the Moves tool.
+they can spend on a move, as a run of ☼ marks. Only the facilitator gets a
+control here (Grant `+` / `−`); a player spends and earns boons through the
+moves on their aspects.
 -}
 boonsBlock : Bool -> CharacterSheet -> Element Msg
 boonsBlock facilitator ch =

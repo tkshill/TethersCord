@@ -1470,8 +1470,11 @@ Same conventions as the rest of the roadmap: one branch per item off `main`,
 a restructuring, verified by the existing suites plus the new tests it makes
 possible.
 
-- [ ] **25.1 — A pure rules core behind `GameTable`** (the review's top
-      recommendation). The rules are interleaved with D1 awaits: a handler does
+- [x] **25.1 — A pure rules core behind `GameTable`** — done in 31.2a–31.3 (`worker/src/rules/`, ADR 0003; `GameTable.ts` ~880 lines) (the review's top
+      recommendation; **folded into section 31** on 2026-10-04, whose 31.2 and
+      31.3 write the new Junction and move rules in this shape; the settled
+      design is `docs/adr/0003-pure-rules-core.md`). The rules are
+      interleaved with D1 awaits: a handler does
       its D1 write, then updates memory, then commits (storage put, message
       insert, broadcast), so a throw between the two leaves D1 ahead of memory,
       and the rules are reachable only through `SELF.fetch`. The review's shape:
@@ -1490,7 +1493,7 @@ possible.
       injected RNG would make unnecessary. **Supersedes P2.2's handler split** —
       that split relocates the interleave into handler files; this removes it.
       The route-table half of P2.2 survives on its own.
-- [ ] **25.2 — One "change a sheet" seam** (absorbed by 25.1). Four handlers
+- [x] **25.2 — One "change a sheet" seam** (absorbed by 25.1) — done: `persistDiff` derives every sheet write from the table diff. Four handlers
       still hand-copy the replace-by-slot `this.game.characters.map`
       (`GameTable.ts` ~1779, ~1817, ~1856, ~1894), plus a fate helper (~1302),
       beside the one-statement D1 wrappers in `characters.ts` (`setFate`,
@@ -1529,8 +1532,8 @@ possible.
       would touch `Api` only and route strings would leave `Main`.
       Speculative: do it only if the wide constructor list keeps costing edits
       after 25.3.
-- [ ] **25.7 — Worker `Proposal` as a discriminated union** (absorbed by 25.1's
-      proposals branch). The client already models the kinds (`Kind.elm`); the
+- [x] **25.7 — Worker `Proposal` as a discriminated union** — moot: 31.3
+      deleted proposals. (Was absorbed by 25.1's proposals branch.) The client already models the kinds (`Kind.elm`); the
       worker's `Proposal` (`worker/src/types.ts`) is one flat record with
       nullable `slot`, `sessionAspectId`, `targetSlot` (legacy `complicate`
       only) and `text` (`add-detail` only), re-checked per arm, and
@@ -1553,14 +1556,16 @@ possible.
 
 ### Open questions
 
-- [ ] Recover or re-derive the 25.1 design (the review's plan file / ADR-0001);
-      decide the `Command` and `writes` shapes, and whether `writes` are
-      `DB.batch` statements or a higher-level record.
-- [ ] Does moving to one `DB.batch` change any failure ordering the current
-      D1-then-memory sequence relies on? Settle before touching a handler.
-- [ ] Where do the pure-rules tests live — under `worker/test/` with
-      `gameLogic.test.ts`, run without `workerd` — and does `vitest` need a
-      second, plain-Node project for them?
+- [x] Recover or re-derive the 25.1 design — re-derived as
+      `docs/adr/0003-pure-rules-core.md`. There is no `writes` list: a pure
+      `persistDiff(prev, next, log)` derives the D1 rows, and an adapter
+      turns them into `DB.batch` statements.
+- [x] Failure ordering — nothing relies on D1-then-memory. The batch runs
+      first and is atomic; on failure nothing has changed. Install, `put` and
+      broadcast follow with no `await`, so the output gate holds the broadcast
+      until the `put` is durable.
+- [x] Test location — `worker/test/rules/`, in the existing workers pool. A
+      plain-Node project only if it gets slow.
 
 ## 26. Player moves and the Overcome loop — done
 
@@ -1866,53 +1871,29 @@ here; the current layout is described in `CLAUDE.md`. In order:
       longer names another character.
 - [x] **Character sheet fields wrap** instead of running past the column edge.
 
-## 28. Heart and skull marks, labelled tool tabs — next
+## 28. Labelled tool tabs — next
 
-Two small visual changes to the section-27 UI.
-
-### 28.1 Boons and banes as hearts and skulls
-
-> **Superseded by section 31**, which uses sun and moon marks (☼ / ☽) and
-> removes the pool marks entirely. 28.2 stands.
-
-The `+` / `−` marks read as arithmetic rather than as game pieces, and a run of
-them is hard to count at a glance. Replace them with a pictorial pair — hearts
-for boons, skulls for banes (exact glyphs open; see below).
-
-- [ ] Swap the glyph in `Ui.boonMarks` / `Ui.baneMarks` (`client/src/Ui.elm`).
-      That covers the pool in the status strip, the pending Overcome draw chip
-      (`View/TopBar.elm`), boons on the Sheet and aspect Banes
-      (`View/Characters.elm`).
-- [ ] Route the hand-written `+` / `−` in `View/SessionAspects.elm` (the
-      session boon / bane rows and the facilitator's add-aspect kind buttons)
-      through the same helpers so every mark changes together.
-- [ ] Check the log lines and `Copy.elm` strings for `+` / `−` shorthand that
-      should follow (for example the "(+1 / +2 boons)" style text), and the
-      glossary in `Copy/Terms.elm` if it describes the marks.
-- [ ] Keep the colour split (bane in the danger tone) so the two stay
-      distinguishable without relying on shape alone.
-- [ ] Verify the glyphs render inside the Discord Activity webview on desktop
-      and mobile, and that letter-spacing still leaves a run countable.
+One small visual change to the section-27 UI. Re-baselined by 31.6: 28.1
+(hearts and skulls for boons and banes) was dropped when section 31 settled
+on sun and moon marks (☼ / ☽), shipped in 31.5 through `Ui.boonMarks` /
+`Ui.baneMarks`; the glyph check in the Discord webview is tracked in 31.5.
 
 ### 28.2 Tool tabs always show their titles
 
-The left panel's tabs show only a glyph (`◆` / `⚑` / `☺` / `?`) until selected,
-so a player has to hover or guess. Show every tab's title all the time and drop
-the glyphs.
+The left panel's tabs show only a glyph (`◆` / `☺` / `?`) until selected, so a
+player has to hover or guess. Show every tab's title all the time and drop the
+glyphs.
 
 - [ ] `Ui.toolTab` renders `label` for every tab, selected or not; the selected
       tab keeps its wash and weight. Remove the `glyph` field and the fixed
       26px unselected width.
 - [ ] Update the call site in `View.elm` and the `CLAUDE.md` description of
       the tab row.
-- [ ] Confirm the four titles (Sheet, Facilitator, Cast, Guide) fit on one
-      line in the default panel width; shorten or let the row wrap if not.
+- [ ] Confirm the three titles (Sheet, Cast, Guide) fit on one line in the
+      default panel width.
 
 ### Open questions
 
-- Which glyphs: emoji (❤ / 💀, colour set by the platform) or monochrome text
-  symbols (♥ / ☠, which take the palette's colour)? Monochrome fits the spare
-  look and the danger tint; emoji are more legible at 11–13px.
 - With labels always on, does the tab tooltip still earn its place, or can
   `tip` go too?
 
@@ -1995,46 +1976,59 @@ Only worth doing if the staging loop proves too slow in practice.
 - Should staging get a copy of the live characters and NPCs to test against, or
   start empty? Starting empty is simpler and nothing so far needs real data.
 
-## 30. Playtest the Overcome loop — planned
+## 30. Playtest the Junction loop — planned
 
-> **Section 31 replaces the loop this checklist describes.** Rewrite the
-> checklist for Junctions (31.6) before running it.
-
-Moved out of section 26.4, which shipped the code. Section 26's rules have only
-been exercised by the test suites and by rendering the view in headless Chrome;
-this is the first real run at the table. Not something the code can do.
+Rewritten by 31.6 for section 31's rules (the die ladder, the Junction, direct
+moves and undo); the stone-pool checklist it replaces is in git history.
+Section 31 has been exercised by the test suites and by rendering the view in
+headless Chrome only; this is the first real run at the table. Not something
+the code can do.
 
 - [ ] **One table playtest** against the checklist below, then record what it
       showed here. Run it in a test channel (29.1) unless it is real play.
 
 ### Manual playtest checklist
 
-- A player Highlights, is accepted, and the pool visibly gains a Boon.
-- A player cannot press a move whose cost they cannot pay.
-- Two players press Overcome at once: one wins, the other sees a refusal.
-- Roll → Alter Fate → accepted: the log shows roll, reroll, then the accepted
-  result. A rejected Alter Fate costs the player nothing and they can try again.
-- A second Alter Fate from the same player in one Overcome is refused.
-- Accept with two Boons → a session boon appears; accept with a mixed draw → none;
-  either way the pool is 2/2.
-- Reject → nothing changes and the roll can be pressed again.
-- A session boon is used, shows consumed, cannot be used twice, and the
-  facilitator can unconsume it.
+- The ladder shows the d10 marked, and pressing it rolls: the result appears
+  beside it (`Flow · 7`) and in the log (`Flow — 7 on d10`).
+- Two people press the die at once: one roll lands, the other is refused.
+- A player Highlights from the right half of an aspect: a boon goes, the die
+  steps up, the log line carries `d10 → d12` and an undo link. Undo puts both
+  back.
+- Highlights stack to d20; a fourth Highlight is greyed and refused, and no
+  boon is spent.
+- Complicate from the left half of an aspect: two boons, and a bane reading
+  "Trouble from … — to be worded" that the facilitator words with ✎.
+- Create with words, and with a blank field (`Detail from <name>`).
+- Highlight Context on a context boon (die up) and on a context bane (die
+  down): each shows consumed and cannot be pressed again; undo restores it.
+- After the roll every move but Alter is greyed ("Moves are locked…"), and the
+  undo links on the earlier moves are gone.
+- Alter: two boons, a reroll on the same die; a second Alter by the same
+  character is refused, another character's is not. Undoing it restores the
+  earlier roll and frees the Alter.
+- The facilitator's Reroll is free and on the same die, even after a `‹` `›`
+  step.
+- Accept a Critical Flow → a context boon, the die back to d10; accept a
+  Critical Friction → a context bane; accept a plain result → nothing. Reject →
+  the die stays and the Junction can be rolled again.
+- The split buttons' labels appear on hover, and on a phone both halves show
+  their resting tint and the label on press.
 - Ending a session changes nothing except the history.
 
 ### Open questions to settle in play
 
-- [ ] **Two proposals pending against the same boons.** A player with two boons
-      can queue Alter Fate (2) and Highlight (1); both pass the proposal check,
-      and the second accept 409s. Tolerated for now. If it bites at the table,
-      count the player's own pending costs against what the buttons allow.
-- [ ] **Add Detail's text on a blank proposal and a blank accept.** The worker
-      falls back to a default (`Detail from <name>`); revisit the wording in play.
-- [ ] **Where rolled stones sit in the log.** The log carries each roll and
-      reroll as its own event line; whether the UI should also fold them into
-      one "Overcome" entry is a presentation question.
+- [ ] **Generosity.** Is 60 / 40 Flow / Friction on the d10 too kind? The d8 is
+      50 / 50.
+- [ ] **Equal criticals.** Does a bane making a context boon likelier read as
+      backwards at the table?
+- [ ] **Complicate farming.** It is free and unapproved; the facilitator's undo
+      is the only check.
+- [ ] **Unworded banes.** Does "Trouble from <name>'s <Aspect>" carry a
+      Complicate until the facilitator words it, or should the player word it
+      when they make it?
 
-## 31. Junctions, the die ladder, and direct moves — planned
+## 31. Junctions, the die ladder, and direct moves — done
 
 The stone pool goes. Every chance roll becomes a single die whose size moves up
 and down a ladder, the Overcome becomes the **Junction**, session boons and
@@ -2081,32 +2075,32 @@ models.
   Overcome). Any player, or the facilitator, rolls the current die. One roll
   pending at a time. The facilitator then:
   - **Rerolls** for free, on the same die;
-  - **Accepts**: the die resets to d10, and a Critical Flow creates a context
+  - **Accepts**: the die resets to d10, and a Critical Flow adds a context
     boon, a Critical Friction a context bane — from the final roll only, so a
-    reroll never creates one;
+    reroll never adds one;
   - **Rejects**: the roll is discarded, the die stays where it was.
 - **Preparation happens before the roll, officially.** Every Highlight,
-  Complicate, Add Detail and context boon or bane use is made *before* the
-  Junction is rolled. Once the result is up, the only player move is **Alter
-  Fate**. This is intended: it rewards proactive play and stops boons being
+  Highlight Context, Complicate and Create is made *before* the
+  Junction is rolled. Once the result is up, the only player move is **Alter**. This is intended: it rewards proactive play and stops boons being
   spent only after a Friction. **The Worker enforces it** (409 on any move
   except Alter while a Junction is pending); the client disables the controls.
   The facilitator's direct corrections (die arrows, a character's boons,
   editing text) stay open.
 - **Character boons are unchanged** as the move currency (`fate` in storage).
 - **Context boons and context banes** rename session boons and banes, with the
-  same `consumed` mark. **Anyone** may use either one directly, with no
-  approval: a context boon steps the die up, a context bane steps it down, and
-  it is marked consumed.
+  same `consumed` mark. Together they are **context aspects** — aspects, like
+  a character's, but owned by nobody. **Anyone** may **Highlight Context** on
+  either one, with no approval: a context boon steps the die up, a context bane
+  steps it down, and it is marked consumed.
 - **Moves are direct, and undoable.** There is no proposal queue any more.
 
   | Move | Where | Cost | Effect |
   | --- | --- | --- | --- |
   | **Highlight** | right half of one of your aspects | 1 boon | die up one rung |
   | **Complicate** | left half of one of your aspects | none | +2 boons, and a context bane with blank text for the facilitator to fill, tagged with the aspect |
-  | **Add Detail** | the field under the context list | 1 boon | a context boon with the player's text (blank falls back to `Detail from <name>`) |
-  | **Use a context boon / bane** | click it | none | die up / down one rung; marked consumed |
-  | **Alter Fate** | status strip, beside the result | 2 boons | reroll the pending Junction on the same die; once per character per Junction |
+  | **Create** | the field under the context list | 1 boon | a context boon with the player's text (blank falls back to `Detail from <name>`) |
+  | **Highlight Context** | click a context boon / bane | none | die up / down one rung; marked consumed |
+  | **Alter** | status strip, beside the result | 2 boons | reroll the pending Junction on the same die; once per character per Junction |
 
   Highlights stack: three take a d10 to a d20.
 - **Undo replaces approval.** The facilitator may undo any move; a player may
@@ -2114,9 +2108,9 @@ models.
   effects**, not the table's state before it, so later moves survive:
   - Highlight: die down a rung, boon refunded.
   - Complicate: 2 boons taken back, its context bane deleted.
-  - Add Detail: its context boon deleted, boon refunded.
-  - Context boon / bane use: unconsumed, die back a rung.
-  - Alter Fate: the previous result restored, 2 boons refunded, the
+  - Create: its context boon deleted, boon refunded.
+  - Highlight Context: unconsumed, die back a rung.
+  - Alter: the previous result restored, 2 boons refunded, the
     once-per-Junction allowance freed.
 
   A reverse step that would run off the ladder stops at the end.
@@ -2125,7 +2119,7 @@ models.
   rejected.
 - **The facilitator acts directly**: steps the die with `‹` `›` beside the
   ladder (each step logged, `d10 → d12`), adds a context boon or bane free
-  through the same field players use for Add Detail (with a ☼ / ☽ toggle), and
+  through the same field players use for Create (with a ☼ / ☽ toggle), and
   edits any context text (unlogged).
 - **The log.** Every move, use, step and undo is a line, and every line that
   changes the die carries `from → to`. A roll reads `Flow — 7 on d10`. An undo
@@ -2152,8 +2146,8 @@ models.
   beside it; ✎ swaps in the text field, and leaving the field saves and swaps
   back. Context boons and banes use the same pattern (✎ for the facilitator
   only), and are disabled once consumed.
-- **Add Detail is the field at the foot of the context list**, which scrolls.
-  For a player it is Add Detail (costs a boon, makes a context boon); for the
+- **Create is the field at the foot of the context list**, which scrolls.
+  For a player it is Create (costs a boon, makes a context boon); for the
   facilitator it carries the ☼ / ☽ toggle and is free.
 - **Removed:** the Facilitator tab (its pool controls became the ladder arrows,
   its proposal queue is gone), the proposal strip under the tools, and the
@@ -2204,10 +2198,15 @@ models.
   `KEY_STONES` blob, broadcast, cleared when a Junction is rolled (Alter
   entries when it is accepted or rejected). The client finds each move's log
   line by `messageId`. No D1 migration is needed anywhere in this section.
-- **A pure `dice.ts`** (`LADDER`, `step`, `rollDie(die, rng)`, `classify`) with
-  unit tests, and an overridable dice source on `GameTable` (set through
-  `runInDurableObject`) so route tests force a known face instead of shaping a
-  pool.
+- **A pure `dice.ts`** (`LADDER`, `step`, `classify`) with unit tests. The
+  roll comes from `Deps.roll` in the rules core (ADR 0003), so tests force a
+  known face instead of shaping a pool; the overridable dice source on
+  `GameTable` first planned here is dropped.
+- **The rules are a pure transition** (ADR 0003, folding in 25.1):
+  `transition(table, command, deps)` in `worker/src/rules/` returns the next
+  table and structured log events, or a refusal. `GameTable` authenticates,
+  parses a route into a `Command`, and persists what a pure `persistDiff`
+  derives in one `DB.batch`.
 - **Deploy between sessions**, after a run in the test channel (29.1): the
   migration drops a pending roll and pending proposals, and a client left open
   across the deploy must be reloaded.
@@ -2240,83 +2239,163 @@ a later step deletes.
 
 #### 31.0 Rules and vocabulary — docs only
 
-- [ ] Rewrite `RULES.md` for the die ladder, the Junction, direct moves and
-      undo, and context boons and banes (marked as not yet built until 31.6).
-- [ ] `CONTEXT.md` glossary with the renamed / retired terms table
-      (`mattpocock-skills:domain-modeling`).
-- [ ] ADR: the die ladder replaces the stone pool, and undo replaces approval.
+- [x] Rewrite `RULES.md` for the die ladder, the Junction, direct moves and
+      undo, and context aspects (marked as not yet built until 31.6).
+- [x] `CONTEXT.md` glossary, with every retired term under _Avoid_. Settled in
+      the same pass: **aspect** is the umbrella for any statement that is true
+      (character aspects and context aspects); "boon" alone means only the
+      character currency; the move that spends a context aspect is **Highlight
+      Context**, giving five moves: Highlight, Highlight Context, Complicate,
+      Create and Alter (renamed from Add Detail and Alter Fate, so every
+      move is a single verb but the Highlight pair). A context aspect that
+      appears any other way is *added*, never *created*.
+- [x] `docs/adr/0001-die-ladder-replaces-stone-pool.md` and
+      `docs/adr/0002-undo-replaces-approval.md`.
 
 #### 31.1 Pure rename — no behaviour change
 
-- [ ] Overcome → Junction and session aspect → context aspect everywhere: wire
-      fields, routes, Worker types and handlers, client types, `Msg` /
-      `Effect` / `Action` names, tests, copy. Proposals and the pool are left
-      alone, since 31.2 and 31.3 delete them.
-- [ ] `migrateTableState.ts` (renamed) reads `sessionAspects` into
-      `contextAspects` and an Overcome into a Junction; a test for each.
-- [ ] Both test suites pass with only renamed identifiers.
+- [x] Overcome → Junction and session aspect / boon / bane → context aspect /
+      boon / bane everywhere: wire fields, routes, Worker types and handlers,
+      client types, `Msg` / `Effect` / `Action` names, tests, copy, log text and
+      `CLAUDE.md`. The pool is left alone (31.2 replaces it). Proposals keep
+      their shape, but the parts that name a context aspect follow the rename
+      (`contextAspectId`, the `use-context-boon` kind and route) so no old word
+      survives in code.
+- [x] `migrateStoneState.ts` → `migrateTableState.ts` (and `StoneState` →
+      `TableState`, `KEY_STONES` → `KEY_TABLE_STATE`, the key string still
+      `"stones"`). Its header lists every 31.1 translation. It reads
+      `overcome` into `junction`, `sessionAspects` into `contextAspects`,
+      `sessionAspectId` into `contextAspectId` and `use-session-boon` into
+      `use-context-boon`, preferring the current name when a blob has both. Its
+      tests moved to their own `migrateTableState.test.ts`, with two new ones.
+- [x] Both test suites pass (client 97, worker 103: the 101 before plus the two
+      migration tests).
 
-#### 31.2 Worker — the die ladder
+#### 31.2a Worker — the rules core scaffold, no behaviour change — done
 
-- [ ] `dice.ts` test-first: ladder, step with refusal at the ends, `rollDie`
+The 25.1 restructuring on its own, so that the die ladder lands on the new
+shape (ADR 0003).
+
+- [x] `worker/src/rules/`: `Table`, `Actor`, `Command`, `Deps`, `Result`,
+      `LogEvent` and `logText`, and `transition` with an exhaustive dispatch.
+- [x] `persistDiff(prev, next, log)` and its tests over each D1-mirrored slice
+      (sheets, NPCs, locations, the running session, messages and log clear);
+      `GameTable.apply` flushes it in one `DB.batch`, then installs, puts and
+      broadcasts with no `await` between them.
+- [x] The route table (P2.2's surviving half): `{ method, path, parse }` to a
+      `Command`; role and ownership checks move into the core.
+- [x] Port chat, log clear, sessions (`SessionState.startedAt`, history kept
+      in memory), sheet edits / boons / claim / release, NPCs and locations,
+      and context aspect add / update / delete onto it. Junction, stone and
+      proposal handlers stay on `commit` until 31.2b and 31.3.
+- [x] Both suites pass (client 97, worker 131: the 103 before plus 28 under
+      `worker/test/rules/`, a session-history route test and a migration
+      test). The two migration tests that pinned `SessionState`'s shape now
+      include `startedAt`. Context aspect use and unconsume stay on `commit`
+      with the pool.
+
+#### 31.2 Worker — the die ladder — done (31.2b)
+
+- [x] `dice.ts` test-first: ladder, step with refusal at the ends, `rollDie`
       with an injected source, `classify`.
-- [ ] `gameState.die` replaces `stonePool`; the Junction carries
+- [x] `gameState.die` replaces `stonePool`; the Junction carries
       `{ rolledBy, die, face, outcome, rerolls, alteredSlots }`; accept resets
-      to d10 and creates a context aspect from a critical; reject leaves the
+      to d10 and adds a context aspect from a critical; reject leaves the
       die.
-- [ ] `/die/{step-up,step-down}` (facilitator, logged) replace
+- [x] `/die/{step-up,step-down}` (facilitator, logged) replace
       `/stones/{add,remove}`; context aspect use steps the die.
-- [ ] Migration: no `die` → d10, a pending stone Overcome → dropped.
-- [ ] The overridable dice source on `GameTable`; `junction.test.ts` drives
-      the loop with forced faces.
+- [x] Migration: no `die` → d10, a pending stone Overcome → dropped.
+- [x] The junction and die commands in the rules core, tested with a scripted
+      `Deps.roll`; `junction.test.ts` shrinks to route wiring. The proposal
+      accept arms get only the pool-to-die edit, since 31.3 deletes them.
+- [x] Also in 31.2b: `StoneKind` is `Polarity` in the Worker (wire values
+      unchanged), context aspect unconsume moved into the core, and the
+      legacy Highlight and Use Context Boon proposals refuse at d20 (409)
+      when proposed and on accept. Suites: client 97, worker 147. The client
+      still decodes the stone wire shape and does not run against this
+      Worker until 31.4.
 
-#### 31.3 Worker — direct moves and undo
+#### 31.3 Worker — direct moves and undo — done
 
-- [ ] `/moves/{highlight,complicate,add-detail,alter}` and
-      `/context-aspects/:id/use` act immediately for any player, with costs
+- [x] `/moves/{highlight,highlight-context,complicate,create,alter}` act
+      immediately for any player, with costs
       checked once (400) and ladder ends refused (409). Highlight and
       Complicate carry the aspect.
-- [ ] The Junction gate: every move except Alter 409s while a Junction is
+- [x] The Junction gate: every move except Alter 409s while a Junction is
       pending.
-- [ ] `gameState.moves`, `/moves/:id/undo` (facilitator, or the move's own
+- [x] `gameState.moves`, `/moves/:id/undo` (facilitator, or the move's own
       player), the window closing on roll, Alter's on accept or reject.
-- [ ] Delete `Proposal`, `ProposalKind`, `handleProposalDecision`, the
+- [x] Moves return their effects as data; undo applies the inverse,
+      clamped (ADR 0003). `commit`, `appendMessage` and the `characters.ts`
+      write wrappers are deleted with the last handler that used them.
+- [x] Delete `Proposal`, `ProposalKind`, `handleProposalDecision`, the
       proposal and withdraw routes, `/context-aspects/:id/unconsume` (undo
       covers it — confirm in review), and their tests. Migration drops stored
       proposals.
+- [x] Settled in 31.3: the facilitator's `/context-aspects/:id/use` is gone
+      too — Highlight Context is open to anyone, the facilitator included, so
+      it is the one way to use a context aspect, and undo replaces
+      unconsume. Undoing an Alter restores the earlier roll only if no later
+      reroll replaced it (it always refunds and frees the Alter). A sheet
+      changing hands closes undo on its slot's moves. A Complicate's bane
+      carries `fromAspect: { slot, aspect }` on the wire. `GameTable.ts` is
+      ~880 lines (from ~2150 before 31.2a). Suites: client 97, worker 137.
 
-#### 31.4 Client domain and wire
+#### 31.4 Client domain and wire — done
 
-- [ ] `Die`, `Outcome`, `Junction`, `ContextAspect`, `MoveRecord` modules;
+- [x] `Die`, `Outcome`, `Junction`, `ContextAspect`, `MoveRecord` modules;
       `Roll.elm` and `Kind.elm` deleted.
-- [ ] `Api/Decode.elm` as the one wire boundary, with the ladder parity
+- [x] `Api/Decode.elm` as the one wire boundary, with the ladder parity
       fixture.
-- [ ] `Msg`, `Effect`, `Action` (`StonesFamily` → `DieFamily`, the proposal
+- [x] `Msg`, `Effect`, `Action` (`StonesFamily` → `DieFamily`, the proposal
       families gone, an `UndoFamily`) and `update`; `UpdateTest` and the
       decoder tests follow.
+- [x] Also in 31.4: an `Aspect` module (a Complicate's bane carries one, and
+      `ContextAspect` cannot import `Types`), and a `ContextFamily` for the
+      context aspect edits beside `DieFamily`. The ladder parity test lives
+      on the Worker side (`ladderParity.test.ts` reads `Die.elm` through
+      Vite's `?raw`), since elm-test cannot read the Worker's ladder. The
+      views are rewired just enough to run against the new Worker — the die
+      and the pending roll on the strip, the facilitator's `‹` `›` in the
+      Facilitator tab, Highlight / Complicate as a button per written aspect
+      in the Moves column with "undo" beside each, Highlight Context on each
+      context aspect — and 31.5 replaces them. Suites: client 92, worker 138.
 
-#### 31.5 View
+#### 31.5 View — done except the Discord glyph check
 
-- [ ] The ladder in `View.TopBar`: the current-die roll button, the result,
+- [x] The ladder in `View.TopBar`: the current-die roll button, the result,
       Alter / Reroll / Reject / Accept, the facilitator's `‹` `›`.
-- [ ] Aspect split buttons with ✎ on the Sheet; the colour gradients, labels
+- [x] Aspect split buttons with ✎ on the Sheet; the colour gradients, labels
       and touch tint (needs CSS in `client/index.html`: elm-ui's `mouseOver`
       cannot express a gradient).
-- [ ] Context boons and banes as buttons with ✎; Add Detail as the field at the
+- [x] Context boons and banes as buttons with ✎; Create as the field at the
       foot of the context list, with the facilitator's ☼ / ☽ toggle.
-- [ ] Undo links on log lines.
-- [ ] ☼ / ☽ through `Ui.boonMarks` / `Ui.baneMarks` and every hand-written
-      mark. Check the glyphs in the Discord webview on desktop and mobile.
-- [ ] Delete `View.FacilitatorPanel`, `View.Moves` and the proposal strip; the
+- [x] Undo links on log lines.
+- [x] ☼ / ☽ through `Ui.boonMarks` / `Ui.baneMarks` and every hand-written
+      mark.
+- [ ] Check the glyphs, the split buttons' hover labels and the touch tint in
+      the Discord webview on desktop and mobile (29.1's test channel). Seen
+      only in headless Chrome so far, where ☼ renders small at 11–13px.
+- [x] Delete `View.FacilitatorPanel`, `View.Moves` and the proposal strip; the
       tabs become Sheet / Cast / Guide.
+- [x] Settled in 31.5: the facilitator's ✎ on a context aspect opens its
+      field on the current text (an entry in `contextAspectEdits`, so no new
+      model field); a Complicate's blank bane reads "Trouble from <name>'s
+      <Aspect> — to be worded" until worded. The aspect field ✎ opens is
+      focused through a new `Effect.Focus`. Suites: client 95, worker 138.
 
-#### 31.6 Copy, glossary and docs
+#### 31.6 Copy, glossary and docs — done
 
-- [ ] `Copy.elm` and `Copy/Terms.elm` follow `RULES.md`; the Guide covers the
+- [x] `Copy.elm` and `Copy/Terms.elm` follow `RULES.md`; the Guide covers the
       ladder and its odds.
-- [ ] `RULES.md` loses its "not yet built" marks; `CLAUDE.md`'s architecture
+- [x] `RULES.md` loses its "not yet built" marks; `CLAUDE.md`'s architecture
       and module sections; `CHANGELOG.md`.
-- [ ] Re-baseline 28 (drop 28.1) and rewrite 30's checklist for Junctions.
+- [x] Re-baseline 28 (drop 28.1) and rewrite 30's checklist for Junctions.
+- [x] The Guide's groups follow play: roles, the die (with the odds table),
+      the Junction, boons and aspects, the moves (with undo), the session.
+      `CopyTermsTest` now fails on any retired word (stone, pool, proposal,
+      Add Detail, Alter Fate, Overcome, withdraw). Suites: client 96,
+      worker 138.
 
 ### Open questions
 
@@ -2325,13 +2404,17 @@ a later step deletes.
 - **Equal criticals.** Does volatility at the bottom of the ladder feel right
   at the table, or do players read a bane making context boons likelier as
   backwards?
-- **25.1's `rules/` transition module.** 31.2 and 31.3 rewrite most of the
-  rules handlers anyway. Writing the new Junction and move logic straight into
-  a pure `transition(state, command, deps)` shape would land most of 25.1 for
-  little extra; keeping 31 narrower leaves 25.1 as a later rewrite of fresh
-  code. Decide before 31.2.
-- **Unconsume.** Undo restores a consumed aspect; the separate facilitator
-  unconsume may no longer be needed.
+- **25.1's `rules/` transition module — decided (2026-10-04): folded into
+  31.** 31.2 and 31.3 rewrite most of the rules handlers anyway, so the new
+  Junction and move logic is written straight into 25.1's pure
+  `transition(state, command, deps)` shape, with the dice source as an
+  injected dependency (which replaces the overridable `GameTable` source
+  above). It was not done before 31.1: doing it first would have
+  rebuilt the pool and proposal code 31.2 and 31.3 delete. **Design pass done
+  (2026-10-04): ADR 0003**, with persistence derived from a diff of the
+  tables, structured log events, and a scaffold step, 31.2a, ahead of the
+  die ladder.
+- **Unconsume — settled in 31.3:** removed; undo restores a consumed aspect.
 - **Complicate abuse.** It is free and now unapproved; the facilitator's undo
   is the only check. Revisit if it is farmed in play.
 - **Stale clients.** A client open across the deploy fails to decode the new
