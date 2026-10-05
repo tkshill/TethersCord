@@ -192,8 +192,11 @@ reversed by editing back rather than by undo.
 
 ## Characters
 
-- A character has three **character aspects** (above) and a **condition** line:
-  one evolving sentence about what strain is doing to them.
+- A character has three **character aspects** (above).
+- **Condition is not part of the game at present.** A character once carried a
+  condition line, one evolving sentence about what strain is doing to them; the
+  sheet no longer shows it, though the stored value is kept. Whether it returns
+  is open (roadmap P2.14).
 - There is no death mechanic and no numeric rating (principles 5 and 6).
 - **Aspect Banes are not part of the game at present.** The sheet columns exist
   but nothing writes them. They return only if playtest shows they add to

@@ -53,7 +53,8 @@ visibly, and cannot be highlighted again.
 
 **Condition**:
 One evolving sentence on a character about what strain is doing to them. Not
-an aspect.
+an aspect. Not in play at present: the interface no longer shows it, and
+whether it returns is open (roadmap P2.14).
 
 ### Boons
 

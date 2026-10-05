@@ -2431,7 +2431,7 @@ shape (ADR 0003).
 - **Stale clients.** A client open across the deploy fails to decode the new
   state. Is a "reload the Activity" note on a decode failure worth adding?
 
-## 32. Table v2 — the high-contrast visual pass — planned
+## 32. Table v2 — the high-contrast visual pass — built, staging check open
 
 A design handoff from the design project (*Table v2*, High contrast): one
 palette and type system, larger reading type, and one shared look for
@@ -2628,13 +2628,16 @@ Each step builds and passes `pnpm run build` on its own. One branch,
 
 #### 32.8 Docs and the staging check
 
-- [ ] `CLAUDE.md` (the layout, `ToolTab`, `Ui.elm`'s palette and fonts, the
-      Guide, the log parser), `CHANGELOG.md`.
-- [ ] `RULES.md` and `CONTEXT.md`: Condition is not part of the game at
+- [x] `CLAUDE.md` (the layout, `ToolTab`, `Ui.elm`'s palette and fonts, the
+      Guide, the log parser and its parity test), `CHANGELOG.md`.
+- [x] `RULES.md` and `CONTEXT.md`: Condition is not part of the game at
       present.
 - [ ] Staging, in `#test-app`: the fonts and glyphs load in the Discord
       webview on desktop; the 1000×560 frame; both roles in preparation and
-      with a roll pending.
+      with a roll pending. Also worth a look there, since the scratch
+      preview could not show them: the split halves' hover labels, an aspect
+      being written (empty, or after ✎), the past-sessions list under the
+      context aspects, and a long goal ellipsising.
 
 # Phase 3 — potential future plans
 
