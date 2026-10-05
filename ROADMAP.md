@@ -1871,14 +1871,14 @@ here; the current layout is described in `CLAUDE.md`. In order:
       longer names another character.
 - [x] **Character sheet fields wrap** instead of running past the column edge.
 
-## 28. Labelled tool tabs — next
+## 28. Labelled tool tabs — done
 
 One small visual change to the section-27 UI. Re-baselined by 31.6: 28.1
 (hearts and skulls for boons and banes) was dropped when section 31 settled
 on sun and moon marks (☼ / ☽), shipped in 31.5 through `Ui.boonMarks` /
 `Ui.baneMarks`; the glyph check in the Discord webview passed in 31.5.
 
-### 28.2 Tool tabs always show their titles
+### 28.2 Tool tabs always show their titles — done
 
 The left panel's tabs show only a glyph (`◆` / `☺` / `?`) until selected, so a
 player has to hover or guess. Show every tab's title all the time and drop the
@@ -1890,8 +1890,9 @@ glyphs.
       selecting one changes only its wash, colour and weight.
 - [x] Update the call site in `View.elm` and the `CLAUDE.md` description of
       the tab row.
-- [ ] Confirm the three titles (Sheet, Cast, Guide) fit on one line in the
-      default panel width.
+- [x] Confirm the three titles (Sheet, Cast, Guide) fit on one line in the
+      default panel width. Checked on staging in the Discord Activity on
+      desktop and on a phone.
 
 ### Open questions
 
