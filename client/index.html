@@ -72,8 +72,10 @@
       }
     </style>
     <script>
-      // Inject environment-style values for the client
-      window.DISCORD_CLIENT_ID = "1540421919982231692";
+      // Inject environment-style values for the client. build.mjs replaces
+      // the client id placeholder with the Wrangler environment's
+      // DISCORD_CLIENT_ID.
+      window.DISCORD_CLIENT_ID = "%DISCORD_CLIENT_ID%";
       window.BACKEND_BASE_URL = "";
     </script>
   </head>

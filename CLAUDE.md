@@ -12,16 +12,27 @@ All scripts live in the root `package.json`; run them with pnpm from the repo ro
 | `pnpm run dev` | Build client, then run the client watcher + `wrangler dev` on http://localhost:8787 (SPA and API on one origin) |
 | `pnpm run build` | `build:client`, then `typecheck` (client + worker), then `test` — the pre-deploy gate |
 | `pnpm run test` | `test:client` (`elm-test` over `client/tests/`) then `test:worker` (`vitest` via `@cloudflare/vitest-pool-workers` over `worker/test/`) |
-| `pnpm run build:client` | `node client/scripts/build.mjs`: `elm make src/Main.elm --optimize` → `client/dist/elm.js`, esbuild `src/main.ts` → `client/dist/main.js`, copy `index.html`. Run after any Elm change |
+| `pnpm run build:client` | `node client/scripts/build.mjs`: `elm make src/Main.elm --optimize` → `client/dist/elm.js`, esbuild `src/main.ts` → `client/dist/main.js`, copy `index.html` with `%DISCORD_CLIENT_ID%` filled from `wrangler.jsonc` `vars` (`--env staging` reads `env.staging.vars`). Run after any Elm change |
 | `pnpm run watch:client` | Rebuild `client/dist` in place on change (`wrangler dev` reads it off disk; there is no project dev server) |
 | `pnpm run typecheck:worker` / `typecheck:client` | `tsc --noEmit`. Run the worker one after any Worker change |
-| `pnpm run deploy` | `build` then `wrangler deploy` (assets + Worker, atomic). **Only when explicitly asked**; `pnpm run deploy:dry-run` to bundle without uploading |
+| `pnpm run deploy` | `build` then `wrangler deploy --env=""` (top-level, production; assets + Worker, atomic). **Only when explicitly asked**; `pnpm run deploy:dry-run` to bundle without uploading |
 | `pnpm run db:migrate:local` / `db:migrate:remote` | `wrangler d1 migrations apply ttrpg-activity-db` against the local dev DB / production |
 | `pnpm run db:migrations:list` | Show remote migration state |
+| `pnpm run deploy:staging` | `build:staging` (client built with `--env staging`, then typecheck + test), then `wrangler deploy --env staging` to the `tetherscord-staging` Worker |
+| `pnpm run db:migrate:staging` / `db:migrations:list:staging` | Apply / list migrations on the staging D1 (`ttrpg-activity-db-staging`) |
 
 Local dev also needs `cp .dev.vars.example .dev.vars` (fill in `DISCORD_CLIENT_SECRET`) and one `pnpm run db:migrate:local`.
 
-**Try things in `#test-app`, not the campaign channel.** The table id is `guildId-channelId`, so launching the Activity in the `#test-app` channel gives its own `GameTable` and its own D1 rows: test rolls, chat and sheets stay out of the live log. It still runs the production Worker against the production D1, so it does not shield players from an untested deploy or migration (a staging Worker is roadmap 29.2).
+**Try things in `#test-app`, not the campaign channel.** The table id is `guildId-channelId`, so launching the Activity in the `#test-app` channel gives its own `GameTable` and its own D1 rows: test rolls, chat and sheets stay out of the live log.
+
+**Staging before production.** The TethersCordDev Discord application (id `1556461067792810085`) maps to the `tetherscord-staging` Worker (https://tetherscord-staging.tkshillinz.workers.dev), which has its own D1 (`ttrpg-activity-db-staging`), its own Durable Objects, its own `DISCORD_CLIENT_SECRET`, and no cron (`env.staging` in `wrangler.jsonc`). Ship a change in this order:
+
+1. `pnpm run db:migrate:staging` if the change adds a migration.
+2. `pnpm run deploy:staging`.
+3. Launch TethersCordDev in `#test-app` and try the change: login, a Junction roll and a move at least.
+4. `pnpm run db:migrate:remote` if needed, then `pnpm run deploy` (production, only when asked).
+
+A staging build leaves `client/dist` carrying the dev application's id; `pnpm run dev` and `pnpm run deploy` rebuild first, so only serving `dist` without a rebuild would notice.
 
 Quick Elm compile check without the full bundle, from `client/`: `../node_modules/elm/bin/elm make src/Main.elm --output /dev/null`.
 

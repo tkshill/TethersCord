@@ -12,12 +12,16 @@
     "test:worker": "vitest run --config worker/vitest.config.mts",
     "test": "pnpm run test:client && pnpm run test:worker",
     "build": "pnpm run build:client && pnpm run typecheck && pnpm run test",
+    "build:staging": "node client/scripts/build.mjs --env staging && pnpm run typecheck && pnpm run test",
     "dev": "pnpm run build:client && concurrently -n client,worker -c cyan,magenta \"pnpm run watch:client\" \"wrangler dev\"",
-    "deploy:dry-run": "pnpm run build && wrangler deploy --dry-run",
-    "deploy": "pnpm run build && wrangler deploy",
+    "deploy:dry-run": "pnpm run build && wrangler deploy --dry-run --env=\"\"",
+    "deploy": "pnpm run build && wrangler deploy --env=\"\"",
+    "deploy:staging": "pnpm run build:staging && wrangler deploy --env staging",
     "db:migrate:local": "wrangler d1 migrations apply ttrpg-activity-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply ttrpg-activity-db --remote",
-    "db:migrations:list": "wrangler d1 migrations list ttrpg-activity-db --remote"
+    "db:migrations:list": "wrangler d1 migrations list ttrpg-activity-db --remote",
+    "db:migrate:staging": "wrangler d1 migrations apply ttrpg-activity-db-staging --remote --env staging",
+    "db:migrations:list:staging": "wrangler d1 migrations list ttrpg-activity-db-staging --remote --env staging"
   },
   "engines": {
     "node": ">=22"

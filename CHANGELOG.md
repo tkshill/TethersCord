@@ -8,6 +8,20 @@ version yet, so headings are dates.
 
 ## [Unreleased]
 
+### Added
+
+- **A staging deployment** (roadmap 29.2).
+  `wrangler.jsonc` gains `env.staging` — a `tetherscord-staging` Worker with
+  its own D1 database, behind the TethersCordDev Discord application, with no
+  hourly cron — and `package.json` gains `deploy:staging`,
+  `db:migrate:staging` and `db:migrations:list:staging`. The client build
+  now fills the Discord client id into `index.html` from the Wrangler
+  environment's `vars` instead of hardcoding it, so production and staging
+  builds each carry their own application's id. Production deploys name the
+  top-level environment explicitly (`--env=""`). Staging is live at
+  `tetherscord-staging.tkshillinz.workers.dev`, and login, a Junction roll and
+  a move were confirmed there; `CLAUDE.md` records the staging-first flow.
+
 ### Changed
 
 - **Manual testing happens in a `#test-app` channel** (roadmap 29.1). Its
