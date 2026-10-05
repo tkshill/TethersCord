@@ -21,6 +21,8 @@ All scripts live in the root `package.json`; run them with pnpm from the repo ro
 
 Local dev also needs `cp .dev.vars.example .dev.vars` (fill in `DISCORD_CLIENT_SECRET`) and one `pnpm run db:migrate:local`.
 
+**Try things in `#test-app`, not the campaign channel.** The table id is `guildId-channelId`, so launching the Activity in the `#test-app` channel gives its own `GameTable` and its own D1 rows: test rolls, chat and sheets stay out of the live log. It still runs the production Worker against the production D1, so it does not shield players from an untested deploy or migration (a staging Worker is roadmap 29.2).
+
 Quick Elm compile check without the full bundle, from `client/`: `../node_modules/elm/bin/elm make src/Main.elm --output /dev/null`.
 
 ### Tests

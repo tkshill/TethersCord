@@ -1897,22 +1897,23 @@ glyphs.
 - With labels always on, does the tab tooltip still earn its place, or can
   `tip` go too?
 
-## 29. Testing away from the live table — planned
+## 29. Testing away from the live table — 29.1 done
 
 Every manual test so far has run against the deployed Worker, in the channel the
 campaign plays in, so test rolls and chat land in the live log and untested code
 reaches the players. Two separate problems, with separate fixes.
 
-### 29.1 A test channel — no code
+### 29.1 A test channel — no code — done
 
 The table id is `guildId-channelId` (`resolveTableId` in `client/src/main.ts`),
 and every game table in D1 partitions on `session_id`, which is that id. A
 different channel is therefore a different `GameTable` Durable Object with its
-own messages, characters, pool, sessions, NPCs and locations.
+own messages, characters, die, context aspects, sessions, NPCs and locations.
 
-- [ ] Create a test channel (or a private test guild) and launch the Activity
-      there for anything that is not real play.
-- [ ] Note it in `CLAUDE.md` so it is the default place to try things.
+- [x] Create a test channel (or a private test guild) and launch the Activity
+      there for anything that is not real play. Done: `#test-app` in the
+      campaign's guild; the Activity opened there on an empty table.
+- [x] Note it in `CLAUDE.md` so it is the default place to try things.
 
 Only `facilitators` and `sessions_auth` are shared with the live table, which is
 harmless. This keeps test *data* out of the live log, but it still runs the
@@ -1944,7 +1945,7 @@ Discord before it reaches production.
       client id, then `wrangler deploy --env staging`) and `db:migrate:staging`.
 - [ ] `wrangler secret put DISCORD_CLIENT_SECRET --env staging`.
 - [ ] Point the dev application's URL mapping at the staging Worker and confirm
-      the whole auth flow, a roll and a proposal work end to end.
+      the whole auth flow, a Junction roll and a move work end to end.
 - [ ] Document the flow in `CLAUDE.md`: migrate staging, deploy staging, test in
       the dev application, then deploy production.
 

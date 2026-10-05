@@ -10,6 +10,12 @@ version yet, so headings are dates.
 
 ### Changed
 
+- **Manual testing happens in a `#test-app` channel** (roadmap 29.1). Its
+  table id differs from the campaign channel's, so it gets its own table and
+  its own rows, and test rolls and chat no longer land in the live log.
+  `CLAUDE.md` names it as the default place to try things. It still runs the
+  production Worker and database; a staging deployment is 29.2.
+
 - **The Guide and the app's text describe the die ladder and direct moves**
   (roadmap 31.6). The glossary is rewritten to `RULES.md` — the die and its
   ladder, Flow and Friction, the Junction and preparation, boons and aspects,
